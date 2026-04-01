@@ -1,0 +1,19 @@
+FROM python:3.12-slim-bookworm
+
+# Prevent Python from writing .pyc files and enable unbuffered stdout/stderr
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install uv for fast dependency management
+RUN pip install --no-cache-dir uv
+
+# Copy dependency manifest and install Python packages
+COPY pyproject.toml .
+RUN uv pip install --system -e .
+
+# Copy project source (overridden by volume mount in dev)
+COPY . .
+
+EXPOSE 8000

@@ -1,0 +1,58 @@
+# ─── Environment ─────────────────────────────────────────────────────────────
+.env
+*.env.local
+
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.uv/
+
+# ─── Django ──────────────────────────────────────────────────────────────────
+backend/staticfiles/
+backend/uploads/
+backend/db.sqlite3
+*.sqlite3
+
+# ─── Node ────────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.npm
+
+# ─── Docker ──────────────────────────────────────────────────────────────────
+# Keep docker-compose.yml tracked; ignore override files
+docker-compose.override.yml
+
+# ─── IDE ─────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Test / Coverage ─────────────────────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+
+/venv_ats
+venv_ats/
+/venv_ats/
+
