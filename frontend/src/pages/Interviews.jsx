@@ -1,13 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Download, Filter, MapPin, Phone, Mail, Briefcase, Search, ChevronDown, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MapPin, Phone, Mail, Briefcase, Search, X, Star, ChevronDown, ChevronRight } from 'lucide-react';
 import { interviews as interviewsApi } from '../lib/api';
-
-const STATUS_BADGE = {
-  scheduled: 'bg-blue-100 text-blue-700',
-  completed: 'bg-emerald-100 text-emerald-700',
-  cancelled: 'bg-slate-100 text-slate-500',
-  no_show: 'bg-rose-100 text-rose-700',
-};
 
 const MODE_LABELS = {
   virtual: 'Virtual',
@@ -15,13 +8,62 @@ const MODE_LABELS = {
   face_to_face: 'Face-to-Face',
 };
 
-export default function Interviews({ user }) {
+const RECOMMENDATION_LABELS = {
+  proceed: 'Proceed',
+  hold: 'Hold',
+  reject: 'Reject',
+};
+
+function formatSchedule(scheduledAt, durationMin) {
+  const start = new Date(scheduledAt);
+  const end = new Date(start.getTime() + (durationMin || 60) * 60000);
+  const date = start.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const startT = start.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const endT = end.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return `${date} ${startT} – ${endT}`;
+}
+
+function isPendingFeedback(iv) {
+  return iv.status === 'scheduled' && new Date(iv.scheduled_at) < new Date();
+}
+
+function StarRating({ value, onChange }) {
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => onChange(n)}
+          className={`transition-colors ${n <= value ? 'text-amber-400' : 'text-slate-300 hover:text-amber-300'}`}
+        >
+          <Star className="w-6 h-6 fill-current" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function Interviews() {
   const [data, setData] = useState([]);
-  const [summary, setSummary] = useState({ upcoming: 0, pending_feedback: 0, completed: 0 });
-  const [activeTab, setActiveTab] = useState('all');
+  const [summary, setSummary] = useState({ pending_confirmation: 0, upcoming: 0, pending_feedback: 0, completed: 0 });
+  const [activeTab, setActiveTab] = useState('my');
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState('');
+
+  // Cancel modal
   const [isCancelConfirm, setIsCancelConfirm] = useState(false);
+
+  // Feedback modal
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackForm, setFeedbackForm] = useState({ recommendation: '', overall_rating: 0, comments: '' });
+
+  // Candidate detail panel
+  const [detailPanel, setDetailPanel] = useState(null);
+  const [feedbackDetail, setFeedbackDetail] = useState(null);
+  const [accordionOpen, setAccordionOpen] = useState(true);
 
   const load = () => {
     setLoading(true);
@@ -50,124 +92,198 @@ export default function Interviews({ user }) {
     }
   };
 
+  const openFeedback = (iv) => {
+    setSelected(iv);
+    setFeedbackForm({ recommendation: '', overall_rating: 0, comments: '' });
+    setIsFeedbackOpen(true);
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!feedbackForm.recommendation || !feedbackForm.overall_rating) {
+      alert('Please select a recommendation and rating.');
+      return;
+    }
+    setFeedbackLoading(true);
+    try {
+      await interviewsApi.submitFeedback(selected.id, feedbackForm);
+      setIsFeedbackOpen(false);
+      setSelected(null);
+      load();
+    } catch (err) {
+      alert(err.data?.error || 'Failed to submit feedback');
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
+
+  const openDetailPanel = async (iv) => {
+    setDetailPanel(iv);
+    setFeedbackDetail(null);
+    setAccordionOpen(true);
+    if (iv.has_feedback) {
+      try {
+        const fb = await interviewsApi.getFeedback(iv.id);
+        setFeedbackDetail(fb);
+      } catch (_) {}
+    }
+  };
+
+  const filteredData = search.trim()
+    ? data.filter((iv) =>
+        iv.candidate_name?.toLowerCase().includes(search.toLowerCase()) ||
+        iv.job_title?.toLowerCase().includes(search.toLowerCase())
+      )
+    : data;
+
   const summaryCards = [
-    { label: 'Upcoming', value: summary.upcoming, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200' },
-    { label: 'Pending Feedback', value: summary.pending_feedback, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' },
-    { label: 'Completed', value: summary.completed, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' },
+    { label: 'Pending Confirmation', value: summary.pending_confirmation ?? 0, activeColor: 'text-slate-700', bg: 'bg-white border-slate-200', activeBg: '' },
+    { label: 'Upcoming Interviews',  value: summary.upcoming ?? 0,             activeColor: 'text-slate-700', bg: 'bg-white border-slate-200', activeBg: '' },
+    { label: 'Pending Feedback',     value: summary.pending_feedback ?? 0,     activeColor: 'text-white',     bg: 'bg-white border-slate-200', activeBg: 'bg-blue-600 border-blue-600' },
+    { label: 'Interviews Completed', value: summary.completed ?? 0,            activeColor: 'text-slate-700', bg: 'bg-white border-slate-200', activeBg: '' },
   ];
 
   return (
     <div className="flex flex-col h-full gap-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-6">
-        {summaryCards.map((card) => (
-          <div key={card.label} className={`bg-white border rounded-xl p-5 shadow-sm flex items-center justify-between ${card.bg}`}>
-            <div className="flex flex-col gap-1">
-              <span className={`text-4xl font-bold ${card.color}`}>{card.value}</span>
-              <span className="text-slate-600 font-medium text-sm">{card.label}</span>
+      <div className="grid grid-cols-4 gap-4">
+        {summaryCards.map((card) => {
+          const isActive = card.activeBg && card.value > 0;
+          return (
+            <div
+              key={card.label}
+              className={`border rounded-xl p-5 shadow-sm flex items-center gap-4 transition-colors ${isActive ? card.activeBg : card.bg}`}
+            >
+              <span className={`text-4xl font-bold ${isActive ? card.activeColor : 'text-slate-800'}`}>{card.value}</span>
+              <span className={`font-medium text-sm leading-tight ${isActive ? 'text-blue-100' : 'text-slate-500'}`}>{card.label}</span>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Main List */}
       <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden min-h-0">
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 w-80">
-            <Search className="w-4 h-4 text-slate-400" />
-            <input type="text" placeholder="Search by candidate or job…" className="bg-transparent outline-none text-sm w-full" />
-          </div>
-
-          <div className="flex items-center gap-2">
+        <div className="p-4 border-b border-slate-200 flex items-center gap-4">
+          {/* Tabs */}
+          <div className="flex items-center gap-1">
             {[
-              { key: 'all', label: 'All' },
-              { key: 'my', label: 'My Interviews' },
+              { key: 'my',              label: 'My Interviews' },
               { key: 'scheduled_by_me', label: 'Scheduled by Me' },
+              { key: 'all',             label: 'All Schedules' },
             ].map((t) => (
               <button
                 key={t.key}
                 onClick={() => setActiveTab(t.key)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === t.key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === t.key ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
               >
                 {t.label}
               </button>
             ))}
           </div>
 
-          <button className="ml-auto flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600">
-            <Filter className="w-4 h-4 text-slate-400" />
-            Filter
-          </button>
+          {/* Search */}
+          <div className="ml-auto flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 w-72">
+            <Search className="w-4 h-4 text-slate-400 shrink-0" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by candidate or job…"
+              className="bg-transparent outline-none text-sm w-full"
+            />
+          </div>
         </div>
 
         <div className="overflow-auto flex-1">
           {loading ? (
             <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading interviews…</div>
-          ) : data.length === 0 ? (
+          ) : filteredData.length === 0 ? (
             <div className="flex items-center justify-center h-48 text-slate-400 text-sm">No interviews found.</div>
           ) : (
             <table className="w-full text-sm text-left border-collapse">
-              <thead className="bg-slate-50 text-slate-700 font-semibold sticky top-0 z-10 shadow-sm">
+              <thead className="bg-slate-50 text-slate-600 font-semibold sticky top-0 z-10 shadow-sm">
                 <tr>
                   <th className="px-4 py-3 border-b border-slate-200">Applicant</th>
-                  <th className="px-4 py-3 border-b border-slate-200">Job</th>
-                  <th className="px-4 py-3 border-b border-slate-200">Interviewer</th>
-                  <th className="px-4 py-3 border-b border-slate-200">Round</th>
-                  <th className="px-4 py-3 border-b border-slate-200">Scheduled At</th>
-                  <th className="px-4 py-3 border-b border-slate-200">Mode</th>
-                  <th className="px-4 py-3 border-b border-slate-200">Status</th>
+                  <th className="px-4 py-3 border-b border-slate-200">Job Title</th>
+                  <th className="px-4 py-3 border-b border-slate-200">Interviewers</th>
+                  <th className="px-4 py-3 border-b border-slate-200">Stage</th>
+                  <th className="px-4 py-3 border-b border-slate-200">Scheduled Date</th>
                   <th className="px-4 py-3 border-b border-slate-200 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {data.map((iv) => (
+                {filteredData.map((iv) => (
                   <tr key={iv.id} className="hover:bg-blue-50/30 transition-colors">
+                    {/* Applicant */}
                     <td className="px-4 py-4 align-top">
                       <div className="flex flex-col gap-1">
-                        <span className="font-semibold text-slate-800">{iv.candidate_name?.toUpperCase()}</span>
+                        <button
+                          onClick={() => openDetailPanel(iv)}
+                          className="font-semibold text-slate-800 hover:text-blue-600 hover:underline text-left"
+                        >
+                          {iv.candidate_name?.toUpperCase()}
+                        </button>
                         <div className="flex flex-col gap-0.5 text-slate-500 text-xs">
-                          {iv.candidate_phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {iv.candidate_phone}</span>}
-                          {iv.candidate_email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {iv.candidate_email}</span>}
-                          {iv.candidate_location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {iv.candidate_location}</span>}
-                          {iv.candidate_experience && <span className="flex items-center gap-1"><Briefcase className="w-3 h-3" /> {iv.candidate_experience} Yrs</span>}
+                          {iv.candidate_phone    && <span className="flex items-center gap-1"><Phone   className="w-3 h-3" /> {iv.candidate_phone}</span>}
+                          {iv.candidate_email    && <span className="flex items-center gap-1"><Mail    className="w-3 h-3" /> {iv.candidate_email}</span>}
+                          {iv.candidate_location && <span className="flex items-center gap-1"><MapPin  className="w-3 h-3" /> {iv.candidate_location}</span>}
+                          {iv.candidate_experience != null && <span className="flex items-center gap-1"><Briefcase className="w-3 h-3" /> {iv.candidate_experience} Yrs</span>}
                         </div>
                       </div>
                     </td>
+
+                    {/* Job Title */}
                     <td className="px-4 py-4 align-top">
                       <div className="flex flex-col">
                         <span className="text-slate-700 font-medium">{iv.job_title}</span>
                         <span className="text-slate-500 text-xs">{iv.job_code}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-4 align-top text-slate-600">{iv.interviewer_name}</td>
-                    <td className="px-4 py-4 align-top text-slate-600">{iv.round_label}</td>
+
+                    {/* Interviewers */}
                     <td className="px-4 py-4 align-top">
-                      <div className="flex flex-col text-slate-600">
-                        <span>{new Date(iv.scheduled_at).toLocaleDateString('en-GB')}</span>
-                        <span className="text-xs text-slate-500">{new Date(iv.scheduled_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                      <div className="flex items-center gap-1 text-slate-600">
+                        <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-semibold text-slate-600 shrink-0">
+                          {iv.interviewer_name?.[0]?.toUpperCase()}
+                        </div>
+                        <span className="text-xs">{iv.interviewer_name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-4 align-top text-slate-600">{MODE_LABELS[iv.mode] || iv.mode}</td>
-                    <td className="px-4 py-4 align-top">
-                      <span className={`text-xs font-semibold px-2 py-1 rounded-full capitalize ${STATUS_BADGE[iv.status] || 'bg-slate-100 text-slate-600'}`}>
-                        {iv.status?.replace('_', ' ')}
-                      </span>
+
+                    {/* Stage (round label) */}
+                    <td className="px-4 py-4 align-top text-slate-600 text-xs">{iv.round_label}</td>
+
+                    {/* Scheduled Date */}
+                    <td className="px-4 py-4 align-top text-slate-600 text-xs whitespace-nowrap">
+                      {formatSchedule(iv.scheduled_at, iv.duration_minutes)}
                     </td>
+
+                    {/* Actions */}
                     <td className="px-4 py-4 align-top text-center">
                       <div className="flex items-center justify-center gap-2">
-                        {iv.status === 'scheduled' && (
+                        {(isPendingFeedback(iv) || (iv.status === 'completed' && !iv.has_feedback)) && (
+                          <button
+                            onClick={() => openFeedback(iv)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1"
+                          >
+                            Provide Feedback
+                            <ChevronDown className="w-3 h-3" />
+                          </button>
+                        )}
+                        {iv.status === 'completed' && iv.has_feedback && (
+                          <button
+                            onClick={() => openDetailPanel(iv)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+                          >
+                            View Details
+                          </button>
+                        )}
+                        {iv.status === 'scheduled' && !isPendingFeedback(iv) && (
                           <button
                             onClick={() => { setSelected(iv); setIsCancelConfirm(true); }}
-                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-1 rounded text-xs font-medium transition-colors"
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-1.5 rounded text-xs font-medium transition-colors"
                           >
                             Cancel
                           </button>
-                        )}
-                        {iv.status === 'completed' && !iv.has_feedback && (
-                          <span className="text-xs text-amber-600 font-medium">Feedback pending</span>
-                        )}
-                        {iv.status === 'completed' && iv.has_feedback && (
-                          <span className="text-xs text-emerald-600 font-medium">Feedback submitted</span>
                         )}
                       </div>
                     </td>
@@ -191,8 +307,171 @@ export default function Interviews({ user }) {
               Are you sure you want to cancel the interview for <strong>{selected.candidate_name}</strong> — {selected.round_label}?
             </p>
             <div className="flex gap-3">
-              <button onClick={() => handleCancel(selected.id)} className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded text-sm font-medium transition-colors">Yes, Cancel</button>
-              <button onClick={() => setIsCancelConfirm(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-2 rounded text-sm font-medium transition-colors">No, Keep It</button>
+              <button onClick={() => handleCancel(selected.id)} className="bg-rose-600 hover:bg-rose-700 text-white px-6 py-2 rounded text-sm font-medium">Yes, Cancel</button>
+              <button onClick={() => setIsCancelConfirm(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-2 rounded text-sm font-medium">No, Keep It</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Provide Feedback Modal */}
+      {isFeedbackOpen && selected && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl w-[520px] max-w-[90vw] p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="font-semibold text-slate-800">Provide Feedback</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{selected.candidate_name} · {selected.round_label} · {selected.job_title}</p>
+              </div>
+              <button onClick={() => setIsFeedbackOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
+
+            <div className="flex flex-col gap-5">
+              {/* Recommendation */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-2">Interview Result *</label>
+                <div className="flex gap-3">
+                  {[
+                    { value: 'proceed', label: 'Proceed', color: 'emerald' },
+                    { value: 'hold',    label: 'Hold',    color: 'amber'   },
+                    { value: 'reject',  label: 'Reject',  color: 'rose'    },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setFeedbackForm((f) => ({ ...f, recommendation: opt.value }))}
+                      className={`flex-1 py-2 rounded-lg text-sm font-medium border-2 transition-colors ${
+                        feedbackForm.recommendation === opt.value
+                          ? opt.value === 'proceed'
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                            : opt.value === 'hold'
+                            ? 'border-amber-500 bg-amber-50 text-amber-700'
+                            : 'border-rose-500 bg-rose-50 text-rose-700'
+                          : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rating */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-2">Overall Rating *</label>
+                <StarRating
+                  value={feedbackForm.overall_rating}
+                  onChange={(n) => setFeedbackForm((f) => ({ ...f, overall_rating: n }))}
+                />
+              </div>
+
+              {/* Comments */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-2">Comments</label>
+                <textarea
+                  value={feedbackForm.comments}
+                  onChange={(e) => setFeedbackForm((f) => ({ ...f, comments: e.target.value }))}
+                  placeholder="Add any additional notes…"
+                  rows={3}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleSubmitFeedback}
+                disabled={feedbackLoading}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-6 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {feedbackLoading ? 'Submitting…' : 'Submit Feedback'}
+              </button>
+              <button onClick={() => setIsFeedbackOpen(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-2 rounded text-sm font-medium">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Candidate Detail Panel */}
+      {detailPanel && (
+        <div className="fixed inset-0 z-50 flex">
+          <div className="flex-1 bg-slate-900/40" onClick={() => setDetailPanel(null)} />
+          <div className="w-[420px] bg-white shadow-2xl flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50 flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-slate-800">{detailPanel.candidate_name}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{detailPanel.job_title} · {detailPanel.job_code}</p>
+              </div>
+              <button onClick={() => setDetailPanel(null)} className="mt-0.5 p-1 hover:bg-slate-200 rounded-full text-slate-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Candidate Info */}
+            <div className="px-5 py-4 border-b border-slate-100">
+              <div className="flex flex-col gap-1.5 text-sm text-slate-600">
+                {detailPanel.candidate_phone    && <span className="flex items-center gap-2"><Phone   className="w-4 h-4 text-slate-400" /> {detailPanel.candidate_phone}</span>}
+                {detailPanel.candidate_email    && <span className="flex items-center gap-2"><Mail    className="w-4 h-4 text-slate-400" /> {detailPanel.candidate_email}</span>}
+                {detailPanel.candidate_location && <span className="flex items-center gap-2"><MapPin  className="w-4 h-4 text-slate-400" /> {detailPanel.candidate_location}</span>}
+                {detailPanel.candidate_experience != null && <span className="flex items-center gap-2"><Briefcase className="w-4 h-4 text-slate-400" /> {detailPanel.candidate_experience} Years Experience</span>}
+              </div>
+            </div>
+
+            {/* Assessment & Interviews Accordion */}
+            <div className="flex-1 overflow-auto">
+              <button
+                onClick={() => setAccordionOpen((v) => !v)}
+                className="w-full flex items-center justify-between px-5 py-3 bg-blue-50 border-b border-blue-100 text-sm font-semibold text-blue-800"
+              >
+                Assessment & Interviews
+                {accordionOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+
+              {accordionOpen && (
+                <div className="px-5 py-4 flex flex-col gap-4 text-sm">
+                  {/* Interview Details */}
+                  <div className="bg-slate-50 rounded-lg p-3 flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Interview Scheduled</p>
+                    <p className="text-slate-700 font-medium">{detailPanel.round_label}</p>
+                    <p className="text-slate-500 text-xs">{formatSchedule(detailPanel.scheduled_at, detailPanel.duration_minutes)}</p>
+                    <p className="text-slate-500 text-xs">{MODE_LABELS[detailPanel.mode] || detailPanel.mode}</p>
+                  </div>
+
+                  {/* Feedback section */}
+                  {detailPanel.has_feedback && feedbackDetail ? (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Feedback Submitted</p>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                          feedbackDetail.recommendation === 'proceed' ? 'bg-emerald-100 text-emerald-700' :
+                          feedbackDetail.recommendation === 'hold'    ? 'bg-amber-100 text-amber-700' :
+                          'bg-rose-100 text-rose-700'
+                        }`}>
+                          {RECOMMENDATION_LABELS[feedbackDetail.recommendation]}
+                        </span>
+                        <div className="flex gap-0.5">
+                          {[1,2,3,4,5].map((n) => (
+                            <Star key={n} className={`w-3.5 h-3.5 fill-current ${n <= feedbackDetail.overall_rating ? 'text-amber-400' : 'text-slate-200'}`} />
+                          ))}
+                        </div>
+                      </div>
+                      {feedbackDetail.comments && <p className="text-slate-600 text-xs">{feedbackDetail.comments}</p>}
+                    </div>
+                  ) : (isPendingFeedback(detailPanel) || (detailPanel.status === 'completed' && !detailPanel.has_feedback)) ? (
+                    <button
+                      onClick={() => { setDetailPanel(null); openFeedback(detailPanel); }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors self-start"
+                    >
+                      Provide Feedback
+                    </button>
+                  ) : (
+                    <p className="text-slate-400 text-xs">No feedback yet.</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

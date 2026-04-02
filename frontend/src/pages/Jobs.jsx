@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, MapPin, Clock, Eye, Mail, UserPlus, Users, ChevronDown, ChevronUp, Network, User, X, Filter, Phone } from 'lucide-react';
-import { jobs as jobsApi, candidates as candidatesApi } from '../lib/api';
+import { jobs as jobsApi, candidates as candidatesApi, interviews as interviewsApi, users as usersApi } from '../lib/api';
 
 function FilterAccordion({ title, options, defaultOpen = true }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
@@ -54,6 +54,15 @@ export default function Jobs({ user }) {
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [addForm, setAddForm] = useState({ full_name: '', email: '', phone: '', location: '', total_experience_years: '' });
   const [addLoading, setAddLoading] = useState(false);
+
+  const [scheduleCandidate, setScheduleCandidate] = useState(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    round_number: 1, round_label: '', interviewer: '',
+    scheduled_at: '', duration_minutes: 60, mode: 'virtual', meeting_link: '',
+  });
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [usersList, setUsersList] = useState([]);
+  const [scheduleToast, setScheduleToast] = useState(null);
 
   const loadJobs = useCallback(() => {
     setLoading(true);
@@ -118,6 +127,37 @@ export default function Jobs({ user }) {
     }
   };
 
+  const closeScheduleModal = () => {
+    setIsScheduleOpen(false);
+    setScheduleCandidate(null);
+    setScheduleForm({ round_number: 1, round_label: '', interviewer: '', scheduled_at: '', duration_minutes: 60, mode: 'virtual', meeting_link: '' });
+    setScheduleToast(null);
+  };
+
+  const handleScheduleSubmit = async () => {
+    if (!scheduleForm.interviewer || !scheduleForm.scheduled_at) return;
+    setScheduleLoading(true);
+    setScheduleToast(null);
+    try {
+      await interviewsApi.create({
+        mapping: scheduleCandidate.id,
+        round_number: Number(scheduleForm.round_number),
+        round_label: scheduleForm.round_label,
+        interviewer: scheduleForm.interviewer,
+        scheduled_at: scheduleForm.scheduled_at,
+        duration_minutes: Number(scheduleForm.duration_minutes),
+        mode: scheduleForm.mode,
+        meeting_link: scheduleForm.meeting_link,
+      });
+      setScheduleToast({ type: 'success', message: 'Interview scheduled successfully.' });
+      setTimeout(() => closeScheduleModal(), 1200);
+    } catch (err) {
+      setScheduleToast({ type: 'error', message: err.data?.detail || JSON.stringify(err.data) || 'Failed to schedule interview.' });
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
   const renderCandidateCard = (c) => (
     <div key={c.id} className="flex gap-6 border border-slate-200 rounded-xl p-6 hover:shadow-md transition-shadow">
       <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xl font-bold shrink-0">
@@ -131,7 +171,11 @@ export default function Jobs({ user }) {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => setIsScheduleOpen(true)}
+              onClick={() => {
+                setScheduleCandidate(c);
+                setIsScheduleOpen(true);
+                usersApi.list().then((res) => setUsersList(res.results || res)).catch(console.error);
+              }}
               className="text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded font-medium transition-colors"
             >
               Schedule Interview
@@ -407,17 +451,110 @@ export default function Jobs({ user }) {
         </div>
       )}
 
-      {/* Schedule Interview placeholder */}
+      {/* Schedule Interview Modal */}
       {isScheduleOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-[500px] max-w-[90vw] p-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-lg shadow-xl w-[600px] max-w-[90vw]">
+            <div className="flex items-center justify-between p-4 border-b border-slate-200">
               <h3 className="font-semibold text-slate-800">Schedule Interview</h3>
-              <button onClick={() => setIsScheduleOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              <button onClick={closeScheduleModal} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
             </div>
-            <p className="text-sm text-slate-500">Use the Interviews page to schedule interviews for this candidate.</p>
-            <div className="mt-4 flex justify-end">
-              <button onClick={() => setIsScheduleOpen(false)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-colors">Close</button>
+            <div className="p-6 flex flex-col gap-4">
+              {scheduleToast && (
+                <div className={`text-sm px-4 py-3 rounded-md font-medium ${scheduleToast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                  {scheduleToast.message}
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Candidate</label>
+                <div className="border border-slate-200 rounded px-3 py-2 text-sm text-slate-500 bg-slate-50">
+                  {scheduleCandidate?.candidate_name || '—'}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Round Number</label>
+                  <input
+                    type="number" min="1"
+                    value={scheduleForm.round_number}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, round_number: e.target.value })}
+                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Round Label</label>
+                  <input
+                    type="text" placeholder="e.g. Technical Round"
+                    value={scheduleForm.round_label}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, round_label: e.target.value })}
+                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Interviewer *</label>
+                  <select
+                    value={scheduleForm.interviewer}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, interviewer: e.target.value })}
+                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Select interviewer…</option>
+                    {usersList.map((u) => (
+                      <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Scheduled At *</label>
+                  <input
+                    type="datetime-local"
+                    value={scheduleForm.scheduled_at}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_at: e.target.value })}
+                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Duration (minutes)</label>
+                  <input
+                    type="number" min="15" step="15"
+                    value={scheduleForm.duration_minutes}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, duration_minutes: e.target.value })}
+                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Mode</label>
+                  <select
+                    value={scheduleForm.mode}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, mode: e.target.value })}
+                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="virtual">Virtual</option>
+                    <option value="phone">Phone</option>
+                    <option value="face_to_face">Face to Face</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Meeting Link <span className="text-slate-400 font-normal">(optional)</span></label>
+                <input
+                  type="text" placeholder="https://meet.google.com/..."
+                  value={scheduleForm.meeting_link}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, meeting_link: e.target.value })}
+                  className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 pb-6">
+              <button onClick={closeScheduleModal} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-sm font-medium transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleScheduleSubmit}
+                disabled={scheduleLoading || !scheduleForm.interviewer || !scheduleForm.scheduled_at}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {scheduleLoading ? 'Scheduling…' : 'Schedule Interview'}
+              </button>
             </div>
           </div>
         </div>
