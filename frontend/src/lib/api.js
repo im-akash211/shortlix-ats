@@ -96,7 +96,10 @@ export const dashboard = {
 // ---- Departments ---- //
 export const departments = {
   list: () => request('/departments/'),
-  subVerticals: (deptId) => request(`/departments/${deptId}/sub-verticals/`),
+  subVerticals: (deptId, parentParam) => {
+    const qs = parentParam !== undefined ? `?parent=${parentParam}` : '';
+    return request(`/departments/${deptId}/sub-verticals/${qs}`);
+  },
 };
 
 // ---- Requisitions ---- //
@@ -161,6 +164,7 @@ export const interviews = {
 
 // ---- Users (Admin) ---- //
 export const users = {
+  dropdown: () => request('/users/dropdown/'),
   list: (params = {}) => request('/users/?' + new URLSearchParams(params)),
   detail: (id) => request(`/users/${id}/`),
   create: (data) => request('/users/', { method: 'POST', body: JSON.stringify(data) }),
