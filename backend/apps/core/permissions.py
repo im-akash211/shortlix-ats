@@ -1,53 +1,23 @@
-"""
-Role-based permission classes used across all API views.
-These are stubs — full implementation requires the accounts app (Phase 1).
-"""
 from rest_framework.permissions import BasePermission
 
 
 class IsAdmin(BasePermission):
-    """Allow access only to users with role='admin'."""
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and getattr(request.user, 'role', None) == 'admin'
-        )
+        return request.user.is_authenticated and request.user.role == 'admin'
 
 
-class IsHiringManager(BasePermission):
-    """Allow access only to users with role='hiring_manager'."""
+class IsAdminOrHM(BasePermission):
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and getattr(request.user, 'role', None) == 'hiring_manager'
-        )
-
-
-class IsRecruiter(BasePermission):
-    """Allow access only to users with role='recruiter'."""
-    def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and getattr(request.user, 'role', None) == 'recruiter'
-        )
-
-
-class IsAdminOrHiringManager(BasePermission):
-    def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and getattr(request.user, 'role', None) in ('admin', 'hiring_manager')
-        )
+        return request.user.is_authenticated and request.user.role in ('admin', 'hiring_manager')
 
 
 class IsAdminOrRecruiter(BasePermission):
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and getattr(request.user, 'role', None) in ('admin', 'recruiter')
-        )
+        return request.user.is_authenticated and request.user.role in ('admin', 'recruiter')
+
+
+class IsJobCollaborator(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.user.role == 'admin':
+            return True
+        return obj.collaborators.filter(user=request.user).exists()

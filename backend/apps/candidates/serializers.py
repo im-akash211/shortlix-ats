@@ -1,0 +1,81 @@
+from rest_framework import serializers
+from .models import Candidate, CandidateJobMapping, PipelineStageLog, CandidateNote
+
+
+class CandidateNoteSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
+
+    class Meta:
+        model = CandidateNote
+        fields = ['id', 'candidate', 'user', 'user_name', 'content', 'created_at']
+        read_only_fields = ['id', 'user', 'created_at']
+
+
+class PipelineStageLogSerializer(serializers.ModelSerializer):
+    changed_by_name = serializers.CharField(source='changed_by.full_name', read_only=True)
+
+    class Meta:
+        model = PipelineStageLog
+        fields = ['id', 'from_stage', 'to_stage', 'changed_by', 'changed_by_name', 'notes', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class CandidateJobMappingSerializer(serializers.ModelSerializer):
+    candidate_name = serializers.CharField(source='candidate.full_name', read_only=True)
+    candidate_email = serializers.CharField(source='candidate.email', read_only=True)
+    candidate_phone = serializers.CharField(source='candidate.phone', read_only=True)
+    candidate_location = serializers.CharField(source='candidate.location', read_only=True)
+    candidate_experience = serializers.DecimalField(
+        source='candidate.total_experience_years', read_only=True,
+        max_digits=4, decimal_places=1
+    )
+    candidate_skills = serializers.ListField(source='candidate.skills', read_only=True)
+    candidate_designation = serializers.CharField(source='candidate.designation', read_only=True)
+    job_title = serializers.CharField(source='job.title', read_only=True)
+    job_code = serializers.CharField(source='job.job_code', read_only=True)
+
+    class Meta:
+        model = CandidateJobMapping
+        fields = ['id', 'candidate', 'job', 'stage', 'moved_by', 'stage_updated_at', 'created_at',
+                  'candidate_name', 'candidate_email', 'candidate_phone', 'candidate_location',
+                  'candidate_experience', 'candidate_skills', 'candidate_designation',
+                  'job_title', 'job_code']
+        read_only_fields = ['id', 'moved_by', 'stage_updated_at', 'created_at']
+
+
+class CandidateListSerializer(serializers.ModelSerializer):
+    current_job = serializers.SerializerMethodField()
+    current_stage = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Candidate
+        fields = ['id', 'full_name', 'email', 'phone', 'location', 'designation',
+                  'current_employer', 'total_experience_years', 'skills', 'source',
+                  'sub_source', 'created_at', 'current_job', 'current_stage']
+
+    def get_current_job(self, obj):
+        mapping = obj.job_mappings.select_related('job').first()
+        if mapping:
+            return {'id': str(mapping.job.id), 'title': mapping.job.title, 'job_code': mapping.job.job_code}
+        return None
+
+    def get_current_stage(self, obj):
+        mapping = obj.job_mappings.first()
+        return mapping.stage if mapping else None
+
+
+class CandidateDetailSerializer(serializers.ModelSerializer):
+    job_mappings = CandidateJobMappingSerializer(many=True, read_only=True)
+    notes = CandidateNoteSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Candidate
+        fields = '__all__'
+        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+
+
+class CandidateCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Candidate
+        fields = '__all__'
+        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
