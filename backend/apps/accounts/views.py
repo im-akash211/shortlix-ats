@@ -9,6 +9,22 @@ from .models import User
 from .serializers import UserSerializer, UserCreateSerializer, CustomTokenObtainPairSerializer
 
 
+class UserLookupView(generics.ListAPIView):
+    """Search users by email or role — accessible to any authenticated user."""
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = User.objects.select_related('department').filter(is_active=True)
+        email = self.request.query_params.get('email', '')
+        role = self.request.query_params.get('role', '')
+        if email:
+            qs = qs.filter(email__icontains=email)
+        if role:
+            qs = qs.filter(role=role)
+        return qs[:20]
+
+
 class LoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     permission_classes = [AllowAny]

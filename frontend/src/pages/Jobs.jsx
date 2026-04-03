@@ -1,74 +1,185 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, MapPin, Clock, Eye, Mail, UserPlus, Users, ChevronDown, ChevronUp, Network, User, X, Filter, Phone } from 'lucide-react';
-import { jobs as jobsApi, candidates as candidatesApi, interviews as interviewsApi, users as usersApi } from '../lib/api';
+import {
+  Search, MapPin, Clock, Eye, Mail, UserPlus, Users, ChevronDown, ChevronUp,
+  User, X, Filter, Phone, Briefcase, Building2, ChevronRight, Edit2, BookOpen,
+} from 'lucide-react';
+import {
+  jobs as jobsApi,
+  candidates as candidatesApi,
+  interviews as interviewsApi,
+  users as usersApi,
+} from '../lib/api';
 
-function FilterAccordion({ title, options, defaultOpen = true }) {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function StatusBadge({ status }) {
+  const map = {
+    open: 'bg-emerald-100 text-emerald-700',
+    hidden: 'bg-amber-100 text-amber-700',
+    closed: 'bg-slate-100 text-slate-600',
+  };
+  return (
+    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${map[status] || map.closed}`}>
+      {status}
+    </span>
+  );
+}
+
+function InfoRow({ label, children }) {
+  return (
+    <div className="flex py-3 border-b border-slate-100 last:border-0 gap-4">
+      <span className="w-40 shrink-0 text-sm text-slate-500 font-medium">{label}</span>
+      <div className="flex-1 text-sm text-slate-800 min-w-0">{children}</div>
+    </div>
+  );
+}
+
+function FilterAccordion({ title, options, selected, onToggle, defaultOpen = true }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mb-4">
+    <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mb-3">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-4 bg-white hover:bg-slate-50 transition-colors"
+        className="w-full flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors"
       >
         <span className="font-semibold text-slate-800 text-sm">{title}</span>
         {isOpen ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
       </button>
       {isOpen && (
-        <div className="px-4 pb-4 flex flex-col gap-3">
-          {options.map((opt, j) => (
-            <label key={j} className="flex items-start gap-3 text-sm text-slate-600 cursor-pointer">
-              <input type="checkbox" className="mt-0.5 rounded border-slate-300 cursor-pointer" />
-              <span className="flex-1 leading-tight">{opt}</span>
-            </label>
-          ))}
+        <div className="px-4 pb-4 flex flex-col gap-2.5 max-h-[350px] overflow-y-auto scrollbar-thin">
+          {options.length === 0 ? (
+            <p className="text-xs text-slate-400 italic">No options</p>
+          ) : (
+            options.map((opt) => (
+              <label key={opt.id} className="flex items-start gap-3 text-sm text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 rounded border-slate-300 cursor-pointer accent-blue-600"
+                  checked={selected.includes(opt.id)}
+                  onChange={() => onToggle(opt.id)}
+                />
+                <span className="flex-1 leading-tight">{opt.label}</span>
+              </label>
+            ))
+          )}
         </div>
       )}
     </div>
   );
 }
 
-const STAGE_TAB_MAP = {
-  Applies: null,
-  Shortlists: 'shortlisted',
-  Offers: 'offered',
-  Joined: 'joined',
-};
+// ─── Stage map ────────────────────────────────────────────────────────────────
+
+const STAGE_TAB_MAP = { Applies: null, Shortlists: 'shortlisted', Offers: 'offered', Joined: 'joined' };
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Jobs({ user }) {
-  const [activeTab, setActiveTab] = useState('My Jobs');
-  const [jobsList, setJobsList] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  // ── List state ──────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab]   = useState('My Jobs');
+  const [jobsList, setJobsList]     = useState([]);
+  const [total, setTotal]           = useState(0);
+  const [loading, setLoading]       = useState(true);
+  const [search, setSearch]         = useState('');
   const [statusFilter, setStatusFilter] = useState('open');
 
-  const [viewingJob, setViewingJob] = useState(null);
-  const [pipelineTab, setPipelineTab] = useState('Applies');
-  const [pipeline, setPipeline] = useState([]);
-  const [pipelineStats, setPipelineStats] = useState({});
-  const [pipelineLoading, setPipelineLoading] = useState(false);
+  // ── Filter state — single-select per group, options loaded once ─────────────
+  const [filters, setFilters] = useState({ department: [], hiring_manager: [], location: [] });
+  const [filterOptions, setFilterOptions] = useState({ departments: [], hiringManagers: [], locations: [] });
 
-  const [isCollabModalOpen, setIsCollabModalOpen] = useState(false);
-  const [selectedJob, setSelectedJob] = useState(null);
+  // ── Job detail state ─────────────────────────────────────────────────────────
+  const [viewingJob, setViewingJob]         = useState(null);
+  const [jobDetail, setJobDetail]           = useState(null);
+  const [jobDetailLoading, setJobDetailLoading] = useState(false);
+  const [pipelineTab, setPipelineTab]       = useState('Applies');
+  const [pipeline, setPipeline]             = useState([]);
+  const [pipelineStats, setPipelineStats]   = useState({});
+  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [isPipelinePanelOpen, setIsPipelinePanelOpen] = useState(false);
+
+  // ── Edit modal state ─────────────────────────────────────────────────────────
+  const [isEditOpen, setIsEditOpen]   = useState(false);
+  const [editForm, setEditForm]       = useState({});
+  const [editLoading, setEditLoading] = useState(false);
+
+  // ── Collaborators modal state ────────────────────────────────────────────────
+  const [isCollabModalOpen, setIsCollabModalOpen]       = useState(false);
+  const [selectedJob, setSelectedJob]                   = useState(null);
+  const [collabList, setCollabList]                     = useState([]);
+  const [collabLoading, setCollabLoading]               = useState(false);
+  const [collabEmail, setCollabEmail]                   = useState('');
+  const [collabSearchResults, setCollabSearchResults]   = useState([]);
+  const [collabSearchLoading, setCollabSearchLoading]   = useState(false);
+  const [collabActionLoading, setCollabActionLoading]   = useState(false);
+  const [collabError, setCollabError]                   = useState('');
+
+  // ── Add Profile modal state ──────────────────────────────────────────────────
   const [isAddProfileOpen, setIsAddProfileOpen] = useState(false);
-  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [addForm, setAddForm] = useState({ full_name: '', email: '', phone: '', location: '', total_experience_years: '' });
   const [addLoading, setAddLoading] = useState(false);
 
-  const [scheduleCandidate, setScheduleCandidate] = useState(null);
+  // ── Shortlist action state ────────────────────────────────────────────────────
+  const [shortlistingId, setShortlistingId] = useState(null);
+
+  // ── Schedule Interview modal state ───────────────────────────────────────────
+  const [isScheduleOpen, setIsScheduleOpen]         = useState(false);
+  const [scheduleCandidate, setScheduleCandidate]   = useState(null);
   const [scheduleForm, setScheduleForm] = useState({
     round_number: 1, round_label: '', interviewer: '',
     scheduled_at: '', duration_minutes: 60, mode: 'virtual', meeting_link: '',
   });
   const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [usersList, setUsersList] = useState([]);
-  const [scheduleToast, setScheduleToast] = useState(null);
+  const [usersList, setUsersList]             = useState([]);
+  const [scheduleToast, setScheduleToast]     = useState(null);
 
+  // ── Load filter options ONCE from all accessible jobs at mount ───────────────
+  // Options are stable — they do NOT change when filters are applied.
+  // This ensures selecting one filter group does not cause other groups to lose options.
+  useEffect(() => {
+    jobsApi.list({ page_size: 100 })
+      .then((res) => {
+        const all = res.results || res;
+        const deptMap = {};
+        const hmMap   = {};
+        const locSet  = new Set();
+        all.forEach((j) => {
+          if (j.department   && j.department_name)   deptMap[j.department]   = j.department_name;
+          if (j.hiring_manager && j.hiring_manager_name) hmMap[j.hiring_manager] = j.hiring_manager_name;
+          if (j.location) locSet.add(j.location);
+        });
+        setFilterOptions({
+          departments:    Object.entries(deptMap).map(([id, label]) => ({ id, label })),
+          hiringManagers: Object.entries(hmMap).map(([id, label])   => ({ id, label })),
+          locations:      [...locSet].map((l) => ({ id: l, label: l })),
+        });
+      })
+      .catch(console.error);
+  }, []); // empty deps → runs only once at mount
+
+  // ── Toggle filter (single-select per group) ──────────────────────────────────
+  // Clicking the checked option deselects; clicking a new option replaces previous.
+  const toggleFilter = (key, id) =>
+    setFilters((prev) => ({ ...prev, [key]: prev[key].includes(id) ? [] : [id] }));
+
+  const clearFilters = () => setFilters({ department: [], hiring_manager: [], location: [] });
+
+  const activeFilterCount =
+    (filters.department.length > 0 ? 1 : 0) +
+    (filters.hiring_manager.length > 0 ? 1 : 0) +
+    (filters.location.length > 0 ? 1 : 0);
+
+  // ── Load jobs list ───────────────────────────────────────────────────────────
   const loadJobs = useCallback(() => {
     setLoading(true);
-    const params = { status: statusFilter === 'all' ? '' : statusFilter };
+    const params = {};
+    // Only send status when a specific status is selected ("all" means no filter)
+    if (statusFilter !== 'all') params.status = statusFilter;
     if (activeTab === 'My Jobs') params.tab = 'mine';
     if (search) params.search = search;
+    if (filters.department.length)     params.department      = filters.department[0];
+    if (filters.hiring_manager.length) params.hiring_manager  = filters.hiring_manager[0];
+    if (filters.location.length)       params.location        = filters.location[0];
+
     jobsApi.list(params)
       .then((res) => {
         const list = res.results || res;
@@ -77,32 +188,141 @@ export default function Jobs({ user }) {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeTab, statusFilter, search]);
+  }, [activeTab, statusFilter, search, filters]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
 
-  const openJobDetails = (job, tab = 'Applies') => {
+  // ── Open job detail ──────────────────────────────────────────────────────────
+  const openJobDetails = (job, tab = 'Applies', openPanel = false) => {
     setViewingJob(job);
+    setJobDetail(null);
+    setPipeline([]);
     setPipelineTab(tab);
+    setIsPipelinePanelOpen(openPanel);
+    setJobDetailLoading(true);
+    jobsApi.detail(job.id)
+      .then(setJobDetail)
+      .catch(console.error)
+      .finally(() => setJobDetailLoading(false));
   };
 
+  // ── Pipeline stats — always load when a job is opened (powers the tiles) ────
   useEffect(() => {
     if (!viewingJob) return;
+    jobsApi.pipelineStats(viewingJob.id)
+      .then(setPipelineStats)
+      .catch(console.error);
+  }, [viewingJob]);
+
+  // ── Pipeline candidates — only load when the panel is open ──────────────────
+  useEffect(() => {
+    if (!viewingJob || !isPipelinePanelOpen) return;
     setPipelineLoading(true);
     const stage = STAGE_TAB_MAP[pipelineTab];
-    const params = stage ? { stage } : {};
-    Promise.all([
-      jobsApi.pipeline(viewingJob.id, params),
-      jobsApi.pipelineStats(viewingJob.id),
-    ])
-      .then(([pipeRes, statsRes]) => {
-        setPipeline(pipeRes.results || pipeRes);
-        setPipelineStats(statsRes);
-      })
+    jobsApi.pipeline(viewingJob.id, stage ? { stage } : {})
+      .then((res) => setPipeline(res.results || res))
       .catch(console.error)
       .finally(() => setPipelineLoading(false));
-  }, [viewingJob, pipelineTab]);
+  }, [viewingJob, pipelineTab, isPipelinePanelOpen]);
 
+  // ── Edit handlers ────────────────────────────────────────────────────────────
+  const openEdit = () => {
+    if (!jobDetail) return;
+    setEditForm({
+      title:            jobDetail.title || '',
+      location:         jobDetail.location || '',
+      status:           jobDetail.status || 'open',
+      experience_min:   jobDetail.experience_min ?? 0,
+      experience_max:   jobDetail.experience_max ?? 0,
+      skills_required:  (jobDetail.skills_required || []).join(', '),
+      job_description:  jobDetail.job_description || '',
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleEditSave = async () => {
+    setEditLoading(true);
+    try {
+      const updated = await jobsApi.update(jobDetail.id, {
+        ...editForm,
+        skills_required: editForm.skills_required.split(',').map((s) => s.trim()).filter(Boolean),
+        experience_min:  Number(editForm.experience_min),
+        experience_max:  Number(editForm.experience_max),
+      });
+      setJobDetail(updated);
+      setViewingJob((prev) => ({ ...prev, title: updated.title, location: updated.location, status: updated.status }));
+      setIsEditOpen(false);
+    } catch (err) {
+      alert(err.data?.detail || JSON.stringify(err.data) || 'Failed to save changes');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // ── Collaborator helpers ─────────────────────────────────────────────────────
+  const openCollabModal = (job) => {
+    setSelectedJob(job);
+    setCollabError('');
+    setCollabEmail('');
+    setCollabSearchResults([]);
+    setIsCollabModalOpen(true);
+    fetchCollaborators(job.id);
+  };
+
+  const fetchCollaborators = (jobId) => {
+    setCollabLoading(true);
+    jobsApi.listCollaborators(jobId)
+      .then((res) => setCollabList(res.results || res))
+      .catch(console.error)
+      .finally(() => setCollabLoading(false));
+  };
+
+  const handleCollabSearch = () => {
+    if (!collabEmail.trim()) return;
+    setCollabSearchLoading(true);
+    setCollabError('');
+    usersApi.lookup({ email: collabEmail.trim() })
+      .then((res) => setCollabSearchResults(res.results || res))
+      .catch(console.error)
+      .finally(() => setCollabSearchLoading(false));
+  };
+
+  const handleAddCollab = async (userId) => {
+    setCollabActionLoading(true);
+    setCollabError('');
+    try {
+      await jobsApi.addCollaborator(selectedJob.id, userId);
+      setCollabSearchResults([]);
+      setCollabEmail('');
+      fetchCollaborators(selectedJob.id);
+      // Refresh detail collaborators list if viewing that job
+      if (viewingJob?.id === selectedJob.id) {
+        jobsApi.detail(selectedJob.id).then(setJobDetail).catch(console.error);
+      }
+    } catch (err) {
+      setCollabError(err.data?.non_field_errors?.[0] || err.data?.detail || 'Could not add collaborator.');
+    } finally {
+      setCollabActionLoading(false);
+    }
+  };
+
+  const handleRemoveCollab = async (userId) => {
+    setCollabActionLoading(true);
+    setCollabError('');
+    try {
+      await jobsApi.removeCollaborator(selectedJob.id, userId);
+      fetchCollaborators(selectedJob.id);
+      if (viewingJob?.id === selectedJob.id) {
+        jobsApi.detail(selectedJob.id).then(setJobDetail).catch(console.error);
+      }
+    } catch (err) {
+      setCollabError(err.data?.detail || 'Could not remove collaborator.');
+    } finally {
+      setCollabActionLoading(false);
+    }
+  };
+
+  // ── Add Profile ──────────────────────────────────────────────────────────────
   const handleAddProfile = async () => {
     if (!addForm.full_name || !addForm.email) return;
     setAddLoading(true);
@@ -112,13 +332,14 @@ export default function Jobs({ user }) {
         total_experience_years: addForm.total_experience_years || null,
         source: 'manual',
       });
-      if (viewingJob) {
-        await candidatesApi.assignJob(candidate.id, viewingJob.id);
-      }
+      if (viewingJob) await candidatesApi.assignJob(candidate.id, viewingJob.id);
       setIsAddProfileOpen(false);
       setAddForm({ full_name: '', email: '', phone: '', location: '', total_experience_years: '' });
       if (viewingJob) {
         setPipelineTab('Applies');
+        setIsPipelinePanelOpen(true);
+        // Refresh stats
+        jobsApi.pipelineStats(viewingJob.id).then(setPipelineStats).catch(console.error);
       }
     } catch (err) {
       alert(err.data?.email?.[0] || err.data?.detail || 'Failed to add profile');
@@ -127,6 +348,7 @@ export default function Jobs({ user }) {
     }
   };
 
+  // ── Schedule Interview ───────────────────────────────────────────────────────
   const closeScheduleModal = () => {
     setIsScheduleOpen(false);
     setScheduleCandidate(null);
@@ -140,70 +362,102 @@ export default function Jobs({ user }) {
     setScheduleToast(null);
     try {
       await interviewsApi.create({
-        mapping: scheduleCandidate.id,
-        round_number: Number(scheduleForm.round_number),
-        round_label: scheduleForm.round_label,
-        interviewer: scheduleForm.interviewer,
-        scheduled_at: scheduleForm.scheduled_at,
+        mapping:          scheduleCandidate.id,
+        round_number:     Number(scheduleForm.round_number),
+        round_label:      scheduleForm.round_label,
+        interviewer:      scheduleForm.interviewer,
+        scheduled_at:     scheduleForm.scheduled_at,
         duration_minutes: Number(scheduleForm.duration_minutes),
-        mode: scheduleForm.mode,
-        meeting_link: scheduleForm.meeting_link,
+        mode:             scheduleForm.mode,
+        meeting_link:     scheduleForm.meeting_link,
       });
       setScheduleToast({ type: 'success', message: 'Interview scheduled successfully.' });
       setTimeout(() => closeScheduleModal(), 1200);
     } catch (err) {
-      setScheduleToast({ type: 'error', message: err.data?.detail || JSON.stringify(err.data) || 'Failed to schedule interview.' });
+      setScheduleToast({ type: 'error', message: err.data?.detail || JSON.stringify(err.data) || 'Failed to schedule.' });
     } finally {
       setScheduleLoading(false);
     }
   };
 
+  // ── Shortlist candidate ──────────────────────────────────────────────────────
+  const handleShortlist = async (c) => {
+    setShortlistingId(c.id);
+    try {
+      await candidatesApi.changeStage(c.candidate, c.job, 'shortlisted');
+      const stage = STAGE_TAB_MAP[pipelineTab];
+      jobsApi.pipeline(viewingJob.id, stage ? { stage } : {})
+        .then((res) => setPipeline(res.results || res))
+        .catch(console.error);
+      jobsApi.pipelineStats(viewingJob.id).then(setPipelineStats).catch(console.error);
+    } catch (err) {
+      alert(err.data?.detail || 'Failed to shortlist candidate');
+    } finally {
+      setShortlistingId(null);
+    }
+  };
+
+  // ── Pipeline stat helpers ────────────────────────────────────────────────────
+  const getStatCount = (tab) => {
+    if (!pipelineStats) return 0;
+    if (tab === 'Applies')    return pipelineStats.total || 0;
+    if (tab === 'Shortlists') return (pipelineStats.shortlisted || 0) + (pipelineStats.interview || 0) + (pipelineStats.selected || 0) + (pipelineStats.offered || 0) + (pipelineStats.joined || 0);
+    if (tab === 'Offers')     return (pipelineStats.offered || 0) + (pipelineStats.joined || 0);
+    if (tab === 'Joined')     return pipelineStats.joined || 0;
+    return 0;
+  };
+
+  // ── Candidate card ───────────────────────────────────────────────────────────
   const renderCandidateCard = (c) => (
-    <div key={c.id} className="flex gap-6 border border-slate-200 rounded-xl p-6 hover:shadow-md transition-shadow">
-      <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xl font-bold shrink-0">
+    <div key={c.id} className="flex gap-4 border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-white">
+      <div className="w-11 h-11 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold shrink-0">
         {c.candidate_name ? c.candidate_name.slice(0, 2).toUpperCase() : '?'}
       </div>
-      <div className="flex-1 flex flex-col gap-4">
-        <div className="flex justify-between items-start">
+      <div className="flex-1 flex flex-col gap-3 min-w-0">
+        <div className="flex justify-between items-start gap-3">
           <div>
-            <h3 className="text-lg font-bold text-slate-800">{c.candidate_name?.toUpperCase()}</h3>
-            <p className="text-sm text-slate-500">Stage: <span className="capitalize">{c.stage}</span></p>
+            <h3 className="text-sm font-bold text-slate-800">{c.candidate_name}</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Stage: <span className="capitalize font-medium text-slate-700">{c.stage}</span></p>
           </div>
-          <div className="flex gap-2">
+          {c.stage === 'pending' && (
+            <button
+              onClick={() => handleShortlist(c)}
+              disabled={shortlistingId === c.id}
+              className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded font-medium transition-colors shrink-0"
+            >
+              {shortlistingId === c.id ? 'Moving…' : 'Shortlist'}
+            </button>
+          )}
+          {c.stage === 'shortlisted' && (
             <button
               onClick={() => {
                 setScheduleCandidate(c);
                 setIsScheduleOpen(true);
                 usersApi.list().then((res) => setUsersList(res.results || res)).catch(console.error);
               }}
-              className="text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded font-medium transition-colors"
+              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded font-medium transition-colors shrink-0"
             >
               Schedule Interview
             </button>
-          </div>
+          )}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div className="flex flex-col gap-1">
-            <span className="text-slate-500 flex items-center gap-1.5"><Mail className="w-4 h-4" /> Email</span>
-            <span className="font-medium text-slate-800 truncate">{c.candidate_email}</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-slate-500 flex items-center gap-1.5"><Phone className="w-4 h-4" /> Phone</span>
-            <span className="font-medium text-slate-800">{c.candidate_phone || '—'}</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-slate-500 flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Location</span>
-            <span className="font-medium text-slate-800">{c.candidate_location || '—'}</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-slate-500 flex items-center gap-1.5"><Clock className="w-4 h-4" /> Experience</span>
-            <span className="font-medium text-slate-800">{c.candidate_experience ? `${c.candidate_experience} Yrs` : '—'}</span>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { icon: <Mail className="w-3 h-3" />, label: 'Email', value: c.candidate_email },
+            { icon: <span className="text-[10px]">☏</span>, label: 'Phone', value: c.candidate_phone || '—' },
+            { icon: <MapPin className="w-3 h-3" />, label: 'Location', value: c.candidate_location || '—' },
+            { icon: <Clock className="w-3 h-3" />, label: 'Exp', value: c.candidate_experience ? `${c.candidate_experience} yrs` : '—' },
+          ].map(({ icon, label, value }) => (
+            <div key={label} className="flex flex-col gap-0.5">
+              <span className="text-xs text-slate-500 flex items-center gap-1">{icon} {label}</span>
+              <span className="text-xs font-medium text-slate-800 truncate">{value}</span>
+            </div>
+          ))}
         </div>
         {c.candidate_skills?.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {c.candidate_skills.slice(0, 5).map((s, i) => (
-              <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded">{s}</span>
+              <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{s}</span>
             ))}
           </div>
         )}
@@ -211,238 +465,759 @@ export default function Jobs({ user }) {
     </div>
   );
 
-  const getStatCount = (tab) => {
-    if (!pipelineStats) return 0;
-    if (tab === 'Applies') return pipelineStats.total || 0;
-    if (tab === 'Shortlists') return (pipelineStats.shortlisted || 0) + (pipelineStats.interview || 0) + (pipelineStats.selected || 0) + (pipelineStats.offered || 0) + (pipelineStats.joined || 0);
-    if (tab === 'Offers') return (pipelineStats.offered || 0) + (pipelineStats.joined || 0);
-    if (tab === 'Joined') return pipelineStats.joined || 0;
-    return 0;
-  };
-
+  // ────────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ────────────────────────────────────────────────────────────────────────────
   return (
     <>
+      {/* ══════════════════ JOB DETAIL VIEW ══════════════════ */}
       {viewingJob ? (
-        <div className="flex flex-col h-full relative bg-slate-50">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <button onClick={() => setViewingJob(null)} className="text-slate-500 hover:text-slate-800 transition-colors">
-                ← Back to Jobs
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+
+          {/* Header bar */}
+          <div className="flex items-center justify-between mb-4 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <button
+                onClick={() => { setViewingJob(null); setJobDetail(null); setIsPipelinePanelOpen(false); }}
+                className="text-slate-500 hover:text-slate-800 text-sm transition-colors shrink-0"
+              >
+                ← Back
               </button>
-              <h2 className="text-xl font-bold text-slate-800">
-                {viewingJob.title} <span className="text-slate-500 text-base font-normal">({viewingJob.job_code})</span>
-              </h2>
+              <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+              <span className="text-xs text-slate-500 shrink-0">Manage Jobs</span>
+              <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+              <span className="text-sm font-semibold text-slate-800 truncate">View Job</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={openEdit}
+                disabled={!jobDetail}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors shadow-sm"
+              >
+                <Edit2 className="w-3.5 h-3.5" /> Edit
+              </button>
+              <button
+                onClick={() => openCollabModal(viewingJob)}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm"
+              >
+                <Users className="w-3.5 h-3.5" /> Collaborators
+              </button>
               <button
                 onClick={() => setIsAddProfileOpen(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
               >
-                Add Profile
+                <UserPlus className="w-3.5 h-3.5" /> Add Profile
               </button>
             </div>
           </div>
 
-          <div className="flex border-b border-slate-200 bg-white rounded-t-xl shadow-sm overflow-hidden">
-            {['Applies', 'Shortlists', 'Offers', 'Joined'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setPipelineTab(tab)}
-                className={`flex-1 py-4 text-sm font-medium border-b-2 transition-colors text-center ${
-                  pipelineTab === tab
-                    ? 'border-blue-600 text-blue-600 bg-blue-50/30'
-                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-xl font-bold">{getStatCount(tab)}</span>
-                  <span className="text-xs uppercase tracking-wider">{tab}</span>
-                </div>
-              </button>
-            ))}
-          </div>
+          {/* ── Two-column content area ── */}
+          <div className="flex gap-5 flex-1 min-h-0">
 
-          <div className="flex-1 overflow-y-auto p-6 bg-white rounded-b-xl shadow-sm border border-t-0 border-slate-200">
-            {pipelineLoading ? (
-              <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading pipeline…</div>
-            ) : pipeline.length > 0 ? (
-              <div className="flex flex-col gap-6">{pipeline.map(renderCandidateCard)}</div>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-                <Users className="w-12 h-12 text-slate-300 mb-4" />
-                <p className="text-lg font-medium">No candidates in {pipelineTab} yet.</p>
+            {/* LEFT: Job info card — independently scrollable */}
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 pr-2 pb-4">
+
+              {/* Job Info Card - Structuring this as a flex container to allow its body to scroll independently if it hits the screen limit */}
+              {jobDetailLoading ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-6 animate-pulse space-y-3">
+                  <div className="h-6 bg-slate-100 rounded w-2/3" />
+                  <div className="h-4 bg-slate-100 rounded w-1/3" />
+                  {[...Array(5)].map((_, i) => <div key={i} className="h-4 bg-slate-100 rounded" />)}
+                </div>
+              ) : jobDetail ? (
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col h-full max-h-full">
+                  {/* Card header */}
+                  <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <h2 className="text-xl font-bold text-slate-800">
+                          #{jobDetail.job_code} | {jobDetail.title}
+                        </h2>
+                        <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                          <span className="flex items-center gap-1 text-sm text-slate-500">
+                            <MapPin className="w-3.5 h-3.5" /> {jobDetail.location}
+                          </span>
+                          <StatusBadge status={jobDetail.status} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Details table container - Ensure this section can scroll independently within the card if needed */}
+                  <div className="flex-1 min-h-0 overflow-y-auto px-6 py-1 border-t border-slate-100">
+                    <div className="py-2">
+                      <InfoRow label="Job Code">{jobDetail.job_code}</InfoRow>
+                      <InfoRow label="Job Title">{jobDetail.title}</InfoRow>
+                      <InfoRow label="Department">{jobDetail.department_name || '—'}</InfoRow>
+                      <InfoRow label="Hiring Manager">{jobDetail.hiring_manager_name || '—'}</InfoRow>
+                      <InfoRow label="Location">{jobDetail.location || '—'}</InfoRow>
+                      <InfoRow label="Experience">
+                        {(jobDetail.experience_min > 0 || jobDetail.experience_max > 0)
+                          ? `${jobDetail.experience_min} – ${jobDetail.experience_max} years`
+                          : '—'}
+                      </InfoRow>
+                      <InfoRow label="Status"><StatusBadge status={jobDetail.status} /></InfoRow>
+                      
+                      {jobDetail.skills_required?.length > 0 && (
+                        <div className="py-4 border-b border-slate-100 last:border-0">
+                          <span className="block text-sm text-slate-500 font-medium mb-2">Required Skills</span>
+                          <div className="flex flex-wrap gap-2">
+                            {jobDetail.skills_required.map((s, i) => (
+                              <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">{s}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {jobDetail.job_description && (
+                        <div className="py-4 last:border-0">
+                          <span className="block text-sm text-slate-500 font-medium mb-2">Job Description</span>
+                          <p className="whitespace-pre-wrap leading-relaxed text-slate-700 text-sm">{jobDetail.job_description}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+            </div>
+
+            {/* RIGHT: Stats + Actions + Collaborators + History — independently scrollable */}
+            <div className="w-72 shrink-0 min-h-0 overflow-y-auto flex flex-col gap-4 pb-4">
+
+              {/* Pipeline overview tiles */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Pipeline Overview</p>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {[
+                    { label: 'Views',      value: jobDetail?.view_count || 0, tab: null },
+                    { label: 'Applies',    value: getStatCount('Applies'),    tab: 'Applies' },
+                    { label: 'Shortlists', value: getStatCount('Shortlists'), tab: 'Shortlists' },
+                  ].map(({ label, value, tab }) => (
+                    <button
+                      key={label}
+                      onClick={() => { if (tab) { setPipelineTab(tab); setIsPipelinePanelOpen(true); } }}
+                      disabled={!tab}
+                      className={`flex flex-col items-center p-2 rounded-lg transition-colors disabled:cursor-default ${tab ? 'hover:bg-blue-50 cursor-pointer' : ''}`}
+                    >
+                      <span className="text-2xl font-bold text-slate-700">{value}</span>
+                      <span className={`text-xs font-medium ${tab ? 'text-blue-600' : 'text-slate-500'}`}>{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Offers', value: getStatCount('Offers'), tab: 'Offers' },
+                    { label: 'Joined', value: getStatCount('Joined'), tab: 'Joined' },
+                  ].map(({ label, value, tab }) => (
+                    <button
+                      key={label}
+                      onClick={() => { setPipelineTab(tab); setIsPipelinePanelOpen(true); }}
+                      className="flex flex-col items-center p-2 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                    >
+                      <span className="text-2xl font-bold text-slate-700">{value}</span>
+                      <span className="text-xs font-medium text-blue-600">{label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
+
+              {/* Quick Actions */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Quick Actions</p>
+                <div className="flex flex-col gap-1">
+                  {[
+                    { icon: <UserPlus className="w-4 h-4" />, label: 'Add Profile',          action: () => setIsAddProfileOpen(true) },
+                    { icon: <Users className="w-4 h-4" />,    label: 'Manage Collaborators',  action: () => openCollabModal(viewingJob) },
+                    { icon: <Edit2 className="w-4 h-4" />,    label: 'Edit Job Details',      action: openEdit, disabled: !jobDetail },
+                  ].map(({ icon, label, action, disabled }) => (
+                    <button
+                      key={label}
+                      onClick={action}
+                      disabled={disabled}
+                      className="flex items-center gap-2.5 w-full text-sm text-slate-700 hover:text-blue-600 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {icon} {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Collaborators list */}
+              {jobDetail?.collaborators?.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+                    Collaborators ({jobDetail.collaborators.length})
+                  </p>
+                  <div className="flex flex-col gap-2.5">
+                    {jobDetail.collaborators.map((c) => (
+                      <div key={c.id} className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+                          {c.user_name ? c.user_name.slice(0, 2).toUpperCase() : '?'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-800 truncate">{c.user_name}</p>
+                          <p className="text-xs text-slate-500 truncate">{c.user_email}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Job History / Audit */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5" /> Job History
+                </p>
+                {jobDetail ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex gap-2.5">
+                      <div className="w-2 h-2 rounded-full bg-blue-400 mt-1 shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-slate-700">Job created</p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(jobDetail.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </p>
+                        {jobDetail.hiring_manager_name && (
+                          <p className="text-xs text-slate-500">by {jobDetail.hiring_manager_name}</p>
+                        )}
+                      </div>
+                    </div>
+                    {jobDetail.collaborators?.length > 0 && (
+                      <div className="flex gap-2.5">
+                        <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1 shrink-0" />
+                        <div>
+                          <p className="text-xs font-medium text-slate-700">Collaborators added</p>
+                          <p className="text-xs text-slate-500">{jobDetail.collaborators.map((c) => c.user_name).join(', ')}</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex gap-2.5">
+                      <div className="w-2 h-2 rounded-full bg-slate-300 mt-1 shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-slate-700">Last updated</p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(jobDetail.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">Loading…</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
+
       ) : (
-        <div className="flex flex-col h-full relative">
+        /* ══════════════════ JOB LIST VIEW ══════════════════ */
+        <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
+
+          {/* Tabs */}
           <div className="flex gap-6 mb-4 border-b border-slate-200">
             {['My Jobs', 'All Jobs'].map((t) => (
               <button
                 key={t}
                 onClick={() => setActiveTab(t)}
-                className={`pb-3 border-b-2 font-semibold ${activeTab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                className={`pb-3 border-b-2 font-semibold transition-colors ${activeTab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
               >
                 {t}
               </button>
             ))}
           </div>
 
-          <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-slate-200 mb-6 shadow-sm">
-            <div className="flex items-center gap-3 flex-1">
-              <Search className="w-5 h-5 text-slate-400" />
+          {/* Search + status bar */}
+          <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-slate-200 mb-5 shadow-sm gap-3">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <Search className="w-5 h-5 text-slate-400 shrink-0" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && loadJobs()}
-                placeholder="Search Keywords"
+                placeholder="Search jobs by title, code, location…"
                 className="outline-none w-full text-sm"
               />
             </div>
-            <div className="text-sm font-medium text-slate-600 px-4 border-x border-slate-200 mx-4 italic">
+            <div className="text-sm font-medium text-slate-600 px-4 border-x border-slate-200 italic shrink-0">
               {total} Jobs Found
             </div>
-            <div className="flex items-center gap-4 text-sm text-slate-600">
+            <div className="flex items-center gap-4 text-sm text-slate-600 shrink-0">
               {['open', 'hidden', 'closed', 'all'].map((s) => (
-                <label key={s} className="flex items-center gap-1.5 cursor-pointer capitalize">
-                  <input type="radio" name="status" className="accent-blue-600" checked={statusFilter === s} onChange={() => setStatusFilter(s)} />
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                <label key={s} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="status"
+                    className="accent-blue-600"
+                    checked={statusFilter === s}
+                    onChange={() => setStatusFilter(s)}
+                  />
+                  <span className="capitalize">{s}</span>
                 </label>
               ))}
             </div>
           </div>
 
-          <div className="flex gap-6 flex-1 min-h-0">
-            <div className="flex-1 flex flex-col overflow-y-auto pr-2 pb-4">
+          {/* Jobs + Filters - Using overflow-hidden to bound the height of children */}
+          <div className="flex gap-5 flex-1 min-h-0 overflow-hidden">
+
+            {/* LEFT: Job cards — independently scrollable */}
+            <div className="flex-1 min-h-0 overflow-y-auto pb-4 flex flex-col gap-4">
               {loading ? (
                 <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading jobs…</div>
+              ) : jobsList.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-slate-400 gap-2">
+                  <Briefcase className="w-10 h-10 text-slate-300" />
+                  <p className="text-sm">No jobs found.</p>
+                </div>
               ) : (
-                <div className="flex flex-col gap-4">
-                  {jobsList.map((job) => (
-                    <div key={job.id} className="bg-white border border-slate-200 rounded-xl p-5 flex justify-between shadow-sm hover:shadow-md transition-shadow">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-center gap-3">
-                          <button onClick={() => openJobDetails(job)} className="text-lg font-semibold text-slate-800 hover:text-blue-600 text-left transition-colors">
-                            {job.job_code}, {job.title}
-                          </button>
-                          <div className="flex gap-1.5 text-slate-400">
-                            <Network className="w-4 h-4" />
-                            <User className="w-4 h-4" />
-                            <Eye className="w-4 h-4" />
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-slate-500">
-                          <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {job.location}</span>
-                          <span className="flex items-center gap-1.5"><Clock className="w-4 h-4" /> {new Date(job.created_at).toLocaleDateString('en-GB')}</span>
-                          {job.hiring_manager_name && (
-                            <span className="flex items-center gap-1.5"><User className="w-4 h-4" /> {job.hiring_manager_name}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm font-medium text-blue-600 mt-1">
-                          <button onClick={() => openJobDetails(job)} className="flex items-center gap-1.5 hover:text-blue-800"><Eye className="w-4 h-4" /> View</button>
-                          <button onClick={() => setIsAddProfileOpen(true) || setViewingJob(job)} className="flex items-center gap-1.5 hover:text-blue-800"><UserPlus className="w-4 h-4" /> Add Profile</button>
-                          <button onClick={() => { setSelectedJob(job); setIsCollabModalOpen(true); }} className="flex items-center gap-1.5 hover:text-blue-800"><Users className="w-4 h-4" /> Collaborators</button>
-                        </div>
+                jobsList.map((job) => (
+                  <div key={job.id} className="bg-white border border-slate-200 rounded-xl p-5 flex justify-between shadow-sm hover:shadow-md transition-shadow gap-4">
+                    <div className="flex flex-col gap-3 flex-1 min-w-0">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <button
+                          onClick={() => openJobDetails(job)}
+                          className="text-base font-bold text-slate-800 hover:text-blue-600 text-left transition-colors"
+                        >
+                          {job.job_code} — {job.title}
+                        </button>
+                        <StatusBadge status={job.status} />
                       </div>
-                      <div className="flex gap-1 items-center">
-                        {[
-                          { label: 'Applies', value: job.applies_count },
-                          { label: 'Shortlists', value: job.shortlists_count },
-                          { label: 'Offers', value: job.offers_count },
-                          { label: 'Joined', value: job.joined_count },
-                        ].map((stat, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => openJobDetails(job, stat.label)}
-                            className="flex flex-col items-center justify-center min-w-[70px] cursor-pointer hover:bg-slate-100 p-2 rounded-lg transition-colors"
-                          >
-                            <span className="text-2xl font-bold text-slate-700 hover:text-blue-600">{stat.value ?? 0}</span>
-                            <span className="text-xs text-slate-500 font-medium">{stat.label}</span>
-                          </button>
-                        ))}
+                      <div className="flex items-center gap-4 text-sm text-slate-500 flex-wrap">
+                        <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> {job.location}</span>
+                        <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {new Date(job.created_at).toLocaleDateString('en-GB')}</span>
+                        {job.department_name && (
+                          <span className="flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" /> {job.department_name}</span>
+                        )}
+                        {job.hiring_manager_name && (
+                          <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {job.hiring_manager_name}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-4 text-sm font-medium text-blue-600">
+                        <button onClick={() => openJobDetails(job)} className="flex items-center gap-1 hover:text-blue-800">
+                          <Eye className="w-3.5 h-3.5" /> View
+                        </button>
+                        <button
+                          onClick={() => { setViewingJob(job); setJobDetail(null); setIsAddProfileOpen(true); }}
+                          className="flex items-center gap-1 hover:text-blue-800"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" /> Add Profile
+                        </button>
+                        <button onClick={() => openCollabModal(job)} className="flex items-center gap-1 hover:text-blue-800">
+                          <Users className="w-3.5 h-3.5" /> Collaborators
+                        </button>
                       </div>
                     </div>
-                  ))}
-                  {jobsList.length === 0 && !loading && (
-                    <div className="flex items-center justify-center h-48 text-slate-400">No jobs found.</div>
-                  )}
-                </div>
+
+                    {/* Stat tiles — clicking opens detail page + pipeline panel */}
+                    <div className="flex gap-1 items-center shrink-0">
+                      {[
+                        { label: 'Applies',    value: job.applies_count },
+                        { label: 'Shortlists', value: job.shortlists_count },
+                        { label: 'Offers',     value: job.offers_count },
+                        { label: 'Joined',     value: job.joined_count },
+                      ].map((stat) => (
+                        <button
+                          key={stat.label}
+                          onClick={() => openJobDetails(job, stat.label, true)}
+                          className="flex flex-col items-center min-w-[60px] hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                        >
+                          <span className="text-xl font-bold text-slate-700">{stat.value ?? 0}</span>
+                          <span className="text-xs text-blue-600 font-medium">{stat.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
 
-            <div className="w-72 shrink-0 flex flex-col overflow-y-auto pb-4 pr-1">
-              <div className="flex items-center justify-between mb-4 sticky top-0 bg-slate-50 z-10 py-1">
-                <div className="flex items-center gap-2 text-slate-800 font-semibold">
+            {/* RIGHT: Filter panel — independently scrollable */}
+            <div className="w-60 shrink-0 min-h-0 overflow-y-auto flex flex-col pb-4 pr-1">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
                   <Filter className="w-4 h-4" />
                   <span>Filters</span>
+                  {activeFilterCount > 0 && (
+                    <span className="bg-blue-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                      {activeFilterCount}
+                    </span>
+                  )}
                 </div>
-                <button className="text-blue-600 text-sm font-medium hover:underline">Clear All</button>
+                {activeFilterCount > 0 && (
+                  <button onClick={clearFilters} className="text-blue-600 text-xs font-medium hover:underline">
+                    Clear All
+                  </button>
+                )}
               </div>
-              <FilterAccordion title="Department" options={['Backend Engineering', 'Full Stack', 'Analytics', 'Data Science']} defaultOpen />
-              <FilterAccordion title="Status" options={['Open', 'Hidden', 'Closed']} defaultOpen={false} />
+              <FilterAccordion
+                title="Department"
+                options={filterOptions.departments}
+                selected={filters.department}
+                onToggle={(id) => toggleFilter('department', id)}
+                defaultOpen
+              />
+              <FilterAccordion
+                title="Hiring Manager"
+                options={filterOptions.hiringManagers}
+                selected={filters.hiring_manager}
+                onToggle={(id) => toggleFilter('hiring_manager', id)}
+                defaultOpen={false}
+              />
+              <FilterAccordion
+                title="Location"
+                options={filterOptions.locations}
+                selected={filters.location}
+                onToggle={(id) => toggleFilter('location', id)}
+                defaultOpen={false}
+              />
             </div>
           </div>
         </div>
       )}
 
-      {/* Collaborators Modal */}
-      {isCollabModalOpen && selectedJob && (
-        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-[600px] max-w-[90vw]">
-            <div className="flex items-center justify-between p-4 border-b border-slate-200">
-              <h3 className="font-semibold text-slate-800">
-                Collaborators | {selectedJob.job_code}, {selectedJob.title}
-              </h3>
-              <button onClick={() => setIsCollabModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="p-6">
-              <p className="text-sm text-slate-600 mb-4">
-                Add existing users to manage applications for this job.
-              </p>
-              <div className="flex gap-3 mt-4">
-                <button onClick={() => setIsCollabModalOpen(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-2 rounded text-sm font-medium transition-colors">Close</button>
+      {/* ══════════════════ PIPELINE SLIDE-OVER PANEL ══════════════════ */}
+      {isPipelinePanelOpen && viewingJob && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/20 z-40"
+            onClick={() => setIsPipelinePanelOpen(false)}
+          />
+
+          {/* Drawer */}
+          <div className="fixed right-0 top-0 h-full w-[640px] max-w-[92vw] bg-white shadow-2xl z-50 flex flex-col">
+
+            {/* Drawer header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
+              <div className="min-w-0">
+                <p className="text-xs text-slate-500 truncate">{viewingJob.job_code} — {viewingJob.title}</p>
+                <h3 className="text-base font-bold text-slate-800 mt-0.5">{pipelineTab}</h3>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 ml-4">
+                <button
+                  onClick={() => setIsAddProfileOpen(true)}
+                  className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                >
+                  <UserPlus className="w-3.5 h-3.5" /> Add Profile
+                </button>
+                <button
+                  onClick={() => setIsPipelinePanelOpen(false)}
+                  className="text-slate-400 hover:text-slate-700 transition-colors p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
             </div>
+
+            {/* Stage tabs */}
+            <div className="flex border-b border-slate-200 shrink-0">
+              {['Applies', 'Shortlists', 'Offers', 'Joined'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setPipelineTab(tab)}
+                  className={`flex-1 py-3.5 text-sm font-medium border-b-2 transition-colors text-center ${
+                    pipelineTab === tab
+                      ? 'border-blue-600 text-blue-600 bg-blue-50/40'
+                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-lg font-bold">{getStatCount(tab)}</span>
+                    <span className="text-xs uppercase tracking-wider">{tab}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Candidate list */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {pipelineLoading ? (
+                <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
+                  Loading candidates…
+                </div>
+              ) : pipeline.length > 0 ? (
+                <div className="flex flex-col gap-4">{pipeline.map(renderCandidateCard)}</div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                  <Users className="w-12 h-12 text-slate-300 mb-4" />
+                  <p className="text-base font-medium">No candidates in {pipelineTab}</p>
+                  <p className="text-sm text-slate-400 mt-1">Add profiles to get started.</p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Add Profile Modal */}
-      {isAddProfileOpen && (
+      {/* ══════════════════ EDIT JOB MODAL ══════════════════ */}
+      {isEditOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-[600px] max-w-[90vw]">
-            <div className="flex items-center justify-between p-4 border-b border-slate-200">
-              <h3 className="font-semibold text-slate-800">Add Profile Manually</h3>
-              <button onClick={() => setIsAddProfileOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <div className="bg-white rounded-xl shadow-2xl w-[600px] max-w-[92vw] max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
+              <div>
+                <h3 className="font-bold text-slate-800">Edit Job Details</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{jobDetail?.job_code} — {jobDetail?.title}</p>
+              </div>
+              <button onClick={() => setIsEditOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="flex-1 overflow-y-auto p-5">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5 col-span-2">
-                  <label className="text-sm font-medium text-slate-700">Full Name *</label>
-                  <input type="text" value={addForm.full_name} onChange={(e) => setAddForm({ ...addForm, full_name: e.target.value })} className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700">Email *</label>
-                  <input type="email" value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700">Phone</label>
-                  <input type="tel" value={addForm.phone} onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })} className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                  <label className="text-sm font-medium text-slate-700">Job Title</label>
+                  <input
+                    type="text"
+                    value={editForm.title}
+                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Location</label>
-                  <input type="text" value={addForm.location} onChange={(e) => setAddForm({ ...addForm, location: e.target.value })} className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                  <input
+                    type="text"
+                    value={editForm.location}
+                    onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Status</label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="open">Open</option>
+                    <option value="hidden">Hidden</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Experience Min (yrs)</label>
+                  <input
+                    type="number" step="0.5" min="0"
+                    value={editForm.experience_min}
+                    onChange={(e) => setEditForm({ ...editForm, experience_min: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Experience Max (yrs)</label>
+                  <input
+                    type="number" step="0.5" min="0"
+                    value={editForm.experience_max}
+                    onChange={(e) => setEditForm({ ...editForm, experience_max: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5 col-span-2">
+                  <label className="text-sm font-medium text-slate-700">
+                    Required Skills <span className="font-normal text-slate-400">(comma-separated)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.skills_required}
+                    onChange={(e) => setEditForm({ ...editForm, skills_required: e.target.value })}
+                    placeholder="e.g. Python, Django, React"
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5 col-span-2">
+                  <label className="text-sm font-medium text-slate-700">Job Description</label>
+                  <textarea
+                    rows={5}
+                    value={editForm.job_description}
+                    onChange={(e) => setEditForm({ ...editForm, job_description: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-5 pb-5 pt-3 border-t border-slate-100">
+              <button
+                onClick={() => setIsEditOpen(false)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditSave}
+                disabled={editLoading}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                {editLoading ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ COLLABORATORS MODAL ══════════════════ */}
+      {isCollabModalOpen && selectedJob && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-[560px] max-w-[92vw] max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
+              <div>
+                <h3 className="font-bold text-slate-800 text-base">Collaborators</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{selectedJob.job_code} — {selectedJob.title}</p>
+              </div>
+              <button onClick={() => setIsCollabModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
+              {collabError && (
+                <div className="text-sm px-4 py-2.5 rounded-lg bg-rose-50 text-rose-700 border border-rose-200">
+                  {collabError}
+                </div>
+              )}
+
+              {/* Current collaborators */}
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-slate-400" /> Current Collaborators
+                </h4>
+                {collabLoading ? (
+                  <p className="text-sm text-slate-400 italic">Loading…</p>
+                ) : collabList.length === 0 ? (
+                  <p className="text-sm text-slate-400 italic">No collaborators assigned yet.</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {collabList.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+                            {c.user_name ? c.user_name.slice(0, 2).toUpperCase() : '?'}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800">{c.user_name}</p>
+                            <p className="text-xs text-slate-500">{c.user_email}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveCollab(c.user)}
+                          disabled={collabActionLoading}
+                          className="text-xs text-rose-600 hover:text-rose-800 font-medium disabled:opacity-50 transition-colors"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add collaborator */}
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-slate-400" /> Add Collaborator
+                </h4>
+                <p className="text-xs text-slate-500 mb-3">Search by email address to find a registered user.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={collabEmail}
+                    onChange={(e) => { setCollabEmail(e.target.value); setCollabSearchResults([]); }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleCollabSearch()}
+                    placeholder="user@example.com"
+                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                  <button
+                    onClick={handleCollabSearch}
+                    disabled={collabSearchLoading || !collabEmail.trim()}
+                    className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50 transition-colors shrink-0"
+                  >
+                    {collabSearchLoading ? '…' : 'Search'}
+                  </button>
+                </div>
+                {collabSearchResults.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {collabSearchResults.map((u) => {
+                      const already = collabList.some((c) => c.user === u.id);
+                      return (
+                        <div key={u.id} className="flex items-center justify-between border border-slate-200 rounded-lg px-4 py-2.5 bg-white">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold shrink-0">
+                              {u.full_name ? u.full_name.slice(0, 2).toUpperCase() : '?'}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">{u.full_name}</p>
+                              <p className="text-xs text-slate-500">{u.email} · <span className="capitalize">{u.role}</span></p>
+                            </div>
+                          </div>
+                          {already ? (
+                            <span className="text-xs text-slate-400 italic">Already added</span>
+                          ) : (
+                            <button
+                              onClick={() => handleAddCollab(u.id)}
+                              disabled={collabActionLoading}
+                              className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                            >
+                              Add
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 pb-5 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setIsCollabModalOpen(false)}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ ADD PROFILE MODAL ══════════════════ */}
+      {isAddProfileOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-[560px] max-w-[92vw]">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
+              <h3 className="font-bold text-slate-800">Add Profile Manually</h3>
+              <button onClick={() => setIsAddProfileOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="flex flex-col gap-1.5 col-span-2">
+                  <label className="text-sm font-medium text-slate-700">Full Name *</label>
+                  <input type="text" value={addForm.full_name} onChange={(e) => setAddForm({ ...addForm, full_name: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Email *</label>
+                  <input type="email" value={addForm.email} onChange={(e) => setAddForm({ ...addForm, email: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Phone</label>
+                  <input type="tel" value={addForm.phone} onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Location</label>
+                  <input type="text" value={addForm.location} onChange={(e) => setAddForm({ ...addForm, location: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Experience (years)</label>
-                  <input type="number" step="0.1" value={addForm.total_experience_years} onChange={(e) => setAddForm({ ...addForm, total_experience_years: e.target.value })} className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                  <input type="number" step="0.1" value={addForm.total_experience_years} onChange={(e) => setAddForm({ ...addForm, total_experience_years: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
                 </div>
               </div>
-              <div className="flex justify-end gap-3 mt-4">
-                <button onClick={() => setIsAddProfileOpen(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-sm font-medium transition-colors">Cancel</button>
-                <button onClick={handleAddProfile} disabled={addLoading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded text-sm font-medium transition-colors">
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setIsAddProfileOpen(false)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Cancel</button>
+                <button onClick={handleAddProfile} disabled={addLoading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
                   {addLoading ? 'Saving…' : 'Save Profile'}
                 </button>
               </div>
@@ -451,83 +1226,53 @@ export default function Jobs({ user }) {
         </div>
       )}
 
-      {/* Schedule Interview Modal */}
+      {/* ══════════════════ SCHEDULE INTERVIEW MODAL ══════════════════ */}
       {isScheduleOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-[600px] max-w-[90vw]">
-            <div className="flex items-center justify-between p-4 border-b border-slate-200">
-              <h3 className="font-semibold text-slate-800">Schedule Interview</h3>
-              <button onClick={closeScheduleModal} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <div className="bg-white rounded-xl shadow-2xl w-[580px] max-w-[92vw]">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
+              <h3 className="font-bold text-slate-800">Schedule Interview</h3>
+              <button onClick={closeScheduleModal} className="text-slate-400 hover:text-slate-600 transition-colors"><X className="w-5 h-5" /></button>
             </div>
-            <div className="p-6 flex flex-col gap-4">
+            <div className="p-5 flex flex-col gap-4">
               {scheduleToast && (
-                <div className={`text-sm px-4 py-3 rounded-md font-medium ${scheduleToast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                <div className={`text-sm px-4 py-3 rounded-lg font-medium ${scheduleToast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
                   {scheduleToast.message}
                 </div>
               )}
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">Candidate</label>
-                <div className="border border-slate-200 rounded px-3 py-2 text-sm text-slate-500 bg-slate-50">
+                <div className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-500 bg-slate-50">
                   {scheduleCandidate?.candidate_name || '—'}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Round Number</label>
-                  <input
-                    type="number" min="1"
-                    value={scheduleForm.round_number}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, round_number: e.target.value })}
-                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
-                  />
+                  <input type="number" min="1" value={scheduleForm.round_number} onChange={(e) => setScheduleForm({ ...scheduleForm, round_number: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Round Label</label>
-                  <input
-                    type="text" placeholder="e.g. Technical Round"
-                    value={scheduleForm.round_label}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, round_label: e.target.value })}
-                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
-                  />
+                  <input type="text" placeholder="e.g. Technical Round" value={scheduleForm.round_label} onChange={(e) => setScheduleForm({ ...scheduleForm, round_label: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Interviewer *</label>
-                  <select
-                    value={scheduleForm.interviewer}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, interviewer: e.target.value })}
-                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
-                  >
+                  <select value={scheduleForm.interviewer} onChange={(e) => setScheduleForm({ ...scheduleForm, interviewer: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white">
                     <option value="">Select interviewer…</option>
-                    {usersList.map((u) => (
-                      <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>
-                    ))}
+                    {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>)}
                   </select>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Scheduled At *</label>
-                  <input
-                    type="datetime-local"
-                    value={scheduleForm.scheduled_at}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_at: e.target.value })}
-                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
-                  />
+                  <input type="datetime-local" value={scheduleForm.scheduled_at} onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_at: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Duration (minutes)</label>
-                  <input
-                    type="number" min="15" step="15"
-                    value={scheduleForm.duration_minutes}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, duration_minutes: e.target.value })}
-                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
-                  />
+                  <input type="number" min="15" step="15" value={scheduleForm.duration_minutes} onChange={(e) => setScheduleForm({ ...scheduleForm, duration_minutes: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Mode</label>
-                  <select
-                    value={scheduleForm.mode}
-                    onChange={(e) => setScheduleForm({ ...scheduleForm, mode: e.target.value })}
-                    className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
-                  >
+                  <select value={scheduleForm.mode} onChange={(e) => setScheduleForm({ ...scheduleForm, mode: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white">
                     <option value="virtual">Virtual</option>
                     <option value="phone">Phone</option>
                     <option value="face_to_face">Face to Face</option>
@@ -536,22 +1281,15 @@ export default function Jobs({ user }) {
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">Meeting Link <span className="text-slate-400 font-normal">(optional)</span></label>
-                <input
-                  type="text" placeholder="https://meet.google.com/..."
-                  value={scheduleForm.meeting_link}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, meeting_link: e.target.value })}
-                  className="border border-slate-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
-                />
+                <input type="text" placeholder="https://meet.google.com/..." value={scheduleForm.meeting_link} onChange={(e) => setScheduleForm({ ...scheduleForm, meeting_link: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
               </div>
             </div>
-            <div className="flex justify-end gap-3 px-6 pb-6">
-              <button onClick={closeScheduleModal} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-sm font-medium transition-colors">
-                Cancel
-              </button>
+            <div className="flex justify-end gap-3 px-5 pb-5">
+              <button onClick={closeScheduleModal} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">Cancel</button>
               <button
                 onClick={handleScheduleSubmit}
                 disabled={scheduleLoading || !scheduleForm.interviewer || !scheduleForm.scheduled_at}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded text-sm font-medium transition-colors"
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 {scheduleLoading ? 'Scheduling…' : 'Schedule Interview'}
               </button>

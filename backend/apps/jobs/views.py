@@ -11,7 +11,7 @@ from apps.candidates.serializers import CandidateJobMappingSerializer
 class JobListView(generics.ListAPIView):
     serializer_class = JobListSerializer
     search_fields = ['title', 'job_code', 'location']
-    filterset_fields = ['status', 'department', 'hiring_manager']
+    filterset_fields = ['status', 'department', 'hiring_manager', 'location']
     ordering_fields = ['created_at', 'title']
 
     def get_queryset(self):
@@ -64,8 +64,13 @@ class JobPipelineStatsView(APIView):
         return Response(stats)
 
 
-class JobCollaboratorCreateView(generics.CreateAPIView):
+class JobCollaboratorListCreateView(generics.ListCreateAPIView):
     serializer_class = JobCollaboratorSerializer
+
+    def get_queryset(self):
+        return JobCollaborator.objects.filter(
+            job_id=self.kwargs['pk']
+        ).select_related('user')
 
     def perform_create(self, serializer):
         serializer.save(

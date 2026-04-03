@@ -119,6 +119,8 @@ export const jobs = {
   detail: (id) => request(`/jobs/${id}/`),
   pipeline: (id, params = {}) => request(`/jobs/${id}/pipeline/?` + new URLSearchParams(params)),
   pipelineStats: (id) => request(`/jobs/${id}/pipeline/stats/`),
+  update: (id, data) => request(`/jobs/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  listCollaborators: (id) => request(`/jobs/${id}/collaborators/`),
   addCollaborator: (id, userId) =>
     request(`/jobs/${id}/collaborators/`, { method: 'POST', body: JSON.stringify({ user: userId }) }),
   removeCollaborator: (id, userId) =>
@@ -162,6 +164,7 @@ export const interviews = {
 // ---- Users (Admin) ---- //
 export const users = {
   list: (params = {}) => request('/users/?' + new URLSearchParams(params)),
+  lookup: (params = {}) => request('/users/lookup/?' + new URLSearchParams(params)),
   detail: (id) => request(`/users/${id}/`),
   create: (data) => request('/users/', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/users/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),

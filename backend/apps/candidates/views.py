@@ -12,11 +12,41 @@ from .serializers import (
 
 class CandidateListCreateView(generics.ListCreateAPIView):
     search_fields = ['full_name', 'email', 'phone', 'skills']
-    filterset_fields = ['source', 'location']
     ordering_fields = ['full_name', 'created_at', 'total_experience_years']
 
     def get_queryset(self):
-        return Candidate.objects.prefetch_related('job_mappings__job').all()
+        qs = Candidate.objects.prefetch_related('job_mappings__job').all()
+        params = self.request.query_params
+
+        source_str = params.get('source', '')
+        stage_str  = params.get('stage', '')
+        job_id     = params.get('job', '')
+        exp_min    = params.get('exp_min', '')
+        exp_max    = params.get('exp_max', '')
+        date_from  = params.get('date_from', '')
+        date_to    = params.get('date_to', '')
+
+        if source_str:
+            qs = qs.filter(source__in=[s for s in source_str.split(',') if s])
+        if stage_str:
+            qs = qs.filter(job_mappings__stage__in=[s for s in stage_str.split(',') if s]).distinct()
+        if job_id:
+            qs = qs.filter(job_mappings__job_id=job_id).distinct()
+        if exp_min:
+            try:
+                qs = qs.filter(total_experience_years__gte=float(exp_min))
+            except ValueError:
+                pass
+        if exp_max:
+            try:
+                qs = qs.filter(total_experience_years__lte=float(exp_max))
+            except ValueError:
+                pass
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+        return qs
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
