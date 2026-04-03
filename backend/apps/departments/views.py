@@ -19,7 +19,13 @@ class SubVerticalListCreateView(generics.ListCreateAPIView):
     serializer_class = SubVerticalSerializer
 
     def get_queryset(self):
-        return SubVertical.objects.filter(department_id=self.kwargs['dept_id'])
+        qs = SubVertical.objects.filter(department_id=self.kwargs['dept_id'], is_active=True)
+        parent = self.request.query_params.get('parent', None)
+        if parent == 'null':
+            qs = qs.filter(parent__isnull=True)
+        elif parent:
+            qs = qs.filter(parent_id=parent)
+        return qs
 
     def get_permissions(self):
         if self.request.method == 'POST':
