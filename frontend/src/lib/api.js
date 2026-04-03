@@ -165,6 +165,45 @@ export const interviews = {
   getFeedback: (id) => request(`/interviews/${id}/feedback/detail/`),
 };
 
+// ---- Resumes ---- //
+// File uploads must NOT set Content-Type (browser sets multipart/form-data + boundary)
+async function requestUpload(path, formData, retry = true) {
+  const token = getAccess();
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (res.status === 401 && retry) {
+    const newToken = await refreshAccessToken();
+    if (!newToken) {
+      window.dispatchEvent(new Event('auth:logout'));
+      throw new Error('Session expired');
+    }
+    return requestUpload(path, formData, false);
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw Object.assign(new Error(err.detail || JSON.stringify(err)), { status: res.status, data: err });
+  }
+
+  return res.json();
+}
+
+export const resumes = {
+  upload: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return requestUpload('/resume/upload/', formData);
+  },
+  status: (id) => request(`/resume/${id}/status/`),
+  list: () => request('/resume/'),
+};
+
 // ---- Users (Admin) ---- //
 export const users = {
   dropdown: () => request('/users/dropdown/'),
