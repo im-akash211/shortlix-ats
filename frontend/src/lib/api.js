@@ -91,6 +91,7 @@ export const dashboard = {
   summary: (params = {}) => request('/dashboard/summary/?' + new URLSearchParams(params)),
   funnel: (params = {}) => request('/dashboard/funnel/?' + new URLSearchParams(params)),
   pendingActions: () => request('/dashboard/pending-actions/'),
+  filterOptions: () => request('/dashboard/filter-options/'),
 };
 
 // ---- Departments ---- //
