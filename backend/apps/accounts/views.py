@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from apps.core.permissions import IsAdmin
 from .models import User
-from .serializers import UserSerializer, UserCreateSerializer, CustomTokenObtainPairSerializer
+from .serializers import UserSerializer, UserCreateSerializer, UserDropdownSerializer, CustomTokenObtainPairSerializer
 
 
 class LoginView(TokenObtainPairView):
@@ -34,6 +34,14 @@ class MeView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+
+
+class UserDropdownListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserDropdownSerializer
+
+    def get_queryset(self):
+        return User.objects.filter(is_active=True).only('id', 'full_name', 'role').order_by('full_name')
 
 
 class UserListCreateView(generics.ListCreateAPIView):

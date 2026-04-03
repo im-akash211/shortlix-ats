@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import MetricCard from '../components/MetricCard';
 import RightPanel from '../components/RightPanel';
+import RecruitmentProgress from '../components/RecruitmentProgress';
 import { Download, ChevronDown, Maximize2 } from 'lucide-react';
 import { dashboard } from '../lib/api';
 
@@ -10,28 +11,47 @@ export default function Dashboard({ setActiveTab, user }) {
   const [summaryData, setSummaryData] = useState(null);
   const [jobStatus, setJobStatus] = useState('open');
   const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({
+    designations: '', hiring_managers: '', departments: '', locations: '', visibility: '',
+  });
+  const [filterOptions, setFilterOptions] = useState({});
+
+  useEffect(() => {
+    dashboard.filterOptions().then(setFilterOptions).catch(console.error);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
-    dashboard.summary({ status: jobStatus === 'all' ? '' : jobStatus })
+    const activeFilters = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
+    // visibility filter from right panel overrides the top status radio if set
+    const status = activeFilters.visibility || (jobStatus === 'all' ? '' : jobStatus);
+    const { visibility: _omit, ...rest } = activeFilters;
+    dashboard.summary({ status, ...rest })
       .then(setSummaryData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [jobStatus]);
+  }, [jobStatus, filters]);
+
+  function handleFilterChange(key, value) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
 
   const metrics = summaryData
-    ? summaryData.metrics.map((m) => ({
-        title: m.title,
-        value: String(m.value),
-        trend: 'LIVE DATA',
-        trendUp: null,
-        type: m.value > 0 ? 'bar' : 'empty',
-        data: [],
-        onClick:
-          m.title === 'Jobs' || m.title === 'Applies'
-            ? () => setActiveTab && setActiveTab('Jobs')
-            : undefined,
-      }))
+    ? summaryData.metrics.map((m) => {
+        const hasHistory = m.history && m.history.some(d => d.value > 0);
+        return {
+          title: m.title,
+          value: String(m.value),
+          trend: `LAST WEEK ${m.trend_pct ?? 0}%`,
+          trendUp: m.trend_up ?? null,
+          type: hasHistory ? (m.title === 'Views' ? 'line' : 'bar') : 'empty',
+          data: m.history || [],
+          onClick:
+            m.title === 'Jobs' || m.title === 'Applies'
+              ? () => setActiveTab && setActiveTab('Jobs')
+              : undefined,
+        };
+      })
     : Array(12).fill(null).map((_, i) => ({
         title: ['Jobs','Views','Applies','Pending','Shortlists','Interviews',
                 'Final Selects','Offers','Joined','On Hold','Rejects','Not Joined'][i],
@@ -84,60 +104,17 @@ export default function Dashboard({ setActiveTab, user }) {
               Loading metrics…
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-min mb-6">
-              {metrics.map((metric, index) => (
-                <MetricCard key={index} {...metric} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-min mb-6">
+                {metrics.map((metric, index) => (
+                  <MetricCard key={index} {...metric} />
+                ))}
+              </div>
+              <RecruitmentProgress progress={progress} />
+            </>
           )}
-
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h3 className="text-slate-800 text-lg font-semibold mb-6 text-center">Recruitment Progress</h3>
-
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-32 text-sm font-medium text-slate-700">All Candidates</div>
-                <div className="flex-1 flex items-center">
-                  {progress ? (
-                    <>
-                      <div
-                        className="bg-blue-500 h-10 flex items-center justify-center text-white font-medium text-sm"
-                        style={{ width: `${Math.min(95, 100)}%` }}
-                      >
-                        {progress.all_candidates}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="bg-slate-200 h-10 w-full rounded" />
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="w-32 text-sm font-medium text-slate-700">Progressed Candidates</div>
-                <div className="flex-1 flex items-center">
-                  {progress ? (
-                    <>
-                      <div
-                        className="bg-blue-500 h-10 flex items-center justify-center text-white font-medium text-sm"
-                        style={{
-                          width: progress.all_candidates > 0
-                            ? `${Math.min(99, Math.round((progress.progressed_candidates / progress.all_candidates) * 100))}%`
-                            : '0%',
-                        }}
-                      >
-                        {progress.progressed_candidates}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="bg-slate-200 h-10 w-full rounded" />
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
-        <RightPanel />
+        <RightPanel filters={filters} onFilterChange={handleFilterChange} filterOptions={filterOptions} />
       </div>
     </div>
   );

@@ -91,12 +91,16 @@ export const dashboard = {
   summary: (params = {}) => request('/dashboard/summary/?' + new URLSearchParams(params)),
   funnel: (params = {}) => request('/dashboard/funnel/?' + new URLSearchParams(params)),
   pendingActions: () => request('/dashboard/pending-actions/'),
+  filterOptions: () => request('/dashboard/filter-options/'),
 };
 
 // ---- Departments ---- //
 export const departments = {
   list: () => request('/departments/'),
-  subVerticals: (deptId) => request(`/departments/${deptId}/sub-verticals/`),
+  subVerticals: (deptId, parentParam) => {
+    const qs = parentParam !== undefined ? `?parent=${parentParam}` : '';
+    return request(`/departments/${deptId}/sub-verticals/${qs}`);
+  },
 };
 
 // ---- Requisitions ---- //
@@ -161,6 +165,7 @@ export const interviews = {
 
 // ---- Users (Admin) ---- //
 export const users = {
+  dropdown: () => request('/users/dropdown/'),
   list: (params = {}) => request('/users/?' + new URLSearchParams(params)),
   detail: (id) => request(`/users/${id}/`),
   create: (data) => request('/users/', { method: 'POST', body: JSON.stringify(data) }),

@@ -48,6 +48,8 @@ class RequisitionListSerializer(serializers.ModelSerializer):
 
 class RequisitionDetailSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
+    sub_vertical_1_name = serializers.CharField(source='sub_vertical_1.name', read_only=True, default=None)
+    sub_vertical_2_name = serializers.CharField(source='sub_vertical_2.name', read_only=True, default=None)
     hiring_manager_name = serializers.CharField(source='hiring_manager.full_name', read_only=True)
     l1_approver_name = serializers.CharField(source='l1_approver.full_name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)

@@ -25,8 +25,13 @@ class Requisition(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255)
     department = models.ForeignKey('departments.Department', on_delete=models.PROTECT)
-    sub_vertical = models.ForeignKey(
-        'departments.SubVertical', null=True, blank=True, on_delete=models.SET_NULL
+    sub_vertical_1 = models.ForeignKey(
+        'departments.SubVertical', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='requisitions_sv1'
+    )
+    sub_vertical_2 = models.ForeignKey(
+        'departments.SubVertical', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='requisitions_sv2'
     )
     location = models.CharField(max_length=255)
     designation = models.CharField(max_length=255, blank=True)
@@ -36,16 +41,33 @@ class Requisition(models.Model):
     positions_count = models.PositiveIntegerField(default=1)
     experience_min = models.DecimalField(max_digits=4, decimal_places=1, default=0)
     experience_max = models.DecimalField(max_digits=4, decimal_places=1, default=0)
+    ctc_currency = models.CharField(max_length=10, default='INR')
     ctc_min_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     ctc_max_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     job_description = models.TextField(blank=True)
     roles_responsibilities = models.TextField(blank=True)
     skills_required = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     skills_desirable = ArrayField(models.CharField(max_length=100), default=list, blank=True)
+    skills_to_evaluate = ArrayField(models.CharField(max_length=100), default=list, blank=True)
+    tags = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     client_name = models.CharField(max_length=255, blank=True)
     project_name = models.CharField(max_length=255, blank=True)
     min_qualification = models.CharField(max_length=100, blank=True)
+    reference_number = models.CharField(max_length=100, blank=True)
     expected_start_date = models.DateField(null=True, blank=True)
+    # Candidate signals — Educational
+    iit_grad = models.BooleanField(default=False)
+    nit_grad = models.BooleanField(default=False)
+    iim_grad = models.BooleanField(default=False)
+    top_institute = models.BooleanField(default=False)
+    # Candidate signals — Diversity
+    female_diversity = models.BooleanField(default=False)
+    # Candidate signals — Company
+    unicorn_exp = models.BooleanField(default=False)
+    top_internet_product = models.BooleanField(default=False)
+    top_software_product = models.BooleanField(default=False)
+    top_it_services_mnc = models.BooleanField(default=False)
+    top_consulting_mnc = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_requisitions'
     )
