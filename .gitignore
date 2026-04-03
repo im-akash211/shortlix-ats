@@ -64,3 +64,4 @@ htmlcov/
 venv_ats/
 /venv_ats/
 
+requirements.txt

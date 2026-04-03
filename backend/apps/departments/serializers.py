@@ -5,7 +5,7 @@ from .models import Department, SubVertical
 class SubVerticalSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubVertical
-        fields = ['id', 'name', 'department']
+        fields = ['id', 'name', 'department', 'parent', 'is_active']
         read_only_fields = ['id']
 
 
