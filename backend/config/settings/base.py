@@ -19,7 +19,7 @@ INSTALLED_APPS = [
     'corsheaders', 'django_filters', 'drf_spectacular',
     'apps.accounts', 'apps.departments', 'apps.requisitions',
     'apps.jobs', 'apps.candidates', 'apps.interviews',
-    'apps.dashboard', 'apps.core',
+    'apps.dashboard', 'apps.core', 'apps.resumes',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -81,5 +81,23 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {'TITLE': 'ATS API', 'VERSION': '1.0.0'}
 
 STATIC_URL = 'static/'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# ── Gemini AI ──────────────────────────────────────────────────────────────────
+GEMINI_API_KEYS = env.list("GEMINI_API_KEYS", default=[])
+GEMINI_MODEL_NAME = env.str("GEMINI_MODEL_NAME", "gemini-2.5-flash")
+
+# ── Resume upload limits ───────────────────────────────────────────────────────
+RESUME_MAX_FILE_SIZE_MB = int(env('RESUME_MAX_FILE_SIZE_MB', default='10'))
+
+# ── Celery ─────────────────────────────────────────────────────────────────────
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
