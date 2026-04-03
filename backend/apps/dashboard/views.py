@@ -2,12 +2,40 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Count, Q
+from django.db.models.functions import TruncWeek
 from django.utils import timezone
 from datetime import timedelta
 from apps.jobs.models import Job
 from apps.candidates.models import CandidateJobMapping, PIPELINE_STAGES
 from apps.requisitions.models import Requisition
 from apps.interviews.models import Interview
+
+
+def _weekly_history(queryset, date_field='created_at'):
+    """Return list of {name, value} dicts bucketed by ISO week start."""
+    rows = (
+        queryset
+        .annotate(week=TruncWeek(date_field))
+        .values('week')
+        .annotate(c=Count('id'))
+        .order_by('week')
+    )
+    return [{'name': f"{row['week'].day}-{row['week'].strftime('%b-%Y')}", 'value': row['c']} for row in rows]
+
+
+def _calc_trend(queryset, now, date_field='created_at'):
+    """Return (pct, trend_up) comparing this 7-day window vs previous 7-day window."""
+    week_start = now - timedelta(days=7)
+    prev_start = now - timedelta(days=14)
+    this_week = queryset.filter(**{f'{date_field}__gte': week_start}).count()
+    last_week = queryset.filter(**{f'{date_field}__gte': prev_start, f'{date_field}__lt': week_start}).count()
+    if last_week == 0:
+        pct = 100 if this_week > 0 else 0
+        trend_up = True if this_week > 0 else None
+    else:
+        pct = round(abs((this_week - last_week) / last_week * 100))
+        trend_up = this_week >= last_week
+    return pct, trend_up
 
 
 class DashboardSummaryView(APIView):
@@ -21,7 +49,21 @@ class DashboardSummaryView(APIView):
         if job_status and job_status != 'all':
             jobs_qs = jobs_qs.filter(status=job_status)
 
-        job_ids = jobs_qs.values_list('id', flat=True)
+        departments_param    = request.query_params.get('departments', '')
+        hiring_managers_param = request.query_params.get('hiring_managers', '')
+        locations_param      = request.query_params.get('locations', '')
+        designations_param   = request.query_params.get('designations', '')
+
+        if departments_param:
+            jobs_qs = jobs_qs.filter(department_id__in=[v for v in departments_param.split(',') if v])
+        if hiring_managers_param:
+            jobs_qs = jobs_qs.filter(hiring_manager_id__in=[v for v in hiring_managers_param.split(',') if v])
+        if locations_param:
+            jobs_qs = jobs_qs.filter(location__in=[v for v in locations_param.split(',') if v])
+        if designations_param:
+            jobs_qs = jobs_qs.filter(title__in=[v for v in designations_param.split(',') if v])
+
+        job_ids = list(jobs_qs.values_list('id', flat=True))
         mappings = CandidateJobMapping.objects.filter(job_id__in=job_ids)
 
         stage_counts = {}
@@ -32,37 +74,105 @@ class DashboardSummaryView(APIView):
         total_views = sum(jobs_qs.values_list('view_count', flat=True))
 
         now = timezone.now()
-        week_ago = now - timedelta(days=7)
-        last_week_applies = mappings.filter(created_at__gte=week_ago).count()
 
-        interviews_count = Interview.objects.filter(
-            mapping__job_id__in=job_ids
-        ).count()
+        interviews_qs = Interview.objects.filter(mapping__job_id__in=job_ids)
+        interviews_count = interviews_qs.count()
+
+        # Weekly history + trend per metric
+        applies_history = _weekly_history(mappings)
+        applies_trend = _calc_trend(mappings, now)
+
+        jobs_history = _weekly_history(jobs_qs)
+        jobs_trend = _calc_trend(jobs_qs, now)
+
+        interviews_history = _weekly_history(interviews_qs, date_field='scheduled_at')
+        interviews_trend = _calc_trend(interviews_qs, now, date_field='scheduled_at')
+
+        stage_history = {}
+        stage_trend = {}
+        for key, _ in PIPELINE_STAGES:
+            qs = mappings.filter(stage=key)
+            stage_history[key] = _weekly_history(qs)
+            stage_trend[key] = _calc_trend(qs, now)
+
+        def make_metric(title, value, history, trend_tuple):
+            pct, up = trend_tuple
+            return {'title': title, 'value': value, 'history': history, 'trend_pct': pct, 'trend_up': up}
 
         metrics = [
-            {'title': 'Jobs', 'value': jobs_qs.count()},
-            {'title': 'Views', 'value': total_views},
-            {'title': 'Applies', 'value': total_applies},
-            {'title': 'Pending', 'value': stage_counts.get('pending', 0)},
-            {'title': 'Shortlists', 'value': stage_counts.get('shortlisted', 0)},
-            {'title': 'Interviews', 'value': interviews_count},
-            {'title': 'Final Selects', 'value': stage_counts.get('selected', 0)},
-            {'title': 'Offers', 'value': stage_counts.get('offered', 0)},
-            {'title': 'Joined', 'value': stage_counts.get('joined', 0)},
-            {'title': 'On Hold', 'value': stage_counts.get('on_hold', 0)},
-            {'title': 'Rejects', 'value': stage_counts.get('rejected', 0)},
-            {'title': 'Not Joined', 'value': 0},
+            make_metric('Jobs',          jobs_qs.count(),                   jobs_history,                    jobs_trend),
+            make_metric('Views',         total_views,                       applies_history,                 applies_trend),
+            make_metric('Applies',       total_applies,                     applies_history,                 applies_trend),
+            make_metric('Pending',       stage_counts.get('pending', 0),    stage_history['pending'],        stage_trend['pending']),
+            make_metric('Shortlists',    stage_counts.get('shortlisted', 0),stage_history['shortlisted'],    stage_trend['shortlisted']),
+            make_metric('Interviews',    interviews_count,                  interviews_history,              interviews_trend),
+            make_metric('Final Selects', stage_counts.get('selected', 0),   stage_history['selected'],       stage_trend['selected']),
+            make_metric('Offers',        stage_counts.get('offered', 0),    stage_history['offered'],        stage_trend['offered']),
+            make_metric('Joined',        stage_counts.get('joined', 0),     stage_history['joined'],         stage_trend['joined']),
+            make_metric('On Hold',       stage_counts.get('on_hold', 0),    stage_history['on_hold'],        stage_trend['on_hold']),
+            make_metric('Rejects',       stage_counts.get('rejected', 0),   stage_history['rejected'],       stage_trend['rejected']),
+            make_metric('Not Joined',    0,                                  [],                              (0, None)),
         ]
 
         all_candidates = total_applies
         progressed = total_applies - stage_counts.get('pending', 0) - stage_counts.get('rejected', 0)
+
+        SOURCE_GROUPS = {
+            'Referral': ['referral'],
+            'Recruiter Sourced': ['recruiter_upload'],
+            'Inbound': ['linkedin', 'naukri'],
+            'Partner': ['manual'],
+        }
+
+        def source_breakdown(qs):
+            return {label: qs.filter(candidate__source__in=sources).count()
+                    for label, sources in SOURCE_GROUPS.items()}
 
         return Response({
             'metrics': metrics,
             'recruitment_progress': {
                 'all_candidates': all_candidates,
                 'progressed_candidates': progressed,
+                'all_breakdown': source_breakdown(mappings),
+                'progressed_breakdown': source_breakdown(mappings.exclude(stage__in=['pending', 'rejected'])),
+                'offered_breakdown': source_breakdown(mappings.filter(stage='offered')),
+                'joined_breakdown': source_breakdown(mappings.filter(stage='joined')),
+                'pipeline_stages': [
+                    {'label': 'Shortlisted', 'value': stage_counts.get('shortlisted', 0)},
+                    {'label': 'Selected',    'value': stage_counts.get('selected', 0)},
+                    {'label': 'Pending',     'value': stage_counts.get('pending', 0)},
+                ],
             },
+        })
+
+
+class DashboardFilterOptionsView(APIView):
+    def get(self, request):
+        from apps.departments.models import Department
+        from apps.accounts.models import User
+
+        departments = list(Department.objects.values('id', 'name').order_by('name'))
+        hiring_managers = list(
+            User.objects.filter(is_active=True)
+            .values('id', 'full_name', 'role')
+            .order_by('full_name')
+        )
+        locations = list(
+            Job.objects.exclude(location='')
+            .values_list('location', flat=True)
+            .distinct()
+            .order_by('location')
+        )
+        designations = list(
+            Job.objects.values_list('title', flat=True)
+            .distinct()
+            .order_by('title')
+        )
+        return Response({
+            'departments': departments,
+            'hiring_managers': hiring_managers,
+            'locations': locations,
+            'designations': designations,
         })
 
 
