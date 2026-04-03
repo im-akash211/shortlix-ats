@@ -51,6 +51,7 @@ export default function Interviews() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
+  const [activeFilter, setActiveFilter] = useState(null);
 
   // Cancel modal
   const [isCancelConfirm, setIsCancelConfirm] = useState(false);
@@ -79,7 +80,7 @@ export default function Interviews() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [activeTab]);
+  useEffect(() => { load(); setActiveFilter(null); }, [activeTab]);
 
   const handleCancel = async (id) => {
     try {
@@ -128,18 +129,30 @@ export default function Interviews() {
     }
   };
 
-  const filteredData = search.trim()
+  const now = new Date();
+
+  let filteredData = search.trim()
     ? data.filter((iv) =>
         iv.candidate_name?.toLowerCase().includes(search.toLowerCase()) ||
         iv.job_title?.toLowerCase().includes(search.toLowerCase())
       )
     : data;
 
+  if (activeFilter === 'upcoming') {
+    filteredData = filteredData.filter((iv) => iv.status === 'scheduled' && new Date(iv.scheduled_at) >= now);
+  } else if (activeFilter === 'pending_feedback') {
+    filteredData = filteredData.filter((iv) => isPendingFeedback(iv));
+  } else if (activeFilter === 'completed') {
+    filteredData = filteredData.filter((iv) => iv.status === 'completed');
+  } else if (activeFilter === 'pending_confirmation') {
+    filteredData = [];
+  }
+
   const summaryCards = [
-    { label: 'Pending Confirmation', value: summary.pending_confirmation ?? 0, activeColor: 'text-slate-700', bg: 'bg-white border-slate-200', activeBg: '' },
-    { label: 'Upcoming Interviews',  value: summary.upcoming ?? 0,             activeColor: 'text-slate-700', bg: 'bg-white border-slate-200', activeBg: '' },
-    { label: 'Pending Feedback',     value: summary.pending_feedback ?? 0,     activeColor: 'text-white',     bg: 'bg-white border-slate-200', activeBg: 'bg-blue-600 border-blue-600' },
-    { label: 'Interviews Completed', value: summary.completed ?? 0,            activeColor: 'text-slate-700', bg: 'bg-white border-slate-200', activeBg: '' },
+    { key: 'pending_confirmation', label: 'Pending Confirmation', value: summary.pending_confirmation ?? 0, activeBg: 'bg-amber-500 border-amber-500',  activeText: 'text-white', activeSub: 'text-amber-100' },
+    { key: 'upcoming',             label: 'Upcoming Interviews',  value: summary.upcoming ?? 0,             activeBg: 'bg-blue-600 border-blue-600',   activeText: 'text-white', activeSub: 'text-blue-100' },
+    { key: 'pending_feedback',     label: 'Pending Feedback',     value: summary.pending_feedback ?? 0,     activeBg: 'bg-rose-500 border-rose-500',   activeText: 'text-white', activeSub: 'text-rose-100' },
+    { key: 'completed',            label: 'Interviews Completed', value: summary.completed ?? 0,            activeBg: 'bg-emerald-600 border-emerald-600', activeText: 'text-white', activeSub: 'text-emerald-100' },
   ];
 
   return (
@@ -147,15 +160,18 @@ export default function Interviews() {
       {/* Summary Cards */}
       <div className="grid grid-cols-4 gap-4">
         {summaryCards.map((card) => {
-          const isActive = card.activeBg && card.value > 0;
+          const isActive = activeFilter === card.key;
           return (
-            <div
-              key={card.label}
-              className={`border rounded-xl p-5 shadow-sm flex items-center gap-4 transition-colors ${isActive ? card.activeBg : card.bg}`}
+            <button
+              key={card.key}
+              onClick={() => setActiveFilter(isActive ? null : card.key)}
+              className={`border rounded-xl p-5 shadow-sm flex items-center gap-4 transition-colors text-left w-full cursor-pointer hover:shadow-md ${
+                isActive ? card.activeBg : 'bg-white border-slate-200 hover:border-slate-300'
+              }`}
             >
-              <span className={`text-4xl font-bold ${isActive ? card.activeColor : 'text-slate-800'}`}>{card.value}</span>
-              <span className={`font-medium text-sm leading-tight ${isActive ? 'text-blue-100' : 'text-slate-500'}`}>{card.label}</span>
-            </div>
+              <span className={`text-4xl font-bold ${isActive ? card.activeText : 'text-slate-800'}`}>{card.value}</span>
+              <span className={`font-medium text-sm leading-tight ${isActive ? card.activeSub : 'text-slate-500'}`}>{card.label}</span>
+            </button>
           );
         })}
       </div>
