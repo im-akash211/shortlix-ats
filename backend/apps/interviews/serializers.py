@@ -18,7 +18,7 @@ class InterviewFeedbackSerializer(serializers.ModelSerializer):
         fields = ['id', 'interview', 'interviewer', 'interviewer_name', 'overall_rating',
                   'recommendation', 'strengths', 'weaknesses', 'comments',
                   'submitted_at', 'competency_ratings']
-        read_only_fields = ['id', 'interviewer', 'submitted_at']
+        read_only_fields = ['id', 'interview', 'interviewer', 'submitted_at']
 
     def create(self, validated_data):
         ratings_data = validated_data.pop('competency_ratings', [])
