@@ -366,7 +366,7 @@ export default function Jobs({ user }) {
         round_number:     Number(scheduleForm.round_number),
         round_label:      scheduleForm.round_label,
         interviewer:      scheduleForm.interviewer,
-        scheduled_at:     scheduleForm.scheduled_at,
+        scheduled_at:     new Date(scheduleForm.scheduled_at).toISOString(),
         duration_minutes: Number(scheduleForm.duration_minutes),
         mode:             scheduleForm.mode,
         meeting_link:     scheduleForm.meeting_link,
