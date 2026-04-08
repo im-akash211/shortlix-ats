@@ -20,7 +20,8 @@ class EducationEntry(BaseModel):
 
 
 class ParsedResumeSchema(BaseModel):
-    full_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     skills: List[str] = Field(default_factory=list)
@@ -37,10 +38,15 @@ class ParsedResumeSchema(BaseModel):
 _GEMINI_RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
-        "full_name": {
+        "first_name": {
             "type": "string",
             "nullable": True,
-            "description": "Candidate's full name",
+            "description": "Candidate's first name",
+        },
+        "last_name": {
+            "type": "string",
+            "nullable": True,
+            "description": "Candidate's last name / surname",
         },
         "email": {
             "type": "string",

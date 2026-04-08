@@ -19,25 +19,22 @@ class JobListView(generics.ListAPIView):
         tab = self.request.query_params.get('tab', 'all')
         user = self.request.user
         if tab == 'mine':
-            from django.db.models import Q
-            qs = qs.filter(
-                Q(hiring_manager=user) |
-                Q(collaborators__user=user)
-            ).distinct()
-        elif user.role == 'recruiter':
-            from django.db.models import Q
-            qs = qs.filter(
-                Q(hiring_manager=user) |
-                Q(collaborators__user=user)
-            ).distinct()
-        elif user.role == 'hiring_manager':
-            qs = qs.filter(department=user.department)
+            # "My Jobs" — jobs created by the logged-in user
+            qs = qs.filter(created_by=user)
+        # "All Jobs" (tab == 'all' or any other value) — no user filter, show everyone's jobs
         return qs
 
 
 class JobDetailView(generics.RetrieveUpdateAPIView):
     queryset = Job.objects.select_related('department', 'hiring_manager').prefetch_related('collaborators__user')
     serializer_class = JobDetailSerializer
+
+
+class JobDeleteView(APIView):
+    def delete(self, request, pk):
+        job = generics.get_object_or_404(Job, pk=pk)
+        job.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class JobPipelineView(generics.ListAPIView):
@@ -49,7 +46,8 @@ class JobPipelineView(generics.ListAPIView):
         ).select_related('candidate', 'job')
         stage = self.request.query_params.get('stage')
         if stage:
-            qs = qs.filter(stage=stage)
+            stages = [s.strip() for s in stage.split(',') if s.strip()]
+            qs = qs.filter(stage__in=stages)
         return qs
 
 

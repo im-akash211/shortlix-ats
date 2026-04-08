@@ -1,69 +1,89 @@
-# ─── Claude Code ─────────────────────────────────────────────────────────────
-.claude/settings.local.json
-
-# ─── Internal planning docs ───────────────────────────────────────────────────
-plan.md
-Plan_build.md
-PRD.md
-
-# ─── Environment ─────────────────────────────────────────────────────────────
+# ─── Environment & Secrets ────────────────────────────────────────────────────
 .env
-*.env.local
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
 
-# ─── Python ──────────────────────────────────────────────────────────────────
+# ─── Python / Django ──────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-*.egg
-*.egg-info/
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+backend/venv/
+backend/.venv/
+
+# Django
+*.log
+*.pot
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+static_root/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.cover
+nosetests.xml
+
+# MyPy / type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+
+# Distribution / packaging
 dist/
 build/
+*.egg-info/
+*.egg
+MANIFEST
+pip-wheel-metadata/
 .eggs/
-.venv/
-venv/
-env/
-.uv/
 
-# ─── Django ──────────────────────────────────────────────────────────────────
-backend/staticfiles/
-backend/uploads/
-backend/db.sqlite3
-*.sqlite3
+# ─── Node / React (Frontend) ──────────────────────────────────────────────────
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/coverage/
+frontend/.cache/
 
-# ─── Node ────────────────────────────────────────────────────────────────────
-node_modules/
-dist/
-.npm
-
-# ─── Docker ──────────────────────────────────────────────────────────────────
-# Keep docker-compose.yml tracked; ignore override files
-docker-compose.override.yml
-
-# ─── IDE ─────────────────────────────────────────────────────────────────────
-.idea/
+# ─── IDE & Editor ────────────────────────────────────────────────────────────
 .vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
 *.swp
 *.swo
+*~
+
+# ─── OS ──────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
 # ─── Logs ────────────────────────────────────────────────────────────────────
 *.log
 logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# ─── Test / Coverage ─────────────────────────────────────────────────────────
-.coverage
-htmlcov/
-.pytest_cache/
-.mypy_cache/
-
-
-/venv_ats
-venv_ats/
-/venv_ats/
-
-requirements.txt
-
-media/resume/
+# ─── Misc ────────────────────────────────────────────────────────────────────
+*.bak
+*.tmp
+*.swp
+.cache/

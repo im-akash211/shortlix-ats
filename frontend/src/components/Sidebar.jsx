@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Briefcase, Users, Calendar, CheckSquare, FileText, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { ROUTES } from '../routes/constants';
 
-export default function Sidebar({ activeTab, setActiveTab }) {
+export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [width, setWidth] = useState(256);
   const isResizing = useRef(false);
@@ -60,13 +62,13 @@ export default function Sidebar({ activeTab, setActiveTab }) {
   };
 
   const navItems = [
-    { name: 'Dashboard', icon: LayoutDashboard },
-    { name: 'Jobs', icon: Briefcase },
-    { name: 'Candidates', icon: Users },
-    { name: 'Interviews', icon: Calendar },
-    { name: 'Approvals', icon: CheckSquare },
-    { name: 'Requisitions', icon: FileText },
-    { name: 'Settings', icon: Settings },
+    { name: 'Dashboard', icon: LayoutDashboard, path: ROUTES.DASHBOARD },
+    { name: 'Jobs', icon: Briefcase, path: ROUTES.JOBS.ROOT },
+    { name: 'Candidates', icon: Users, path: ROUTES.CANDIDATES.ROOT },
+    { name: 'Interviews', icon: Calendar, path: ROUTES.INTERVIEWS },
+    { name: 'Approvals', icon: CheckSquare, path: ROUTES.APPROVALS },
+    { name: 'Requisitions', icon: FileText, path: ROUTES.REQUISITIONS.ROOT },
+    { name: 'Settings', icon: Settings, path: ROUTES.SETTINGS },
   ];
 
   return (
@@ -89,13 +91,13 @@ export default function Sidebar({ activeTab, setActiveTab }) {
 
       <nav className="flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto overflow-x-hidden">
         {navItems.map((item) => (
-          <button
+          <NavLink
             key={item.name}
-            onClick={() => setActiveTab(item.name)}
+            to={item.path}
             title={isCollapsed ? item.name : undefined}
-            className={cn(
+            className={({ isActive }) => cn(
               "flex items-center gap-3 py-2.5 rounded-md text-sm font-medium transition-colors w-full text-left",
-              activeTab === item.name
+              isActive
                 ? "bg-slate-700/50 text-white"
                 : "hover:bg-slate-800/50 hover:text-white",
               isCollapsed ? "justify-center px-0" : "px-3"
@@ -103,7 +105,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
           >
             <item.icon className="w-5 h-5 opacity-70 shrink-0" />
             {!isCollapsed && <span className="whitespace-nowrap">{item.name}</span>}
-          </button>
+          </NavLink>
         ))}
       </nav>
 

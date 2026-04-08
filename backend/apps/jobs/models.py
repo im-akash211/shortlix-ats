@@ -19,6 +19,10 @@ class Job(models.Model):
     hiring_manager = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='managed_jobs'
     )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_jobs'
+    )
     location = models.CharField(max_length=255)
     skills_required = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     job_description = models.TextField(blank=True)

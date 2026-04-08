@@ -11,6 +11,57 @@ from .serializers import (
 )
 
 
+class GenerateRequisitionContentView(APIView):
+    """
+    POST /api/v1/requisitions/ai/generate/
+
+    Body:
+      {
+        "department":        "<department name>",
+        "requisition_title": "<role title>",
+        "sub_vertical_1":    "<optional>",
+        "sub_vertical_2":    "<optional>"
+        "experience_min":    "<optional>"
+        "experience_max":    "<optional>"
+      }
+
+    Returns: { job_description, roles_and_responsibilities, required_skills, preferred_skills }
+    One Gemini call generates all four fields simultaneously.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        department     = (request.data.get("department") or "").strip()
+        req_title      = (request.data.get("requisition_title") or "").strip()
+        sub_vertical_1 = (request.data.get("sub_vertical_1") or "").strip()
+        sub_vertical_2 = (request.data.get("sub_vertical_2") or "").strip()
+        experience_min = request.data.get("experience_min", None)
+        experience_max = request.data.get("experience_max", None)
+
+        if not department or not req_title:
+            return Response(
+                {"detail": "department and requisition_title are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from .services.ai_generator import AIGenerationError, generate_requisition_content  # noqa: PLC0415
+
+        try:
+            result = generate_requisition_content(
+                department=department,
+                requisition_title=req_title,
+                sub_vertical_1=sub_vertical_1,
+                sub_vertical_2=sub_vertical_2,
+                experience_min=experience_min,
+                experience_max=experience_max,
+            )
+        except AIGenerationError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
 class RequisitionListCreateView(generics.ListCreateAPIView):
     search_fields = ['title', 'location', 'designation']
     filterset_fields = ['status', 'department', 'hiring_manager', 'priority']
@@ -43,11 +94,20 @@ class RequisitionDetailView(generics.RetrieveUpdateAPIView):
     ).prefetch_related('approval_logs')
     serializer_class = RequisitionDetailSerializer
 
+    def get_serializer_class(self):
+        if self.request.method in ('PUT', 'PATCH'):
+            return RequisitionCreateSerializer
+        return RequisitionDetailSerializer
+
     def perform_update(self, serializer):
-        if serializer.instance.status != 'draft':
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError('Only draft requisitions can be edited.')
         serializer.save()
+
+
+class RequisitionDeleteView(APIView):
+    def delete(self, request, pk):
+        req = generics.get_object_or_404(Requisition, pk=pk)
+        req.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class RequisitionSubmitView(APIView):

@@ -86,8 +86,10 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # ── Gemini AI ──────────────────────────────────────────────────────────────────
-GEMINI_API_KEYS = env.list("GEMINI_API_KEYS", default=[])
-GEMINI_MODEL_NAME = env.str("GEMINI_MODEL_NAME", "gemini-2.5-flash")
+# Supports both single key (GEMINI_API_KEY) and multi-key rotation (GEMINI_API_KEYS)
+_gemini_single = env('GEMINI_API_KEY', default='')
+GEMINI_API_KEYS = env.list('GEMINI_API_KEYS', default=[_gemini_single] if _gemini_single else [])
+GEMINI_MODEL_NAME = env('GEMINI_MODEL_NAME', default='gemini-2.0-flash')
 
 # ── Resume upload limits ───────────────────────────────────────────────────────
 RESUME_MAX_FILE_SIZE_MB = int(env('RESUME_MAX_FILE_SIZE_MB', default='10'))

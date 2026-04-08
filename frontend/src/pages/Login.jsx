@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { auth } from '../lib/api';
+import { useAuth } from '../lib/authContext';
+import { ROUTES } from '../routes/constants';
 
-export default function Login({ onLogin }) {
+export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  const navigate = useNavigate();
+  const { handleLogin } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -14,7 +20,8 @@ export default function Login({ onLogin }) {
     try {
       const data = await auth.login(email, password);
       auth.saveSession(data);
-      onLogin(data.user);
+      handleLogin(data.user);
+      navigate(ROUTES.DASHBOARD, { replace: true });
     } catch (err) {
       setError(err.data?.detail || 'Invalid credentials. Please try again.');
     } finally {

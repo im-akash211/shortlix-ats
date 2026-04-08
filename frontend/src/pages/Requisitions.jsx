@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, MapPin, Filter, X, ChevronDown, CheckCircle2, MoreHorizontal, Clock, XCircle } from 'lucide-react';
-import { requisitions as reqApi, departments as deptApi, users as usersApi } from '../lib/api';
+import { useSearchParams, useNavigate, useMatch } from 'react-router-dom';
+import { PageLoader } from '../components/LoadingDots';
+import { Search, MapPin, Filter, X, ChevronDown, CheckCircle2, MoreHorizontal, Clock, XCircle, Trash2, Edit2 } from 'lucide-react';
+import { requisitions as reqApi, departments as deptApi, users as usersApi, ai as aiApi } from '../lib/api';
 import RichTextEditor from '../components/requisition/RichTextEditor';
 import TagInput from '../components/requisition/TagInput';
 import CandidateSignals from '../components/requisition/CandidateSignals';
+import { ROUTES } from '../routes/constants';
 
 const STATUS_ICON = {
   approved: <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
@@ -104,23 +107,49 @@ function TextField({ value, onChange, placeholder, type = 'text', error, ...rest
 }
 
 export default function Requisitions({ user }) {
-  const [activeTab, setActiveTab] = useState('My Requisitions');
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // URL-backed tab and search
+  const activeTab = searchParams.get('tab') || 'My Requisitions';
+  const setActiveTab = (val) => setSearchParams(p => { p.set('tab', val); return p; }, { replace: true });
+  const search = searchParams.get('search') || '';
+  const setSearch = (val) => setSearchParams(p => { if (val) p.set('search', val); else p.delete('search'); return p; }, { replace: true });
+
+  // URL-backed modal routes
+  const createMatch = useMatch(ROUTES.REQUISITIONS.NEW);
+  const editMatch   = useMatch(ROUTES.REQUISITIONS.EDIT_PATTERN);
+  const isCreateOpen = Boolean(createMatch);
+  const isEditOpen   = Boolean(editMatch);
+
   const [data, setData] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [departments, setDepartments] = useState([]);
   const [subVerticals1, setSubVerticals1] = useState([]);
   const [subVerticals2, setSubVerticals2] = useState([]);
   const [usersList, setUsersList] = useState([]);
-  const [isAiGenerating, setIsAiGenerating] = useState(false);
-  const [isRolesGenerating, setIsRolesGenerating] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiCache, setAiCache] = useState(null);      // cached API result for the create form
+  const [aiGenerated, setAiGenerated] = useState(false);
+  const [aiError, setAiError] = useState(null);
   const [createForm, setCreateForm] = useState(INITIAL_FORM);
   const [createLoading, setCreateLoading] = useState(false);
   const [formErrors, setFormErrors] = useState({});
   const [actionMenuId, setActionMenuId] = useState(null);
+
+  // Edit requisition state — isEditOpen is URL-driven (see above)
+  const [editingReq, setEditingReq] = useState(null);
+  const [editForm, setEditForm] = useState(INITIAL_FORM);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editErrors, setEditErrors] = useState({});
+  const [editSubVerticals1, setEditSubVerticals1] = useState([]);
+  const [editSubVerticals2, setEditSubVerticals2] = useState([]);
+
+  // Delete requisition state
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const setField = (key, val) => setCreateForm((f) => ({ ...f, [key]: val }));
 
@@ -144,6 +173,70 @@ export default function Requisitions({ user }) {
     deptApi.list().then((res) => setDepartments(res.results || res)).catch(console.error);
     usersApi.dropdown().then((res) => setUsersList(res.results || res)).catch(console.error);
   }, []);
+
+  // Sync edit URL route → load requisition data into edit form
+  useEffect(() => {
+    const reqId = editMatch?.params?.id;
+    if (!reqId) return;
+    setEditErrors({});
+    reqApi.detail(reqId)
+      .then((detail) => {
+        setEditingReq(detail);
+        setEditForm({
+          title:               detail.title || '',
+          department:          detail.department || '',
+          sub_vertical_1:      detail.sub_vertical_1 || '',
+          sub_vertical_2:      detail.sub_vertical_2 || '',
+          location:            detail.location || '',
+          designation:         detail.designation || '',
+          priority:            detail.priority || 'medium',
+          employment_type:     detail.employment_type || 'permanent',
+          requisition_type:    detail.requisition_type || 'new',
+          client_name:         detail.client_name || '',
+          positions_count:     detail.positions_count || 1,
+          experience_min:      detail.experience_min ?? 0,
+          experience_max:      detail.experience_max ?? 2,
+          ctc_currency:        detail.ctc_currency || 'INR',
+          ctc_min_lakhs:       detail.ctc_min_lakhs || '',
+          ctc_max_lakhs:       detail.ctc_max_lakhs || '',
+          job_description:     detail.job_description || '',
+          roles_responsibilities: detail.roles_responsibilities || '',
+          skills_required:     detail.skills_required || [],
+          skills_desirable:    detail.skills_desirable || [],
+          skills_to_evaluate:  detail.skills_to_evaluate || [],
+          tags:                detail.tags || [],
+          min_qualification:   detail.min_qualification || '',
+          expected_start_date: detail.expected_start_date || '',
+          reference_number:    detail.reference_number || '',
+          project_name:        detail.project_name || '',
+          hiring_manager:      detail.hiring_manager || '',
+          l1_approver:         detail.l1_approver || '',
+          iit_grad:            detail.iit_grad || false,
+          nit_grad:            detail.nit_grad || false,
+          iim_grad:            detail.iim_grad || false,
+          top_institute:       detail.top_institute || false,
+          female_diversity:    detail.female_diversity || false,
+          unicorn_exp:         detail.unicorn_exp || false,
+          top_internet_product:  detail.top_internet_product || false,
+          top_software_product:  detail.top_software_product || false,
+          top_it_services_mnc:   detail.top_it_services_mnc || false,
+          top_consulting_mnc:    detail.top_consulting_mnc || false,
+        });
+        if (detail.department) {
+          deptApi.subVerticals(detail.department, 'null')
+            .then((res) => setEditSubVerticals1(res.results || res)).catch(console.error);
+        }
+        if (detail.sub_vertical_1) {
+          deptApi.subVerticals(detail.department, detail.sub_vertical_1)
+            .then((res) => setEditSubVerticals2(res.results || res)).catch(console.error);
+        }
+      })
+      .catch(() => {
+        alert('Failed to load requisition details');
+        navigate(ROUTES.REQUISITIONS.ROOT, { replace: true });
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMatch?.params?.id]);
 
   // When department changes: load SV1 and reset sub-verticals
   useEffect(() => {
@@ -205,13 +298,15 @@ export default function Requisitions({ user }) {
   };
 
   const handleCloseCreate = () => {
-    setIsCreateOpen(false);
+    navigate(ROUTES.REQUISITIONS.ROOT, { replace: true });
     setCreateForm(INITIAL_FORM);
     setSubVerticals1([]);
     setSubVerticals2([]);
     setFormErrors({});
-    setIsAiGenerating(false);
-    setIsRolesGenerating(false);
+    setAiGenerating(false);
+    setAiCache(null);
+    setAiGenerated(false);
+    setAiError(null);
   };
 
   const handleAction = async (action, id) => {
@@ -226,22 +321,114 @@ export default function Requisitions({ user }) {
     }
   };
 
-  const handleGenerateJd = () => {
-    setIsAiGenerating(true);
-    setTimeout(() => {
-      const jd = `<p><strong>Job Title:</strong> ${createForm.title || 'Position'}</p><p>We are looking for a talented ${createForm.title || 'candidate'} to join our team.</p><ul><li>Drive key initiatives and contribute to team goals</li><li>Collaborate with cross-functional teams</li><li>Deliver high quality results</li></ul><p><strong>Skills Required:</strong></p><ul><li>Strong problem-solving ability</li><li>Excellent communication skills</li><li>Relevant domain expertise</li></ul>`;
-      setField('job_description', jd);
-      setIsAiGenerating(false);
-    }, 1200);
+  // ── Edit requisition handlers ─────────────────────────────────────────────
+  // Navigate to the edit URL; the useEffect above handles loading the form data
+  const openEdit = (req) => {
+    setActionMenuId(null);
+    navigate(ROUTES.REQUISITIONS.EDIT(req.id));
   };
 
-  const handleGenerateRoles = () => {
-    setIsRolesGenerating(true);
-    setTimeout(() => {
-      const roles = `<p>To succeed in this role – you should have the following:</p><ul><li>Proficiency in relevant technologies and tools</li><li>Strong understanding of best practices and design principles</li><li>Ability to communicate effectively and work well in a team environment</li><li>A keen eye for detail and a passion for creating quality outcomes</li></ul>`;
-      setField('roles_responsibilities', roles);
-      setIsRolesGenerating(false);
-    }, 1200);
+  const handleCloseEdit = () => {
+    navigate(ROUTES.REQUISITIONS.ROOT, { replace: true });
+    setEditingReq(null);
+    setEditForm(INITIAL_FORM);
+    setEditErrors({});
+    setEditSubVerticals1([]);
+    setEditSubVerticals2([]);
+  };
+
+  const setEditField = (key, val) => setEditForm((f) => ({ ...f, [key]: val }));
+
+  const handleEditSave = async () => {
+    const errs = {};
+    if (!editForm.title) errs.title = 'Required';
+    if (!editForm.department) errs.department = 'Required';
+    if (!editForm.location) errs.location = 'Required';
+    if (!editForm.hiring_manager) errs.hiring_manager = 'Required';
+    if (!editForm.l1_approver) errs.l1_approver = 'Required';
+    if (editForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
+    if (Object.keys(errs).length > 0) { setEditErrors(errs); return; }
+    setEditLoading(true);
+    try {
+      const targetId = editingReq?.id || editMatch?.params?.id;
+      await reqApi.update(targetId, editForm);
+      handleCloseEdit();
+      load();
+    } catch (err) {
+      alert(err.data?.detail || JSON.stringify(err.data) || 'Failed to update requisition');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // ── Delete requisition handlers ───────────────────────────────────────────
+  const openDeleteConfirm = (req) => {
+    setActionMenuId(null);
+    setDeleteTarget(req);
+    setIsDeleteOpen(true);
+  };
+
+  const handleDeleteRequisition = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      await reqApi.delete(deleteTarget.id);
+      setIsDeleteOpen(false);
+      setDeleteTarget(null);
+      load();
+    } catch (err) {
+      alert(err.data?.detail || 'Failed to delete requisition');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const _applyAiResult = (result) => {
+    setField('job_description', result.job_description || '');
+    setField('roles_responsibilities', result.roles_and_responsibilities || '');
+    if (result.required_skills?.length) setField('skills_required', result.required_skills);
+    if (result.preferred_skills?.length) setField('skills_desirable', result.preferred_skills);
+  };
+
+  const _callAiGenerate = async () => {
+    const deptName  = departments.find((d) => String(d.id) === String(createForm.department))?.name || createForm.department;
+    const sv1Name   = subVerticals1.find((sv) => String(sv.id) === String(createForm.sub_vertical_1))?.name || '';
+    const sv2Name   = subVerticals2.find((sv) => String(sv.id) === String(createForm.sub_vertical_2))?.name || '';
+
+    setAiGenerating(true);
+    setAiError(null);
+    try {
+      const result = await aiApi.generateRequisitionContent({
+        department:        deptName,
+        requisition_title: createForm.title,
+        sub_vertical_1:    sv1Name,
+        sub_vertical_2:    sv2Name,
+      });
+      setAiCache(result);
+      setAiGenerated(true);
+      _applyAiResult(result);
+    } catch (err) {
+      setAiError(err.data?.detail || err.message || 'AI generation failed. Please try again.');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  const handleGenerateJd = async () => {
+    if (aiCache) { _applyAiResult(aiCache); return; }
+    await _callAiGenerate();
+  };
+
+  const handleGenerateRoles = async () => {
+    if (aiCache) { _applyAiResult(aiCache); return; }
+    await _callAiGenerate();
+  };
+
+  const handleRegenerateAll = async () => {
+    if (!window.confirm('This will regenerate all AI content (Job Description, Roles & Responsibilities, and Skills), overwriting any edits. Continue?')) return;
+    setAiCache(null);
+    setAiGenerated(false);
+    await _callAiGenerate();
   };
 
   return (
@@ -266,7 +453,7 @@ export default function Requisitions({ user }) {
               ))}
             </div>
             <button
-              onClick={() => setIsCreateOpen(true)}
+              onClick={() => navigate(ROUTES.REQUISITIONS.NEW)}
               className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium transition-colors shadow-sm"
             >
               Create Requisition
@@ -292,7 +479,7 @@ export default function Requisitions({ user }) {
 
           <div className="overflow-auto flex-1">
             {loading ? (
-              <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading…</div>
+              <PageLoader label="Loading requisitions…" />
             ) : (
               <table className="w-full text-sm text-left border-collapse">
                 <thead className="bg-slate-50 text-slate-700 font-semibold sticky top-0 z-10 shadow-sm">
@@ -347,7 +534,7 @@ export default function Requisitions({ user }) {
                           <MoreHorizontal className="w-5 h-5" />
                         </button>
                         {actionMenuId === req.id && (
-                          <div className="absolute right-4 top-10 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[140px] text-left">
+                          <div className="absolute right-4 top-10 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[160px] text-left">
                             {req.status === 'draft' && (
                               <button onClick={() => handleAction('submit', req.id)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-slate-700">Submit for Approval</button>
                             )}
@@ -357,7 +544,19 @@ export default function Requisitions({ user }) {
                                 <button onClick={() => handleAction('reject', req.id)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-rose-600">Reject</button>
                               </>
                             )}
-                            <button onClick={() => setActionMenuId(null)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-slate-500">Cancel</button>
+                            <button
+                              onClick={() => openEdit(req)}
+                              className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-blue-600 flex items-center gap-2"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" /> Edit
+                            </button>
+                            <button
+                              onClick={() => openDeleteConfirm(req)}
+                              className="w-full px-4 py-2 text-sm hover:bg-rose-50 text-rose-600 flex items-center gap-2"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Delete
+                            </button>
+                            <button onClick={() => setActionMenuId(null)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-slate-400">Cancel</button>
                           </div>
                         )}
                       </td>
@@ -394,7 +593,7 @@ export default function Requisitions({ user }) {
 
                 {/* Row 1: Department | Sub Vertical 2 */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Dep:</FieldLabel>
+                  <FieldLabel required>Department:</FieldLabel>
                   <SelectField value={createForm.department} onChange={(e) => setField('department', e.target.value)} error={formErrors.department}>
                     <option value="">Select an option</option>
                     {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -403,15 +602,14 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Sub Vertical 2:</FieldLabel>
-                  <SelectField
-                    value={createForm.sub_vertical_2}
-                    onChange={(e) => setField('sub_vertical_2', e.target.value)}
-                    disabled={!createForm.sub_vertical_1}
-                  >
-                    <option value="">Select an option</option>
-                    {subVerticals2.map((sv) => <option key={sv.id} value={sv.id}>{sv.name}</option>)}
-                  </SelectField>
+                  <FieldLabel required>Requisition Title:</FieldLabel>
+                  <TextField
+                    value={createForm.title}
+                    onChange={(e) => setField('title', e.target.value)}
+                    placeholder="The title of requisition will be used later as job title"
+                    error={formErrors.title}
+                  />
+                  <FieldError msg={formErrors.title} />
                 </div>
 
                 {/* Row 2: Sub Vertical 1 | Requisition Title */}
@@ -428,14 +626,15 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Requisition Title:</FieldLabel>
-                  <TextField
-                    value={createForm.title}
-                    onChange={(e) => setField('title', e.target.value)}
-                    placeholder="The title of requisition will be used later as job title"
-                    error={formErrors.title}
-                  />
-                  <FieldError msg={formErrors.title} />
+                  <FieldLabel required>Sub Vertical 2:</FieldLabel>
+                  <SelectField
+                    value={createForm.sub_vertical_2}
+                    onChange={(e) => setField('sub_vertical_2', e.target.value)}
+                    disabled={!createForm.sub_vertical_1}
+                  >
+                    <option value="">Select an option</option>
+                    {subVerticals2.map((sv) => <option key={sv.id} value={sv.id}>{sv.name}</option>)}
+                  </SelectField>
                 </div>
 
                 {/* Row 3: Requisition Description | Roles & Responsibilities */}
@@ -446,7 +645,7 @@ export default function Requisitions({ user }) {
                     value={createForm.job_description}
                     onChange={(val) => setField('job_description', val)}
                     onGenerate={handleGenerateJd}
-                    generating={isAiGenerating}
+                    generating={aiGenerating}
                   />
                 </div>
 
@@ -457,7 +656,7 @@ export default function Requisitions({ user }) {
                     value={createForm.roles_responsibilities}
                     onChange={(val) => setField('roles_responsibilities', val)}
                     onGenerate={handleGenerateRoles}
-                    generating={isRolesGenerating}
+                    generating={aiGenerating}
                   />
                 </div>
 
@@ -710,21 +909,208 @@ export default function Requisitions({ user }) {
               </div>
 
               {/* Footer buttons */}
+              <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-100">
+                <div className="flex items-center gap-3">
+                  {aiGenerated && (
+                    <button
+                      type="button"
+                      onClick={handleRegenerateAll}
+                      disabled={aiGenerating}
+                      className="flex items-center gap-1.5 text-sm text-purple-600 hover:text-purple-700 border border-purple-200 hover:border-purple-300 bg-purple-50 hover:bg-purple-100 px-4 py-2 rounded-md disabled:opacity-50 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Regenerate All
+                    </button>
+                  )}
+                  {aiError && (
+                    <p className="text-xs text-red-500">{aiError}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handleCloseCreate}
+                    className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-8 py-2.5 rounded-md text-sm font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreate}
+                    disabled={createLoading}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm"
+                  >
+                    {createLoading ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ EDIT REQUISITION MODAL ══════════ */}
+      {isEditOpen && editingReq && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-slate-50">
+          {/* Header */}
+          <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shrink-0 shadow-sm">
+            <div>
+              <p className="text-xs text-gray-500">Requisitions &rsaquo; <span className="text-gray-700 font-medium">Edit Requisition</span></p>
+              <h1 className="text-xl font-bold text-gray-900 mt-0.5">Edit: {editingReq.title}</h1>
+            </div>
+            <button onClick={handleCloseEdit} className="text-gray-400 hover:text-gray-600 transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Scrollable body — same grid layout as Create */}
+          <div className="flex-1 overflow-auto p-6">
+            <div className="max-w-5xl mx-auto bg-white border border-gray-200 rounded-xl shadow-sm p-8">
+              <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Dep:</FieldLabel>
+                  <SelectField value={editForm.department} onChange={(e) => { setEditField('department', e.target.value); deptApi.subVerticals(e.target.value, 'null').then((r) => setEditSubVerticals1(r.results || r)).catch(console.error); setEditSubVerticals2([]); setEditField('sub_vertical_1', ''); setEditField('sub_vertical_2', ''); }} error={editErrors.department}>
+                    <option value="">Select an option</option>
+                    {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </SelectField>
+                  <FieldError msg={editErrors.department} />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Sub Vertical 2:</FieldLabel>
+                  <SelectField value={editForm.sub_vertical_2} onChange={(e) => setEditField('sub_vertical_2', e.target.value)} disabled={!editForm.sub_vertical_1}>
+                    <option value="">Select an option</option>
+                    {editSubVerticals2.map((sv) => <option key={sv.id} value={sv.id}>{sv.name}</option>)}
+                  </SelectField>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Sub Vertical 1:</FieldLabel>
+                  <SelectField value={editForm.sub_vertical_1} onChange={(e) => { setEditField('sub_vertical_1', e.target.value); deptApi.subVerticals(editForm.department, e.target.value).then((r) => setEditSubVerticals2(r.results || r)).catch(console.error); setEditField('sub_vertical_2', ''); }} disabled={!editForm.department}>
+                    <option value="">Select an option</option>
+                    {editSubVerticals1.map((sv) => <option key={sv.id} value={sv.id}>{sv.name}</option>)}
+                  </SelectField>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Requisition Title:</FieldLabel>
+                  <TextField value={editForm.title} onChange={(e) => setEditField('title', e.target.value)} placeholder="Requisition title" error={editErrors.title} />
+                  <FieldError msg={editErrors.title} />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Priority:</FieldLabel>
+                  <SelectField value={editForm.priority} onChange={(e) => setEditField('priority', e.target.value)}>
+                    {['low','medium','high','critical'].map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                  </SelectField>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Type of Employment:</FieldLabel>
+                  <SelectField value={editForm.employment_type} onChange={(e) => setEditField('employment_type', e.target.value)}>
+                    <option value="permanent">Permanent</option>
+                    <option value="contract">Contract</option>
+                    <option value="internship">Internship</option>
+                  </SelectField>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Location:</FieldLabel>
+                  <TextField value={editForm.location} onChange={(e) => setEditField('location', e.target.value)} placeholder="Location" error={editErrors.location} />
+                  <FieldError msg={editErrors.location} />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Designation:</FieldLabel>
+                  <TextField value={editForm.designation} onChange={(e) => setEditField('designation', e.target.value)} placeholder="Designation" />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Open Positions:</FieldLabel>
+                  <TextField type="number" min="1" value={editForm.positions_count} onChange={(e) => setEditField('positions_count', e.target.value)} />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Years Of Experience:</FieldLabel>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min="0" step="0.5" value={editForm.experience_min} onChange={(e) => setEditField('experience_min', e.target.value)} className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50" />
+                    <span className="text-gray-500 text-sm shrink-0">to</span>
+                    <input type="number" min="0" step="0.5" value={editForm.experience_max} onChange={(e) => setEditField('experience_max', e.target.value)} className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50" />
+                    <span className="text-gray-500 text-sm shrink-0">Years</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Hiring Manager:</FieldLabel>
+                  <SelectField value={editForm.hiring_manager} onChange={(e) => setEditField('hiring_manager', e.target.value)} error={editErrors.hiring_manager}>
+                    <option value="">Hiring Manager</option>
+                    {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </SelectField>
+                  <FieldError msg={editErrors.hiring_manager} />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Level 1 Approval:</FieldLabel>
+                  <SelectField value={editForm.l1_approver} onChange={(e) => setEditField('l1_approver', e.target.value)} error={editErrors.l1_approver}>
+                    <option value="">--Select--</option>
+                    {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </SelectField>
+                  <FieldError msg={editErrors.l1_approver} />
+                </div>
+
+                <div className="flex flex-col gap-1 col-span-2">
+                  <FieldLabel required>Mandatory Skills:</FieldLabel>
+                  <TagInput value={editForm.skills_required} onChange={(val) => setEditField('skills_required', val)} placeholder="Please add at least 3 comma separated mandatory skills." error={editErrors.skills_required} />
+                  <FieldError msg={editErrors.skills_required} />
+                </div>
+
+              </div>
+
+              {/* Footer */}
               <div className="flex items-center justify-end gap-4 mt-8 pt-6 border-t border-gray-100">
-                <button
-                  onClick={handleCloseCreate}
-                  className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-8 py-2.5 rounded-md text-sm font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreate}
-                  disabled={createLoading}
-                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm"
-                >
-                  {createLoading ? 'Saving…' : 'Save'}
+                <button onClick={handleCloseEdit} className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-8 py-2.5 rounded-md text-sm font-medium transition-colors">Cancel</button>
+                <button onClick={handleEditSave} disabled={editLoading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm">
+                  {editLoading ? 'Saving…' : 'Save Changes'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ DELETE REQUISITION CONFIRMATION MODAL ══════════ */}
+      {isDeleteOpen && deleteTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-[440px] max-w-[92vw] p-6 flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-base">Delete Requisition</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{deleteTarget.title}</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete <span className="font-semibold text-slate-800">{deleteTarget.title}</span>? This action{' '}
+              <span className="font-semibold text-rose-600">cannot be undone</span>.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setIsDeleteOpen(false); setDeleteTarget(null); }}
+                disabled={deleteLoading}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteRequisition}
+                disabled={deleteLoading}
+                className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                {deleteLoading ? 'Deleting…' : 'Yes, Delete'}
+              </button>
             </div>
           </div>
         </div>

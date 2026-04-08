@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { PageLoader } from '../components/LoadingDots';
 import MetricCard from '../components/MetricCard';
 import RightPanel from '../components/RightPanel';
 import RecruitmentProgress from '../components/RecruitmentProgress';
 import { Download, ChevronDown, Maximize2 } from 'lucide-react';
 import { dashboard } from '../lib/api';
+import { ROUTES } from '../routes/constants';
 
 const STATUS_OPTIONS = ['open', 'hidden', 'closed', 'all'];
 
-export default function Dashboard({ setActiveTab, user }) {
+export default function Dashboard({ user }) {
+  const navigate = useNavigate();
   const [summaryData, setSummaryData] = useState(null);
   const [jobStatus, setJobStatus] = useState('open');
   const [loading, setLoading] = useState(true);
@@ -48,7 +52,7 @@ export default function Dashboard({ setActiveTab, user }) {
           data: m.history || [],
           onClick:
             m.title === 'Jobs' || m.title === 'Applies'
-              ? () => setActiveTab && setActiveTab('Jobs')
+              ? () => navigate(ROUTES.JOBS.ROOT)
               : undefined,
         };
       })
@@ -100,9 +104,7 @@ export default function Dashboard({ setActiveTab, user }) {
       <div className="flex gap-6 flex-1 min-h-0">
         <div className="flex-1 overflow-y-auto pr-2 pb-4">
           {loading ? (
-            <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
-              Loading metrics…
-            </div>
+            <PageLoader label="Loading metrics…" />
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-min mb-6">

@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    JobListView, JobDetailView, JobPipelineView,
+    JobListView, JobDetailView, JobDeleteView, JobPipelineView,
     JobPipelineStatsView, JobCollaboratorListCreateView, JobCollaboratorDeleteView
 )
 
@@ -11,4 +11,5 @@ urlpatterns = [
     path('<uuid:pk>/pipeline/stats/', JobPipelineStatsView.as_view(), name='job-pipeline-stats'),
     path('<uuid:pk>/collaborators/', JobCollaboratorListCreateView.as_view(), name='job-collaborator-list-create'),
     path('<uuid:pk>/collaborators/<uuid:user_id>/', JobCollaboratorDeleteView.as_view(), name='job-collaborator-delete'),
+    path('<uuid:pk>/delete/', JobDeleteView.as_view(), name='job-delete'),
 ]
