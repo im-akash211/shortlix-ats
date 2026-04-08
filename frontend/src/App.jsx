@@ -1,64 +1,82 @@
-import React, { useState, useEffect } from 'react';
-import Sidebar from './components/Sidebar';
-import Topbar from './components/Topbar';
-import Dashboard from './pages/Dashboard';
-import Jobs from './pages/Jobs';
-import Candidates from './pages/Candidates';
-import Approvals from './pages/Approvals';
-import Interviews from './pages/Interviews';
-import Requisitions from './pages/Requisitions';
-import Settings from './pages/Settings';
+import React, { Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './lib/authContext';
+import { ROUTES } from './routes/constants';
+import AppLayout from './components/AppLayout';
+import ProtectedRoute from './components/ProtectedRoute';
+import PageSkeleton from './components/PageSkeleton';
+
+// Eager load Login since it's the entrypoint for users
 import Login from './pages/Login';
-import { auth, clearAuth } from './lib/api';
+
+// Lazy load actual protected features
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Jobs = lazy(() => import('./pages/Jobs'));
+const Candidates = lazy(() => import('./pages/Candidates'));
+const Approvals = lazy(() => import('./pages/Approvals'));
+const Interviews = lazy(() => import('./pages/Interviews'));
+const Requisitions = lazy(() => import('./pages/Requisitions'));
+const Settings = lazy(() => import('./pages/Settings'));
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('Dashboard');
-  const [user, setUser] = useState(() => auth.getUser());
-
-  useEffect(() => {
-    const handler = () => {
-      setUser(null);
-    };
-    window.addEventListener('auth:logout', handler);
-    return () => window.removeEventListener('auth:logout', handler);
-  }, []);
-
-  const handleLogin = (userData) => {
-    setUser(userData);
-  };
-
-  const handleLogout = () => {
-    auth.logout().catch(() => {});
-    clearAuth();
-    setUser(null);
-  };
-
-  if (!user || !localStorage.getItem('access')) {
-    return <Login onLogin={handleLogin} />;
-  }
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'Dashboard':    return <Dashboard setActiveTab={setActiveTab} user={user} />;
-      case 'Jobs':         return <Jobs user={user} />;
-      case 'Candidates':   return <Candidates user={user} />;
-      case 'Approvals':    return <Approvals user={user} />;
-      case 'Interviews':   return <Interviews user={user} />;
-      case 'Requisitions': return <Requisitions user={user} />;
-      case 'Settings':     return <Settings user={user} />;
-      default:             return <Dashboard setActiveTab={setActiveTab} user={user} />;
-    }
-  };
-
   return (
-    <div className="flex h-screen w-full bg-[#f8fafc] font-sans overflow-hidden">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <Topbar activeTab={activeTab} user={user} onLogout={handleLogout} />
-        <main className="flex-1 min-h-0 overflow-hidden p-6 flex flex-col">
-          {renderContent()}
-        </main>
-      </div>
-    </div>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path={ROUTES.LOGIN} element={<Login />} />
+          
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppLayout />}>
+              <Route path={ROUTES.HOME} element={<Navigate to={ROUTES.DASHBOARD} replace />} />
+              
+              <Route path={ROUTES.DASHBOARD} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <Dashboard />
+                </Suspense>
+              } />
+
+              <Route path={`${ROUTES.JOBS.ROOT}/*`} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <Jobs />
+                </Suspense>
+              } />
+
+              <Route path={`${ROUTES.CANDIDATES.ROOT}/*`} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <Candidates />
+                </Suspense>
+              } />
+
+              <Route path={ROUTES.APPROVALS} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <Approvals />
+                </Suspense>
+              } />
+              
+              <Route path={ROUTES.INTERVIEWS} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <Interviews />
+                </Suspense>
+              } />
+              
+              <Route path={`${ROUTES.REQUISITIONS.ROOT}/*`} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <Requisitions />
+                </Suspense>
+              } />
+              
+              <Route path={ROUTES.SETTINGS} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <Settings />
+                </Suspense>
+              } />
+              
+              {/* Catch-all route to dashboard */}
+              <Route path="*" element={<Navigate to={ROUTES.DASHBOARD} replace />} />
+            </Route>
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }

@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
-    CandidateListCreateView, CandidateDetailView, CandidateNoteListCreateView,
-    CandidateAssignJobView, CandidateChangeStageView, CandidateMoveJobView
+    CandidateListCreateView, CandidateDetailView, CandidateDeleteView,
+    CandidateNoteListCreateView, CandidateAssignJobView, CandidateChangeStageView, CandidateMoveJobView
 )
 
 urlpatterns = [
@@ -11,4 +11,5 @@ urlpatterns = [
     path('<uuid:pk>/assign-job/', CandidateAssignJobView.as_view(), name='candidate-assign-job'),
     path('<uuid:pk>/jobs/<uuid:job_id>/stage/', CandidateChangeStageView.as_view(), name='candidate-change-stage'),
     path('<uuid:pk>/move-job/', CandidateMoveJobView.as_view(), name='candidate-move-job'),
+    path('<uuid:pk>/delete/', CandidateDeleteView.as_view(), name='candidate-delete'),
 ]

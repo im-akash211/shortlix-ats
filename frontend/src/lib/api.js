@@ -115,6 +115,7 @@ export const requisitions = {
     request(`/requisitions/${id}/approve/`, { method: 'POST', body: JSON.stringify({ comments }) }),
   reject: (id, comments = '') =>
     request(`/requisitions/${id}/reject/`, { method: 'POST', body: JSON.stringify({ comments }) }),
+  delete: (id) => request(`/requisitions/${id}/delete/`, { method: 'DELETE' }),
 };
 
 // ---- Jobs ---- //
@@ -129,6 +130,7 @@ export const jobs = {
     request(`/jobs/${id}/collaborators/`, { method: 'POST', body: JSON.stringify({ user: userId }) }),
   removeCollaborator: (id, userId) =>
     request(`/jobs/${id}/collaborators/${userId}/`, { method: 'DELETE' }),
+  delete: (id) => request(`/jobs/${id}/delete/`, { method: 'DELETE' }),
 };
 
 // ---- Candidates ---- //
@@ -150,6 +152,7 @@ export const candidates = {
     request(`/candidates/${id}/move-job/`, {
       method: 'POST', body: JSON.stringify({ from_job_id: fromJobId, to_job_id: toJobId }),
     }),
+  delete: (id) => request(`/candidates/${id}/delete/`, { method: 'DELETE' }),
 };
 
 // ---- Interviews ---- //
@@ -202,6 +205,16 @@ export const resumes = {
   },
   status: (id) => request(`/resume/${id}/status/`),
   list: () => request('/resume/'),
+  review: (id, data) => request(`/resume/${id}/review/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  convert: (id) => request(`/resume/${id}/convert/`, { method: 'POST' }),
+  resolveDuplicate: (id, decision) =>
+    request(`/resume/${id}/resolve-duplicate/`, { method: 'POST', body: JSON.stringify({ decision }) }),
+};
+
+// ---- AI ---- //
+export const ai = {
+  generateRequisitionContent: (data) =>
+    request('/requisitions/ai/generate/', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // ---- Users (Admin) ---- //

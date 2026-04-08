@@ -3,8 +3,8 @@ Celery tasks for the resume ingestion pipeline.
 
 Flow:
   STATUS_QUEUED → STATUS_PROCESSING → STATUS_PARSED
-                                    → STATUS_REVIEW_PENDING  (empty text)
-                                    → STATUS_FAILED          (extraction/LLM error)
+                                    → STATUS_REVIEW_PENDING  (empty/unreadable text)
+                                    → STATUS_FAILED          (extraction / LLM error)
 """
 
 import logging
@@ -25,10 +25,6 @@ def process_resume(self, ingestion_id: str):
       2. Extract raw text from file (PDF / DOCX)
       3. Send text to Gemini for structured parsing
       4. Persist ResumeParsedData and mark as parsed
-
-    All error scenarios set an appropriate status + error_message and return
-    cleanly — they do NOT re-raise so the task is not retried unnecessarily.
-    Transient Gemini errors use Celery retry.
     """
     from apps.resumes.models import ResumeIngestion, ResumeParsedData
     from apps.resumes.services.text_extractor import TextExtractionError, extract_text
@@ -52,7 +48,6 @@ def process_resume(self, ingestion_id: str):
         raw_text = extract_text(ingestion.file, ingestion.file_type)
         ingestion.file.close()
     except TextExtractionError as exc:
-        # Scenario A: corrupt / unreadable file
         logger.warning("Text extraction failed [%s]: %s", ingestion_id, exc)
         _fail(ingestion, str(exc))
         return
@@ -61,7 +56,7 @@ def process_resume(self, ingestion_id: str):
         _fail(ingestion, f"File read error: {exc}")
         return
 
-    # ── Scenario B: Empty extracted text (scanned PDF / blank doc) ─────────────
+    # ── Scenario B: Empty text (scanned PDF / blank doc) ──────────────────────
     if not raw_text or len(raw_text.strip()) < 20:
         ingestion.status = ResumeIngestion.STATUS_REVIEW_PENDING
         ingestion.error_message = "OCR required or empty extracted text"
@@ -73,11 +68,9 @@ def process_resume(self, ingestion_id: str):
     try:
         llm_output = parse_resume_with_llm(raw_text)
     except LLMParsingError as exc:
-        # Scenario C & D: API failure or malformed JSON
         logger.warning("LLM parsing failed [%s]: %s", ingestion_id, exc)
         error_str = str(exc)
-        # Retry on transient API errors (not on malformed JSON)
-        if "API failure" in error_str:
+        if "API failure" in error_str or "rate-limited" in error_str:
             try:
                 raise self.retry(exc=exc)
             except self.MaxRetriesExceededError:
@@ -109,8 +102,6 @@ def process_resume(self, ingestion_id: str):
 
     logger.info("Resume %s parsed successfully", ingestion_id)
 
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _fail(ingestion, message: str) -> None:
     ingestion.status = ingestion.STATUS_FAILED

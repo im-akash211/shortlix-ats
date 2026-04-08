@@ -66,6 +66,13 @@ class CandidateDetailView(generics.RetrieveUpdateAPIView):
         return CandidateDetailSerializer
 
 
+class CandidateDeleteView(APIView):
+    def delete(self, request, pk):
+        candidate = generics.get_object_or_404(Candidate, pk=pk)
+        candidate.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class CandidateNoteListCreateView(generics.ListCreateAPIView):
     serializer_class = CandidateNoteSerializer
 

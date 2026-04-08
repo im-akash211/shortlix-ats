@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
+import { PageLoader } from '../components/LoadingDots';
+import { ROUTES } from '../routes/constants';
 import {
   Search, MapPin, Clock, Eye, Mail, UserPlus, Users, ChevronDown, ChevronUp,
-  User, X, Filter, Phone, Briefcase, Building2, ChevronRight, Edit2, BookOpen,
+  User, X, Filter, Phone, Briefcase, Building2, ChevronRight, Edit2, BookOpen, Trash2,
 } from 'lucide-react';
 import {
   jobs as jobsApi,
@@ -70,24 +73,54 @@ function FilterAccordion({ title, options, selected, onToggle, defaultOpen = tru
 
 // ─── Stage map ────────────────────────────────────────────────────────────────
 
-const STAGE_TAB_MAP = { Applies: null, Shortlists: 'shortlisted', Offers: 'offered', Joined: 'joined' };
+// Each tab maps to the stage(s) shown in the candidate listing.
+// Applies = all (no filter); others use comma-separated multi-stage.
+const STAGE_TAB_MAP = {
+  Applies:    null,
+  Shortlists: 'shortlisted,interview,selected',
+  Offers:     'offered',
+  Joined:     'joined',
+};
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Jobs({ user }) {
-  // ── List state ──────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab]   = useState('My Jobs');
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // ── URL-based List state ───────────────────────────────────────────────────
+  const activeTab = searchParams.get('tab') || 'All Jobs';
+  const search = searchParams.get('search') || '';
+  const statusFilter = searchParams.get('status') || 'all';
+
+  const setActiveTab = (val) => setSearchParams(p => { p.set('tab', val); return p; });
+  const setSearch = (val) => setSearchParams(p => { if (val) p.set('search', val); else p.delete('search'); return p; });
+  const setStatusFilter = (val) => setSearchParams(p => { p.set('status', val); return p; });
+
   const [jobsList, setJobsList]     = useState([]);
   const [total, setTotal]           = useState(0);
   const [loading, setLoading]       = useState(true);
-  const [search, setSearch]         = useState('');
-  const [statusFilter, setStatusFilter] = useState('open');
 
-  // ── Filter state — single-select per group, options loaded once ─────────────
-  const [filters, setFilters] = useState({ department: [], hiring_manager: [], location: [] });
+  // ── URL-based Filter state — use stable primitives to avoid infinite loops ──
+  // getAll() returns a new array each render; join to a string for stable deps.
+  const deptFilter = searchParams.getAll('department')[0] || '';
+  const hmFilter   = searchParams.getAll('hiring_manager')[0] || '';
+  const locFilter  = searchParams.getAll('location')[0] || '';
+  // Keep the object shape for UI consumption (checked state etc.)
+  const filters = {
+    department:      deptFilter ? [deptFilter] : [],
+    hiring_manager:  hmFilter   ? [hmFilter]   : [],
+    location:        locFilter  ? [locFilter]  : [],
+  };
   const [filterOptions, setFilterOptions] = useState({ departments: [], hiringManagers: [], locations: [] });
 
   // ── Job detail state ─────────────────────────────────────────────────────────
+  // ── Job detail state ─────────────────────────────────────────────────────────
+  const detailMatch = useMatch(ROUTES.JOBS.DETAIL_PATTERN);
+  const candidatesMatch = useMatch(ROUTES.JOBS.CANDIDATES_PATTERN);
+  const interviewsMatch = useMatch(ROUTES.JOBS.INTERVIEWS_PATTERN);
+  const matchJobId = detailMatch?.params?.jobId || candidatesMatch?.params?.jobId || interviewsMatch?.params?.jobId;
+
   const [viewingJob, setViewingJob]         = useState(null);
   const [jobDetail, setJobDetail]           = useState(null);
   const [jobDetailLoading, setJobDetailLoading] = useState(false);
@@ -97,10 +130,42 @@ export default function Jobs({ user }) {
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [isPipelinePanelOpen, setIsPipelinePanelOpen] = useState(false);
 
+  // Use a stable boolean primitive to avoid new-object-reference re-renders
+  const isCandidatesRoute = Boolean(candidatesMatch);
+
+  // Sync route param with detail view
+  useEffect(() => {
+    if (matchJobId) {
+      // Only fetch if we don't already have this job loaded
+      if (!jobDetail || String(jobDetail.id) !== String(matchJobId)) {
+        setJobDetailLoading(true);
+        // matchJobId is a UUID string — do NOT convert to Number (would become NaN)
+        jobsApi.detail(matchJobId)
+          .then(data => {
+            setJobDetail(data);
+            setViewingJob(data);
+          })
+          .catch(console.error)
+          .finally(() => setJobDetailLoading(false));
+      }
+      setIsPipelinePanelOpen(isCandidatesRoute);
+    } else {
+      setViewingJob(null);
+      setJobDetail(null);
+      setIsPipelinePanelOpen(false);
+    }
+  // jobDetail intentionally omitted — we only want to re-fetch on route change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchJobId, isCandidatesRoute]);
+
   // ── Edit modal state ─────────────────────────────────────────────────────────
   const [isEditOpen, setIsEditOpen]   = useState(false);
   const [editForm, setEditForm]       = useState({});
   const [editLoading, setEditLoading] = useState(false);
+
+  // ── Delete job state ─────────────────────────────────────────────────────────
+  const [isDeleteJobOpen, setIsDeleteJobOpen] = useState(false);
+  const [deleteJobLoading, setDeleteJobLoading] = useState(false);
 
   // ── Collaborators modal state ────────────────────────────────────────────────
   const [isCollabModalOpen, setIsCollabModalOpen]       = useState(false);
@@ -157,11 +222,24 @@ export default function Jobs({ user }) {
   }, []); // empty deps → runs only once at mount
 
   // ── Toggle filter (single-select per group) ──────────────────────────────────
-  // Clicking the checked option deselects; clicking a new option replaces previous.
-  const toggleFilter = (key, id) =>
-    setFilters((prev) => ({ ...prev, [key]: prev[key].includes(id) ? [] : [id] }));
+  // ── Toggle filter (single-select per group) ──────────────────────────────────
+  const toggleFilter = (key, id) => {
+    setSearchParams(prev => {
+      const current = prev.getAll(key);
+      prev.delete(key);
+      if (!current.includes(id)) prev.append(key, id);
+      return prev;
+    });
+  };
 
-  const clearFilters = () => setFilters({ department: [], hiring_manager: [], location: [] });
+  const clearFilters = () => {
+    setSearchParams(prev => {
+      prev.delete('department');
+      prev.delete('hiring_manager');
+      prev.delete('location');
+      return prev;
+    });
+  };
 
   const activeFilterCount =
     (filters.department.length > 0 ? 1 : 0) +
@@ -172,13 +250,12 @@ export default function Jobs({ user }) {
   const loadJobs = useCallback(() => {
     setLoading(true);
     const params = {};
-    // Only send status when a specific status is selected ("all" means no filter)
     if (statusFilter !== 'all') params.status = statusFilter;
     if (activeTab === 'My Jobs') params.tab = 'mine';
-    if (search) params.search = search;
-    if (filters.department.length)     params.department      = filters.department[0];
-    if (filters.hiring_manager.length) params.hiring_manager  = filters.hiring_manager[0];
-    if (filters.location.length)       params.location        = filters.location[0];
+    if (search)     params.search        = search;
+    if (deptFilter) params.department    = deptFilter;
+    if (hmFilter)   params.hiring_manager = hmFilter;
+    if (locFilter)  params.location      = locFilter;
 
     jobsApi.list(params)
       .then((res) => {
@@ -188,22 +265,21 @@ export default function Jobs({ user }) {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeTab, statusFilter, search, filters]);
+  }, [activeTab, statusFilter, search, deptFilter, hmFilter, locFilter]);
 
   useEffect(() => { loadJobs(); }, [loadJobs]);
 
   // ── Open job detail ──────────────────────────────────────────────────────────
+  // ── Open job detail ──────────────────────────────────────────────────────────
   const openJobDetails = (job, tab = 'Applies', openPanel = false) => {
+    // Set viewingJob immediately so the detail view renders at once (optimistic)
     setViewingJob(job);
-    setJobDetail(null);
-    setPipeline([]);
     setPipelineTab(tab);
-    setIsPipelinePanelOpen(openPanel);
-    setJobDetailLoading(true);
-    jobsApi.detail(job.id)
-      .then(setJobDetail)
-      .catch(console.error)
-      .finally(() => setJobDetailLoading(false));
+    if (openPanel || tab !== 'Applies') {
+      navigate(ROUTES.JOBS.CANDIDATES(job.id));
+    } else {
+      navigate(ROUTES.JOBS.DETAIL(job.id));
+    }
   };
 
   // ── Pipeline stats — always load when a job is opened (powers the tiles) ────
@@ -256,6 +332,23 @@ export default function Jobs({ user }) {
       alert(err.data?.detail || JSON.stringify(err.data) || 'Failed to save changes');
     } finally {
       setEditLoading(false);
+    }
+  };
+
+  // ── Delete job handler ───────────────────────────────────────────────────────
+  const handleDeleteJob = async () => {
+    if (!jobDetail) return;
+    setDeleteJobLoading(true);
+    try {
+      await jobsApi.delete(jobDetail.id);
+      setIsDeleteJobOpen(false);
+      setViewingJob(null);
+      setJobDetail(null);
+      loadJobs();
+    } catch (err) {
+      alert(err.data?.detail || 'Failed to delete job');
+    } finally {
+      setDeleteJobLoading(false);
     }
   };
 
@@ -385,6 +478,7 @@ export default function Jobs({ user }) {
     setShortlistingId(c.id);
     try {
       await candidatesApi.changeStage(c.candidate, c.job, 'shortlisted');
+      // Refresh listing (candidate moves out of Applies, so re-fetch current tab)
       const stage = STAGE_TAB_MAP[pipelineTab];
       jobsApi.pipeline(viewingJob.id, stage ? { stage } : {})
         .then((res) => setPipeline(res.results || res))
@@ -401,8 +495,8 @@ export default function Jobs({ user }) {
   const getStatCount = (tab) => {
     if (!pipelineStats) return 0;
     if (tab === 'Applies')    return pipelineStats.total || 0;
-    if (tab === 'Shortlists') return (pipelineStats.shortlisted || 0) + (pipelineStats.interview || 0) + (pipelineStats.selected || 0) + (pipelineStats.offered || 0) + (pipelineStats.joined || 0);
-    if (tab === 'Offers')     return (pipelineStats.offered || 0) + (pipelineStats.joined || 0);
+    if (tab === 'Shortlists') return (pipelineStats.shortlisted || 0) + (pipelineStats.interview || 0) + (pipelineStats.selected || 0);
+    if (tab === 'Offers')     return pipelineStats.offered || 0;
     if (tab === 'Joined')     return pipelineStats.joined || 0;
     return 0;
   };
@@ -478,7 +572,7 @@ export default function Jobs({ user }) {
           <div className="flex items-center justify-between mb-4 shrink-0">
             <div className="flex items-center gap-2 min-w-0">
               <button
-                onClick={() => { setViewingJob(null); setJobDetail(null); setIsPipelinePanelOpen(false); }}
+                onClick={() => navigate(ROUTES.JOBS.ROOT)}
                 className="text-slate-500 hover:text-slate-800 text-sm transition-colors shrink-0"
               >
                 ← Back
@@ -495,6 +589,13 @@ export default function Jobs({ user }) {
                 className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors shadow-sm"
               >
                 <Edit2 className="w-3.5 h-3.5" /> Edit
+              </button>
+              <button
+                onClick={() => setIsDeleteJobOpen(true)}
+                disabled={!jobDetail}
+                className="flex items-center gap-1.5 bg-white border border-rose-200 text-rose-600 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-rose-50 disabled:opacity-40 transition-colors shadow-sm"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete
               </button>
               <button
                 onClick={() => openCollabModal(viewingJob)}
@@ -596,7 +697,7 @@ export default function Jobs({ user }) {
                   ].map(({ label, value, tab }) => (
                     <button
                       key={label}
-                      onClick={() => { if (tab) { setPipelineTab(tab); setIsPipelinePanelOpen(true); } }}
+                      onClick={() => { if (tab) { setPipelineTab(tab); navigate(ROUTES.JOBS.CANDIDATES(viewingJob.id)); } }}
                       disabled={!tab}
                       className={`flex flex-col items-center p-2 rounded-lg transition-colors disabled:cursor-default ${tab ? 'hover:bg-blue-50 cursor-pointer' : ''}`}
                     >
@@ -612,7 +713,7 @@ export default function Jobs({ user }) {
                   ].map(({ label, value, tab }) => (
                     <button
                       key={label}
-                      onClick={() => { setPipelineTab(tab); setIsPipelinePanelOpen(true); }}
+                      onClick={() => { setPipelineTab(tab); navigate(ROUTES.JOBS.CANDIDATES(viewingJob.id)); }}
                       className="flex flex-col items-center p-2 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
                     >
                       <span className="text-2xl font-bold text-slate-700">{value}</span>
@@ -766,7 +867,7 @@ export default function Jobs({ user }) {
             {/* LEFT: Job cards — independently scrollable */}
             <div className="flex-1 min-h-0 overflow-y-auto pb-4 flex flex-col gap-4">
               {loading ? (
-                <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading jobs…</div>
+                <PageLoader label="Loading jobs…" />
               ) : jobsList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-48 text-slate-400 gap-2">
                   <Briefcase className="w-10 h-10 text-slate-300" />
@@ -884,7 +985,7 @@ export default function Jobs({ user }) {
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/20 z-40"
-            onClick={() => setIsPipelinePanelOpen(false)}
+            onClick={() => navigate(ROUTES.JOBS.DETAIL(viewingJob.id))}
           />
 
           {/* Drawer */}
@@ -904,7 +1005,7 @@ export default function Jobs({ user }) {
                   <UserPlus className="w-3.5 h-3.5" /> Add Profile
                 </button>
                 <button
-                  onClick={() => setIsPipelinePanelOpen(false)}
+                  onClick={() => navigate(ROUTES.JOBS.DETAIL(viewingJob.id))}
                   className="text-slate-400 hover:text-slate-700 transition-colors p-1"
                 >
                   <X className="w-5 h-5" />
@@ -935,9 +1036,7 @@ export default function Jobs({ user }) {
             {/* Candidate list */}
             <div className="flex-1 overflow-y-auto p-5">
               {pipelineLoading ? (
-                <div className="flex items-center justify-center h-48 text-slate-400 text-sm">
-                  Loading candidates…
-                </div>
+                <PageLoader label="Loading candidates…" />
               ) : pipeline.length > 0 ? (
                 <div className="flex flex-col gap-4">{pipeline.map(renderCandidateCard)}</div>
               ) : (
@@ -1292,6 +1391,42 @@ export default function Jobs({ user }) {
                 className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 {scheduleLoading ? 'Scheduling…' : 'Schedule Interview'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ DELETE JOB CONFIRMATION MODAL ══════════════════ */}
+      {isDeleteJobOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-[440px] max-w-[92vw] p-6 flex flex-col gap-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-base">Delete Job</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{jobDetail?.job_code} — {jobDetail?.title}</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Are you sure you want to delete this job? This action <span className="font-semibold text-rose-600">cannot be undone</span> and will remove all associated pipeline data.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setIsDeleteJobOpen(false)}
+                disabled={deleteJobLoading}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteJob}
+                disabled={deleteJobLoading}
+                className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                {deleteJobLoading ? 'Deleting…' : 'Yes, Delete Job'}
               </button>
             </div>
           </div>

@@ -1,17 +1,19 @@
-import React from 'react';
+  import React from 'react';
+import { useLocation } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 
-export default function Topbar({ activeTab, user, onLogout }) {
+export default function Topbar({ user, onLogout }) {
+  const location = useLocation();
+
   const getTitle = () => {
-    switch(activeTab) {
-      case 'Jobs': return 'Manage your Jobs & Applications';
-      case 'Candidates': return 'Talent Pool Search';
-      case 'Approvals': return 'Manage your Approvals';
-      case 'Interviews': return 'Manage your Interviews';
-      case 'Requisitions': return 'Manage your Requisitions';
-      case 'Settings': return 'Manage Settings';
-      default: return `Manage ${activeTab}`;
-    }
+    const path = location.pathname;
+    if (path.startsWith('/jobs')) return 'Manage your Jobs & Applications';
+    if (path.startsWith('/candidates')) return 'Talent Pool Search';
+    if (path.startsWith('/approvals')) return 'Manage your Approvals';
+    if (path.startsWith('/interviews')) return 'Manage your Interviews';
+    if (path.startsWith('/requisitions')) return 'Manage your Requisitions';
+    if (path.startsWith('/settings')) return 'Manage Settings';
+    return 'Manage Dashboard';
   };
 
   return (
