@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDebounce } from '../lib/useDebounce';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 import { PageLoader } from '../components/LoadingDots';
 import { ROUTES } from '../routes/constants';
@@ -97,9 +99,16 @@ export default function Jobs({ user }) {
   const setSearch = (val) => setSearchParams(p => { if (val) p.set('search', val); else p.delete('search'); return p; });
   const setStatusFilter = (val) => setSearchParams(p => { p.set('status', val); return p; });
 
-  const [jobsList, setJobsList]     = useState([]);
-  const [total, setTotal]           = useState(0);
-  const [loading, setLoading]       = useState(true);
+  const queryClient = useQueryClient();
+
+  // Phase C debounce: local input state so typing is instant; URL (and fetch) only updates after 400ms pause
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 400);
+  useEffect(() => {
+    if (debouncedSearch !== search) setSearch(debouncedSearch);
+  // intentionally omit `search` to avoid loop — this effect only syncs debounced → URL
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   // ── URL-based Filter state — use stable primitives to avoid infinite loops ──
   // getAll() returns a new array each render; join to a string for stable deps.
@@ -112,7 +121,27 @@ export default function Jobs({ user }) {
     hiring_manager:  hmFilter   ? [hmFilter]   : [],
     location:        locFilter  ? [locFilter]  : [],
   };
-  const [filterOptions, setFilterOptions] = useState({ departments: [], hiringManagers: [], locations: [] });
+  // Phase B: filter options fetched once, cached forever — they don't change during a session
+  const { data: filterOptions = { departments: [], hiringManagers: [], locations: [] } } = useQuery({
+    queryKey: ['jobs', 'filterOptions'],
+    queryFn: () => jobsApi.list({ page_size: 100 }),
+    staleTime: Infinity,
+    select: (res) => {
+      const all = res.results || res;
+      const deptMap = {}, hmMap = {};
+      const locSet = new Set();
+      all.forEach((j) => {
+        if (j.department && j.department_name) deptMap[j.department] = j.department_name;
+        if (j.hiring_manager && j.hiring_manager_name) hmMap[j.hiring_manager] = j.hiring_manager_name;
+        if (j.location) locSet.add(j.location);
+      });
+      return {
+        departments:    Object.entries(deptMap).map(([id, label]) => ({ id, label })),
+        hiringManagers: Object.entries(hmMap).map(([id, label]) => ({ id, label })),
+        locations:      [...locSet].map((l) => ({ id: l, label: l })),
+      };
+    },
+  });
 
   // ── Job detail state ─────────────────────────────────────────────────────────
   // ── Job detail state ─────────────────────────────────────────────────────────
@@ -197,29 +226,7 @@ export default function Jobs({ user }) {
   const [usersList, setUsersList]             = useState([]);
   const [scheduleToast, setScheduleToast]     = useState(null);
 
-  // ── Load filter options ONCE from all accessible jobs at mount ───────────────
-  // Options are stable — they do NOT change when filters are applied.
-  // This ensures selecting one filter group does not cause other groups to lose options.
-  useEffect(() => {
-    jobsApi.list({ page_size: 100 })
-      .then((res) => {
-        const all = res.results || res;
-        const deptMap = {};
-        const hmMap   = {};
-        const locSet  = new Set();
-        all.forEach((j) => {
-          if (j.department   && j.department_name)   deptMap[j.department]   = j.department_name;
-          if (j.hiring_manager && j.hiring_manager_name) hmMap[j.hiring_manager] = j.hiring_manager_name;
-          if (j.location) locSet.add(j.location);
-        });
-        setFilterOptions({
-          departments:    Object.entries(deptMap).map(([id, label]) => ({ id, label })),
-          hiringManagers: Object.entries(hmMap).map(([id, label])   => ({ id, label })),
-          locations:      [...locSet].map((l) => ({ id: l, label: l })),
-        });
-      })
-      .catch(console.error);
-  }, []); // empty deps → runs only once at mount
+  // Filter options now handled by React Query above (see filterOptions useQuery)
 
   // ── Toggle filter (single-select per group) ──────────────────────────────────
   // ── Toggle filter (single-select per group) ──────────────────────────────────
@@ -246,28 +253,25 @@ export default function Jobs({ user }) {
     (filters.hiring_manager.length > 0 ? 1 : 0) +
     (filters.location.length > 0 ? 1 : 0);
 
-  // ── Load jobs list ───────────────────────────────────────────────────────────
-  const loadJobs = useCallback(() => {
-    setLoading(true);
-    const params = {};
-    if (statusFilter !== 'all') params.status = statusFilter;
-    if (activeTab === 'My Jobs') params.tab = 'mine';
-    if (search)     params.search        = search;
-    if (deptFilter) params.department    = deptFilter;
-    if (hmFilter)   params.hiring_manager = hmFilter;
-    if (locFilter)  params.location      = locFilter;
+  // ── Phase B+C: jobs list — cached per filter combination; previous data shown while new results load ──
+  const jobsQueryKey = ['jobs', 'list', { tab: activeTab, status: statusFilter, search, dept: deptFilter, hm: hmFilter, loc: locFilter }];
+  const { data: jobsQueryData, isLoading: loading } = useQuery({
+    queryKey: jobsQueryKey,
+    queryFn: () => {
+      const params = {};
+      if (statusFilter !== 'all') params.status = statusFilter;
+      if (activeTab === 'My Jobs') params.tab = 'mine';
+      if (search)     params.search         = search;
+      if (deptFilter) params.department     = deptFilter;
+      if (hmFilter)   params.hiring_manager = hmFilter;
+      if (locFilter)  params.location       = locFilter;
+      return jobsApi.list(params);
+    },
+    placeholderData: (previousData) => previousData,
+  });
 
-    jobsApi.list(params)
-      .then((res) => {
-        const list = res.results || res;
-        setJobsList(list);
-        setTotal(res.count || list.length);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [activeTab, statusFilter, search, deptFilter, hmFilter, locFilter]);
-
-  useEffect(() => { loadJobs(); }, [loadJobs]);
+  const jobsList = jobsQueryData ? (jobsQueryData.results || jobsQueryData) : [];
+  const total    = jobsQueryData?.count ?? jobsList.length;
 
   // ── Open job detail ──────────────────────────────────────────────────────────
   // ── Open job detail ──────────────────────────────────────────────────────────
@@ -328,6 +332,7 @@ export default function Jobs({ user }) {
       setJobDetail(updated);
       setViewingJob((prev) => ({ ...prev, title: updated.title, location: updated.location, status: updated.status }));
       setIsEditOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['jobs', 'list'] });
     } catch (err) {
       alert(err.data?.detail || JSON.stringify(err.data) || 'Failed to save changes');
     } finally {
@@ -344,7 +349,7 @@ export default function Jobs({ user }) {
       setIsDeleteJobOpen(false);
       setViewingJob(null);
       setJobDetail(null);
-      loadJobs();
+      queryClient.invalidateQueries({ queryKey: ['jobs', 'list'] });
     } catch (err) {
       alert(err.data?.detail || 'Failed to delete job');
     } finally {
@@ -835,9 +840,9 @@ export default function Jobs({ user }) {
               <Search className="w-5 h-5 text-slate-400 shrink-0" />
               <input
                 type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && loadJobs()}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && setSearch(searchInput)}
                 placeholder="Search jobs by title, code, location…"
                 className="outline-none w-full text-sm"
               />

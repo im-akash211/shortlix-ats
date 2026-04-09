@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { PageLoader } from '../components/LoadingDots';
 import MetricCard from '../components/MetricCard';
 import RightPanel from '../components/RightPanel';
@@ -12,29 +13,35 @@ const STATUS_OPTIONS = ['open', 'hidden', 'closed', 'all'];
 
 export default function Dashboard({ user }) {
   const navigate = useNavigate();
-  const [summaryData, setSummaryData] = useState(null);
-  const [jobStatus, setJobStatus] = useState('open');
-  const [loading, setLoading] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Phase D: jobStatus is URL-backed so it survives browser back/forward and sharing
+  const jobStatus = searchParams.get('status') || 'open';
+  const setJobStatus = (val) => setSearchParams(p => { p.set('status', val); return p; });
+
   const [filters, setFilters] = useState({
     designations: '', hiring_managers: '', departments: '', locations: '', visibility: '',
   });
-  const [filterOptions, setFilterOptions] = useState({});
 
-  useEffect(() => {
-    dashboard.filterOptions().then(setFilterOptions).catch(console.error);
-  }, []);
+  // Compute query params (derived, not state — no extra useEffect needed)
+  const activeFilters = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
+  const effectiveStatus = activeFilters.visibility || (jobStatus === 'all' ? '' : jobStatus);
+  const { visibility: _omit, ...restFilters } = activeFilters;
+  const summaryParams = { status: effectiveStatus, ...restFilters };
 
-  useEffect(() => {
-    setLoading(true);
-    const activeFilters = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
-    // visibility filter from right panel overrides the top status radio if set
-    const status = activeFilters.visibility || (jobStatus === 'all' ? '' : jobStatus);
-    const { visibility: _omit, ...rest } = activeFilters;
-    dashboard.summary({ status, ...rest })
-      .then(setSummaryData)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [jobStatus, filters]);
+  // Phase B: filter options — fetched once, cached indefinitely (they don't change during session)
+  const { data: filterOptions = {} } = useQuery({
+    queryKey: ['dashboard', 'filterOptions'],
+    queryFn: dashboard.filterOptions,
+    staleTime: Infinity,
+  });
+
+  // Phase B+C: summary — cached per filter combination; previous data shown during filter switch
+  const { data: summaryData, isLoading } = useQuery({
+    queryKey: ['dashboard', 'summary', summaryParams],
+    queryFn: () => dashboard.summary(summaryParams),
+    placeholderData: (previousData) => previousData,
+  });
 
   function handleFilterChange(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -103,7 +110,7 @@ export default function Dashboard({ user }) {
 
       <div className="flex gap-6 flex-1 min-h-0">
         <div className="flex-1 overflow-y-auto pr-2 pb-4">
-          {loading ? (
+          {isLoading ? (
             <PageLoader label="Loading metrics…" />
           ) : (
             <>

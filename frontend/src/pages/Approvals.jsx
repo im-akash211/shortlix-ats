@@ -1,41 +1,57 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, CheckCircle2, XCircle, Search, ChevronDown, FolderSearch } from 'lucide-react';
+import { PageLoader } from '../components/LoadingDots';
 import { requisitions as reqApi } from '../lib/api';
 
 export default function Approvals({ user }) {
-  const [counts, setCounts] = useState({ pending: 0, approved: 0, rejected: 0 });
-  const [data, setData] = useState([]);
-  const [activeStatus, setActiveStatus] = useState('pending_approval');
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  useEffect(() => {
-    // Load counts for each status
-    Promise.all([
-      reqApi.list({ status: 'pending_approval' }),
-      reqApi.list({ status: 'approved' }),
-      reqApi.list({ status: 'rejected' }),
-    ]).then(([pending, approved, rejected]) => {
-      setCounts({
-        pending: pending.count || (pending.results || pending).length,
-        approved: approved.count || (approved.results || approved).length,
-        rejected: rejected.count || (rejected.results || rejected).length,
-      });
-    }).catch(console.error);
-  }, []);
+  // Phase D: activeStatus URL-backed — tab state survives refresh and navigation
+  const activeStatus = searchParams.get('status') || 'pending_approval';
+  const setActiveStatus = (val) => setSearchParams(p => { p.set('status', val); return p; });
 
-  useEffect(() => {
-    setLoading(true);
-    reqApi.list({ status: activeStatus })
-      .then((res) => setData(res.results || res))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [activeStatus]);
+  // Phase B: one query per status — all three are fetched on mount and cached independently.
+  // Switching tabs instantly restores cached data; no reload needed.
+  const { data: res_pending, isLoading: pendingLoading } = useQuery({
+    queryKey: ['approvals', 'pending_approval'],
+    queryFn: () => reqApi.list({ status: 'pending_approval' }),
+    placeholderData: (prev) => prev,
+  });
+  const { data: res_approved, isLoading: approvedLoading } = useQuery({
+    queryKey: ['approvals', 'approved'],
+    queryFn: () => reqApi.list({ status: 'approved' }),
+    placeholderData: (prev) => prev,
+  });
+  const { data: res_rejected, isLoading: rejectedLoading } = useQuery({
+    queryKey: ['approvals', 'rejected'],
+    queryFn: () => reqApi.list({ status: 'rejected' }),
+    placeholderData: (prev) => prev,
+  });
+
+  const toList = (res) => res ? (res.results || res) : [];
+  const toCount = (res) => res?.count ?? toList(res).length;
+
+  const counts = {
+    pending:  toCount(res_pending),
+    approved: toCount(res_approved),
+    rejected: toCount(res_rejected),
+  };
+
+  const data = activeStatus === 'pending_approval' ? toList(res_pending)
+             : activeStatus === 'approved'         ? toList(res_approved)
+             : toList(res_rejected);
+
+  const isLoading = activeStatus === 'pending_approval' ? pendingLoading
+                  : activeStatus === 'approved'         ? approvedLoading
+                  : rejectedLoading;
 
   const handleApprove = async (id) => {
     try {
       await reqApi.approve(id, 'Approved via Approvals page.');
-      setData((prev) => prev.filter((r) => r.id !== id));
-      setCounts((c) => ({ ...c, pending: Math.max(0, c.pending - 1), approved: c.approved + 1 }));
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
     } catch (err) {
       alert(err.data?.error || 'Failed to approve');
     }
@@ -44,8 +60,7 @@ export default function Approvals({ user }) {
   const handleReject = async (id) => {
     try {
       await reqApi.reject(id, 'Rejected via Approvals page.');
-      setData((prev) => prev.filter((r) => r.id !== id));
-      setCounts((c) => ({ ...c, pending: Math.max(0, c.pending - 1), rejected: c.rejected + 1 }));
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
     } catch (err) {
       alert(err.data?.error || 'Failed to reject');
     }
@@ -106,8 +121,8 @@ export default function Approvals({ user }) {
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center flex-1 text-slate-400 text-sm">Loading…</div>
+        {isLoading ? (
+          <div className="flex items-center justify-center flex-1"><PageLoader label="Loading requisitions…" /></div>
         ) : data.length === 0 ? (
           <div className="flex flex-col items-center justify-center flex-1 text-slate-400 gap-3">
             <FolderSearch className="w-12 h-12 text-slate-300" />

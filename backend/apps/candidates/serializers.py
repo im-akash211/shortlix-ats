@@ -54,13 +54,15 @@ class CandidateListSerializer(serializers.ModelSerializer):
                   'sub_source', 'created_at', 'current_job', 'current_stage']
 
     def get_current_job(self, obj):
-        mapping = obj.job_mappings.select_related('job').first()
-        if mapping:
-            return {'id': str(mapping.job.id), 'title': mapping.job.title, 'job_code': mapping.job.job_code}
-        return None
+        # obj.job_mappings.all() reads from the prefetch cache set by prefetch_related('job_mappings__job')
+        # in CandidateListCreateView — no DB hit per candidate.
+        mapping = next(iter(obj.job_mappings.all()), None)
+        if mapping is None:
+            return None
+        return {'id': str(mapping.job_id), 'title': mapping.job.title, 'job_code': mapping.job.job_code}
 
     def get_current_stage(self, obj):
-        mapping = obj.job_mappings.first()
+        mapping = next(iter(obj.job_mappings.all()), None)
         return mapping.stage if mapping else None
 
 

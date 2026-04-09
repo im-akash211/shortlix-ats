@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDebounce } from '../lib/useDebounce';
 import { useSearchParams, useNavigate, useMatch } from 'react-router-dom';
 import { PageLoader } from '../components/LoadingDots';
 import { Search, MapPin, Filter, X, ChevronDown, CheckCircle2, MoreHorizontal, Clock, XCircle, Trash2, Edit2 } from 'lucide-react';
@@ -122,13 +124,19 @@ export default function Requisitions({ user }) {
   const isCreateOpen = Boolean(createMatch);
   const isEditOpen   = Boolean(editMatch);
 
-  const [data, setData] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [departments, setDepartments] = useState([]);
+  const queryClient = useQueryClient();
+
+  // Phase C debounce: local input state so typing is instant; URL (and fetch) only updates after 400ms pause
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 400);
+  useEffect(() => {
+    if (debouncedSearch !== search) setSearch(debouncedSearch);
+  // intentionally omit `search` to avoid loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
+
   const [subVerticals1, setSubVerticals1] = useState([]);
   const [subVerticals2, setSubVerticals2] = useState([]);
-  const [usersList, setUsersList] = useState([]);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiCache, setAiCache] = useState(null);      // cached API result for the create form
   const [aiGenerated, setAiGenerated] = useState(false);
@@ -153,26 +161,37 @@ export default function Requisitions({ user }) {
 
   const setField = (key, val) => setCreateForm((f) => ({ ...f, [key]: val }));
 
-  const load = useCallback(() => {
-    setLoading(true);
-    const params = {};
-    if (activeTab === 'My Requisitions') params.tab = 'mine';
-    if (search) params.search = search;
-    reqApi.list(params)
-      .then((res) => {
-        setData(res.results || res);
-        setTotal(res.count || (res.results || res).length);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [activeTab, search]);
+  // Phase B+C: list cached per tab+search combination; placeholderData keeps previous results
+  // visible while new filtered data loads — no blank-table flash on filter change.
+  const reqQueryKey = ['requisitions', 'list', { tab: activeTab, search }];
+  const { data: reqQueryData, isLoading: loading } = useQuery({
+    queryKey: reqQueryKey,
+    queryFn: () => {
+      const params = {};
+      if (activeTab === 'My Requisitions') params.tab = 'mine';
+      if (search) params.search = search;
+      return reqApi.list(params);
+    },
+    placeholderData: (previousData) => previousData,
+  });
 
-  useEffect(() => { load(); }, [load]);
+  const data  = reqQueryData ? (reqQueryData.results || reqQueryData) : [];
+  const total = reqQueryData?.count ?? data.length;
 
-  useEffect(() => {
-    deptApi.list().then((res) => setDepartments(res.results || res)).catch(console.error);
-    usersApi.dropdown().then((res) => setUsersList(res.results || res)).catch(console.error);
-  }, []);
+  // Phase B: departments + users are session-stable — cached indefinitely, never refetched
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => deptApi.list(),
+    staleTime: Infinity,
+    select: (res) => res.results || res,
+  });
+
+  const { data: usersList = [] } = useQuery({
+    queryKey: ['users', 'dropdown'],
+    queryFn: () => usersApi.dropdown(),
+    staleTime: Infinity,
+    select: (res) => res.results || res,
+  });
 
   // Sync edit URL route → load requisition data into edit form
   useEffect(() => {
@@ -289,7 +308,7 @@ export default function Requisitions({ user }) {
     try {
       await reqApi.create(createForm);
       handleCloseCreate();
-      load();
+      queryClient.invalidateQueries({ queryKey: ['requisitions', 'list'] });
     } catch (err) {
       alert(err.data?.detail || JSON.stringify(err.data) || 'Failed to create requisition');
     } finally {
@@ -315,7 +334,7 @@ export default function Requisitions({ user }) {
       if (action === 'submit') await reqApi.submit(id);
       if (action === 'approve') await reqApi.approve(id);
       if (action === 'reject') await reqApi.reject(id);
-      load();
+      queryClient.invalidateQueries({ queryKey: ['requisitions', 'list'] });
     } catch (err) {
       alert(err.data?.error || err.data?.detail || 'Action failed');
     }
@@ -353,7 +372,7 @@ export default function Requisitions({ user }) {
       const targetId = editingReq?.id || editMatch?.params?.id;
       await reqApi.update(targetId, editForm);
       handleCloseEdit();
-      load();
+      queryClient.invalidateQueries({ queryKey: ['requisitions', 'list'] });
     } catch (err) {
       alert(err.data?.detail || JSON.stringify(err.data) || 'Failed to update requisition');
     } finally {
@@ -375,7 +394,7 @@ export default function Requisitions({ user }) {
       await reqApi.delete(deleteTarget.id);
       setIsDeleteOpen(false);
       setDeleteTarget(null);
-      load();
+      queryClient.invalidateQueries({ queryKey: ['requisitions', 'list'] });
     } catch (err) {
       alert(err.data?.detail || 'Failed to delete requisition');
     } finally {
@@ -465,9 +484,9 @@ export default function Requisitions({ user }) {
               <div className="flex-1 relative">
                 <input
                   type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && load()}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && setSearch(searchInput)}
                   placeholder="Search Keywords"
                   className="w-full px-3 py-2 text-sm outline-none"
                 />

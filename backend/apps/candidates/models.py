@@ -37,7 +37,7 @@ class Candidate(models.Model):
     current_ctc_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     expected_ctc_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     notice_period_days = models.PositiveIntegerField(null=True, blank=True)
-    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual')
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual', db_index=True)
     sub_source = models.CharField(max_length=255, blank=True)
     parsed_data = models.JSONField(blank=True, default=dict, help_text='Full structured extraction from Claude API')
     parsing_status = models.CharField(
@@ -84,7 +84,7 @@ class CandidateJobMapping(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='job_mappings')
     job = models.ForeignKey('jobs.Job', on_delete=models.CASCADE, related_name='candidate_mappings')
-    stage = models.CharField(max_length=20, choices=PIPELINE_STAGES, default='pending')
+    stage = models.CharField(max_length=20, choices=PIPELINE_STAGES, default='pending', db_index=True)
     moved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True)
     stage_updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -92,6 +92,10 @@ class CandidateJobMapping(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=['candidate', 'job'], name='unique_candidate_job'),
+        ]
+        indexes = [
+            # Composite index used by COUNT annotations that filter on (job_id, stage).
+            models.Index(fields=['job', 'stage'], name='cjm_job_stage_idx'),
         ]
         ordering = ['-created_at']
 

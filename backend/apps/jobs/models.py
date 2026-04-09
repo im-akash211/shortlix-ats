@@ -28,7 +28,7 @@ class Job(models.Model):
     job_description = models.TextField(blank=True)
     experience_min = models.DecimalField(max_digits=4, decimal_places=1, default=0)
     experience_max = models.DecimalField(max_digits=4, decimal_places=1, default=0)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='open')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='open', db_index=True)
     view_count = models.PositiveIntegerField(default=0)
     positions_filled = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

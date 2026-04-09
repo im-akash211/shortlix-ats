@@ -1,7 +1,7 @@
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncWeek
 from django.utils import timezone
 from datetime import timedelta
@@ -66,12 +66,14 @@ class DashboardSummaryView(APIView):
         job_ids = list(jobs_qs.values_list('id', flat=True))
         mappings = CandidateJobMapping.objects.filter(job_id__in=job_ids)
 
-        stage_counts = {}
-        for key, label in PIPELINE_STAGES:
-            stage_counts[key] = mappings.filter(stage=key).count()
+        # One GROUP BY query instead of one COUNT per stage (was 8+ queries).
+        stage_counts = dict(
+            mappings.values('stage').annotate(c=Count('id')).values_list('stage', 'c')
+        )
+        total_applies = sum(stage_counts.values())
 
-        total_applies = mappings.count()
-        total_views = sum(jobs_qs.values_list('view_count', flat=True))
+        # SQL SUM instead of fetching all rows and summing in Python.
+        total_views = jobs_qs.aggregate(total=Sum('view_count'))['total'] or 0
 
         now = timezone.now()
 
@@ -117,16 +119,20 @@ class DashboardSummaryView(APIView):
         all_candidates = total_applies
         progressed = total_applies - stage_counts.get('pending', 0) - stage_counts.get('rejected', 0)
 
-        SOURCE_GROUPS = {
-            'Referral': ['referral'],
-            'Recruiter Sourced': ['recruiter_upload'],
-            'Inbound': ['linkedin', 'naukri'],
-            'Partner': ['manual'],
-        }
-
         def source_breakdown(qs):
-            return {label: qs.filter(candidate__source__in=sources).count()
-                    for label, sources in SOURCE_GROUPS.items()}
+            # One aggregate query instead of 4 separate COUNT queries per call.
+            agg = qs.aggregate(
+                referral=Count('id', filter=Q(candidate__source__in=['referral'])),
+                recruiter_sourced=Count('id', filter=Q(candidate__source__in=['recruiter_upload'])),
+                inbound=Count('id', filter=Q(candidate__source__in=['linkedin', 'naukri'])),
+                partner=Count('id', filter=Q(candidate__source__in=['manual'])),
+            )
+            return {
+                'Referral': agg['referral'],
+                'Recruiter Sourced': agg['recruiter_sourced'],
+                'Inbound': agg['inbound'],
+                'Partner': agg['partner'],
+            }
 
         return Response({
             'metrics': metrics,
@@ -185,9 +191,14 @@ class DashboardFunnelView(APIView):
         job_ids = jobs_qs.values_list('id', flat=True)
         mappings = CandidateJobMapping.objects.filter(job_id__in=job_ids)
 
-        funnel = []
-        for key, label in PIPELINE_STAGES:
-            funnel.append({'stage': key, 'label': label, 'count': mappings.filter(stage=key).count()})
+        # One GROUP BY query instead of one COUNT per stage.
+        stage_counts = dict(
+            mappings.values('stage').annotate(c=Count('id')).values_list('stage', 'c')
+        )
+        funnel = [
+            {'stage': key, 'label': label, 'count': stage_counts.get(key, 0)}
+            for key, label in PIPELINE_STAGES
+        ]
         return Response(funnel)
 
 
