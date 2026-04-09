@@ -40,7 +40,7 @@ function InfoRow({ label, children }) {
 function FilterAccordion({ title, options, selected, onToggle, defaultOpen = true }) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden mb-3">
+    <div className="border-b border-slate-200 last:border-b-0">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors"
@@ -936,44 +936,46 @@ export default function Jobs({ user }) {
             </div>
 
             {/* RIGHT: Filter panel — independently scrollable */}
-            <div className="w-60 shrink-0 min-h-0 overflow-y-auto flex flex-col pb-4 pr-1">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
-                  <Filter className="w-4 h-4" />
-                  <span>Filters</span>
+            <div className="w-60 shrink-0 flex flex-col min-h-0 overflow-y-auto pb-4 pr-1">
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
+                <div className="flex items-center justify-between px-3.5 py-3 border-b border-slate-200">
+                  <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
+                    <Filter className="w-4 h-4" />
+                    <span>Filters</span>
+                    {activeFilterCount > 0 && (
+                      <span className="bg-blue-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                        {activeFilterCount}
+                      </span>
+                    )}
+                  </div>
                   {activeFilterCount > 0 && (
-                    <span className="bg-blue-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-bold">
-                      {activeFilterCount}
-                    </span>
+                    <button onClick={clearFilters} className="text-blue-600 text-xs font-medium hover:underline">
+                      Clear All
+                    </button>
                   )}
                 </div>
-                {activeFilterCount > 0 && (
-                  <button onClick={clearFilters} className="text-blue-600 text-xs font-medium hover:underline">
-                    Clear All
-                  </button>
-                )}
+                <FilterAccordion
+                  title="Department"
+                  options={filterOptions.departments}
+                  selected={filters.department}
+                  onToggle={(id) => toggleFilter('department', id)}
+                  defaultOpen
+                />
+                <FilterAccordion
+                  title="Hiring Manager"
+                  options={filterOptions.hiringManagers}
+                  selected={filters.hiring_manager}
+                  onToggle={(id) => toggleFilter('hiring_manager', id)}
+                  defaultOpen={false}
+                />
+                <FilterAccordion
+                  title="Location"
+                  options={filterOptions.locations}
+                  selected={filters.location}
+                  onToggle={(id) => toggleFilter('location', id)}
+                  defaultOpen={false}
+                />
               </div>
-              <FilterAccordion
-                title="Department"
-                options={filterOptions.departments}
-                selected={filters.department}
-                onToggle={(id) => toggleFilter('department', id)}
-                defaultOpen
-              />
-              <FilterAccordion
-                title="Hiring Manager"
-                options={filterOptions.hiringManagers}
-                selected={filters.hiring_manager}
-                onToggle={(id) => toggleFilter('hiring_manager', id)}
-                defaultOpen={false}
-              />
-              <FilterAccordion
-                title="Location"
-                options={filterOptions.locations}
-                selected={filters.location}
-                onToggle={(id) => toggleFilter('location', id)}
-                defaultOpen={false}
-              />
             </div>
           </div>
         </div>
