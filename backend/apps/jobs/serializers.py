@@ -16,10 +16,11 @@ class JobCollaboratorSerializer(serializers.ModelSerializer):
 class JobListSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     hiring_manager_name = serializers.CharField(source='hiring_manager.full_name', read_only=True)
-    applies_count = serializers.SerializerMethodField()
-    shortlists_count = serializers.SerializerMethodField()
-    offers_count = serializers.SerializerMethodField()
-    joined_count = serializers.SerializerMethodField()
+    # These fields are populated by annotations in JobListView.get_queryset() — no per-row DB queries.
+    applies_count = serializers.IntegerField(read_only=True)
+    shortlists_count = serializers.IntegerField(read_only=True)
+    offers_count = serializers.IntegerField(read_only=True)
+    joined_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Job
@@ -27,21 +28,6 @@ class JobListSerializer(serializers.ModelSerializer):
                   'hiring_manager', 'hiring_manager_name', 'location', 'status',
                   'experience_min', 'experience_max', 'created_at',
                   'applies_count', 'shortlists_count', 'offers_count', 'joined_count']
-
-    def _stage_count(self, obj, stages):
-        return obj.candidate_mappings.filter(stage__in=stages).count()
-
-    def get_applies_count(self, obj):
-        return obj.candidate_mappings.count()
-
-    def get_shortlists_count(self, obj):
-        return self._stage_count(obj, ['shortlisted', 'interview', 'selected', 'offered', 'joined'])
-
-    def get_offers_count(self, obj):
-        return self._stage_count(obj, ['offered', 'joined'])
-
-    def get_joined_count(self, obj):
-        return self._stage_count(obj, ['joined'])
 
 
 class JobDetailSerializer(serializers.ModelSerializer):

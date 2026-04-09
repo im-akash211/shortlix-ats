@@ -2,6 +2,7 @@ from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db.models import Count, Q
 from .models import Job, JobCollaborator
 from .serializers import JobListSerializer, JobDetailSerializer, JobCollaboratorSerializer
 from apps.candidates.models import CandidateJobMapping
@@ -15,13 +16,29 @@ class JobListView(generics.ListAPIView):
     ordering_fields = ['created_at', 'title']
 
     def get_queryset(self):
-        qs = Job.objects.select_related('department', 'hiring_manager')
+        # All four counts are computed as conditional COUNTs in one SQL query — no per-row queries.
+        qs = Job.objects.select_related('department', 'hiring_manager').annotate(
+            applies_count=Count('candidate_mappings', distinct=True),
+            shortlists_count=Count(
+                'candidate_mappings',
+                filter=Q(candidate_mappings__stage__in=['shortlisted', 'interview', 'selected', 'offered', 'joined']),
+                distinct=True,
+            ),
+            offers_count=Count(
+                'candidate_mappings',
+                filter=Q(candidate_mappings__stage__in=['offered', 'joined']),
+                distinct=True,
+            ),
+            joined_count=Count(
+                'candidate_mappings',
+                filter=Q(candidate_mappings__stage='joined'),
+                distinct=True,
+            ),
+        )
         tab = self.request.query_params.get('tab', 'all')
         user = self.request.user
         if tab == 'mine':
-            # "My Jobs" — jobs created by the logged-in user
             qs = qs.filter(created_by=user)
-        # "All Jobs" (tab == 'all' or any other value) — no user filter, show everyone's jobs
         return qs
 
 

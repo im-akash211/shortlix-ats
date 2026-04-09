@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Phone, Mail, Briefcase, Search, X, Star, ChevronDown, ChevronRight } from 'lucide-react';
+import { PageLoader } from '../components/LoadingDots';
 import { interviews as interviewsApi } from '../lib/api';
 
 const MODE_LABELS = {
@@ -45,10 +48,16 @@ function StarRating({ value, onChange }) {
 }
 
 export default function Interviews() {
-  const [data, setData] = useState([]);
-  const [summary, setSummary] = useState({ pending_confirmation: 0, upcoming: 0, pending_feedback: 0, completed: 0 });
-  const [activeTab, setActiveTab] = useState('my');
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Phase D: activeTab is URL-backed — survives refresh and browser navigation
+  const activeTab = searchParams.get('tab') || 'my';
+  const setActiveTab = (val) => {
+    setSearchParams(p => { p.set('tab', val); return p; });
+    setActiveFilter(null);
+  };
+
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState(null);
@@ -66,28 +75,27 @@ export default function Interviews() {
   const [feedbackDetail, setFeedbackDetail] = useState(null);
   const [accordionOpen, setAccordionOpen] = useState(true);
 
-  const load = () => {
-    setLoading(true);
-    Promise.all([
-      interviewsApi.list({ tab: activeTab }),
-      interviewsApi.summary(),
-    ])
-      .then(([listRes, sumRes]) => {
-        setData(listRes.results || listRes);
-        setSummary(sumRes);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  };
+  // Phase B+C: list is cached per tab; previous tab data stays visible while switching
+  const { data: listData, isLoading } = useQuery({
+    queryKey: ['interviews', 'list', activeTab],
+    queryFn: () => interviewsApi.list({ tab: activeTab }),
+    placeholderData: (previousData) => previousData,
+  });
 
-  useEffect(() => { load(); setActiveFilter(null); }, [activeTab]);
+  // Phase B: summary counts — cached independently; invalidated after mutations
+  const { data: summary = { pending_confirmation: 0, upcoming: 0, pending_feedback: 0, completed: 0 } } = useQuery({
+    queryKey: ['interviews', 'summary'],
+    queryFn: interviewsApi.summary,
+  });
+
+  const data = listData ? (listData.results || listData) : [];
 
   const handleCancel = async (id) => {
     try {
       await interviewsApi.cancel(id);
       setIsCancelConfirm(false);
       setSelected(null);
-      load();
+      queryClient.invalidateQueries({ queryKey: ['interviews'] });
     } catch (err) {
       alert(err.data?.error || 'Failed to cancel interview');
     }
@@ -109,7 +117,7 @@ export default function Interviews() {
       await interviewsApi.submitFeedback(selected.id, feedbackForm);
       setIsFeedbackOpen(false);
       setSelected(null);
-      load();
+      queryClient.invalidateQueries({ queryKey: ['interviews'] });
     } catch (err) {
       alert(err.data?.error || 'Failed to submit feedback');
     } finally {
@@ -210,8 +218,8 @@ export default function Interviews() {
         </div>
 
         <div className="overflow-auto flex-1">
-          {loading ? (
-            <div className="flex items-center justify-center h-48 text-slate-400 text-sm">Loading interviews…</div>
+          {isLoading ? (
+            <PageLoader label="Loading interviews…" />
           ) : filteredData.length === 0 ? (
             <div className="flex items-center justify-center h-48 text-slate-400 text-sm">No interviews found.</div>
           ) : (

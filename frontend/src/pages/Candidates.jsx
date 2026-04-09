@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDebounce } from '../lib/useDebounce';
 import { useSearchParams, useNavigate, useMatch } from 'react-router-dom';
 import { PageLoader } from '../components/LoadingDots';
 import {
@@ -170,10 +172,16 @@ export default function Candidates({ user }) {
   const editMatch = useMatch(ROUTES.CANDIDATES.EDIT_PATTERN);
   const routeCandidateId = viewMatch?.params?.candidateId || editMatch?.params?.candidateId;
 
-  // List state
-  const [data, setData]       = useState([]);
-  const [total, setTotal]     = useState(0);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  // Phase C debounce: local input state so typing is instant; URL (and fetch) only updates after 400ms pause
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 400);
+  useEffect(() => {
+    if (debouncedSearch !== search) setSearch(debouncedSearch);
+  // intentionally omit `search` to avoid loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   // Modal state — 'upload', 'review', 'note', 'move' remain local; 'view'/'edit' are URL-driven
   const [activeModal, setActiveModal]           = useState(null);
@@ -223,8 +231,7 @@ export default function Candidates({ user }) {
   const [noteText, setNoteText]       = useState('');
   const [noteLoading, setNoteLoading] = useState(false);
 
-  // Move modal
-  const [allJobs, setAllJobs]   = useState([]);
+  // Move modal — allJobs cached via React Query (see below)
   const [moveJobId, setMoveJobId] = useState('');
 
   // (exp/date filters are now URL-backed — see above)
@@ -261,37 +268,36 @@ export default function Candidates({ user }) {
     (expMin ? 1 : 0) + (expMax ? 1 : 0) +
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0);
 
-  // ── Load candidates ────────────────────────────────────────────────────────
-  const loadCandidates = useCallback(() => {
-    setLoading(true);
-    const params = { page_size: 500 };
-    if (search)       params.search    = search;
-    if (sourcesKey)   params.source    = sourcesKey;
-    if (stagesKey)    params.stage     = stagesKey;
-    if (urlJob)       params.job       = urlJob;
-    if (expMin)       params.exp_min   = expMin;
-    if (expMax)       params.exp_max   = expMax;
-    if (dateFrom)     params.date_from = dateFrom;
-    if (dateTo)       params.date_to   = dateTo;
-    if (sortKey)      params.ordering  = sortKey;
+  // ── Phase B+C: candidates list — cached per filter combination; previous data shown during filter changes ──
+  const candidatesQueryKey = ['candidates', 'list', { search, sources: sourcesKey, stages: stagesKey, job: urlJob, exp_min: expMin, exp_max: expMax, date_from: dateFrom, date_to: dateTo, sort: sortKey }];
+  const { data: candidatesQueryData, isLoading: loading } = useQuery({
+    queryKey: candidatesQueryKey,
+    queryFn: () => {
+      const params = { page_size: 500 };
+      if (search)     params.search    = search;
+      if (sourcesKey) params.source    = sourcesKey;
+      if (stagesKey)  params.stage     = stagesKey;
+      if (urlJob)     params.job       = urlJob;
+      if (expMin)     params.exp_min   = expMin;
+      if (expMax)     params.exp_max   = expMax;
+      if (dateFrom)   params.date_from = dateFrom;
+      if (dateTo)     params.date_to   = dateTo;
+      if (sortKey)    params.ordering  = sortKey;
+      return candidatesApi.list(params);
+    },
+    placeholderData: (previousData) => previousData,
+  });
 
-    candidatesApi.list(params)
-      .then((res) => {
-        setData(res.results || res);
-        setTotal(res.count || (res.results || res).length);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [search, sourcesKey, stagesKey, urlJob, expMin, expMax, dateFrom, dateTo, sortKey]);
+  const data  = candidatesQueryData ? (candidatesQueryData.results || candidatesQueryData) : [];
+  const total = candidatesQueryData?.count ?? data.length;
 
-  useEffect(() => { loadCandidates(); }, [loadCandidates]);
-
-  // Load all jobs once (for Move modal + Job filter)
-  useEffect(() => {
-    jobsApi.list({ page_size: 200 })
-      .then((res) => setAllJobs(res.results || res))
-      .catch(console.error);
-  }, []);
+  // Phase B: all jobs cached (for Move modal + Job filter dropdown) — stable across session
+  const { data: allJobs = [] } = useQuery({
+    queryKey: ['jobs', 'all'],
+    queryFn: () => jobsApi.list({ page_size: 200 }),
+    staleTime: Infinity,
+    select: (res) => res.results || res,
+  });
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   const openModal = (type, candidate) => {
@@ -343,7 +349,7 @@ export default function Candidates({ user }) {
   };
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  const handleSearch = (e) => { e.preventDefault(); loadCandidates(); };
+  const handleSearch = (e) => { e.preventDefault(); setSearch(searchInput); };
 
   const handleSaveNote = async () => {
     if (!noteText.trim() || !selectedCandidate) return;
@@ -370,7 +376,7 @@ export default function Candidates({ user }) {
       };
       await candidatesApi.update(selectedCandidate.id, payload);
       closeModal();
-      loadCandidates();
+      queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] });
     } catch (err) {
       alert(err.data?.detail || JSON.stringify(err.data) || 'Failed to save changes');
     } finally {
@@ -388,7 +394,7 @@ export default function Candidates({ user }) {
         await candidatesApi.moveJob(selectedCandidate.id, currentJobId, moveJobId);
       }
       closeModal();
-      loadCandidates();
+      queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] });
     } catch (err) {
       alert(err.data?.error || 'Failed to move candidate');
     }
@@ -408,7 +414,7 @@ export default function Candidates({ user }) {
       setDeleteTarget(null);
       // Close view profile modal if we just deleted the viewed candidate
       if (activeModal === 'view' && selectedCandidate?.id === deleteTarget.id) closeModal();
-      loadCandidates();
+      queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] });
     } catch (err) {
       alert(err.data?.detail || 'Failed to delete candidate');
     } finally {
@@ -516,7 +522,7 @@ export default function Candidates({ user }) {
         setDuplicateInfo({ candidate: result.duplicate_candidate, matchType: result.match_type });
       } else {
         setConvertSuccess(result.candidate);
-        loadCandidates();
+        queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] });
       }
     } catch (err) {
       setReviewError(err.data?.detail || 'Conversion failed.');
@@ -536,7 +542,7 @@ export default function Candidates({ user }) {
       } else {
         setConvertSuccess(result.candidate);
         setDuplicateInfo(null);
-        loadCandidates();
+        queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] });
       }
     } catch (err) {
       setReviewError(err.data?.detail || 'Failed to resolve duplicate.');
@@ -631,8 +637,8 @@ export default function Candidates({ user }) {
                 <div className="flex-1 relative">
                   <input
                     type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                     placeholder="Search by name, email, skills…"
                     className="w-full px-3 py-2 text-sm outline-none"
                   />
@@ -1243,7 +1249,7 @@ export default function Candidates({ user }) {
               </p>
             </div>
             <button
-              onClick={() => { closeReviewModal(); loadCandidates(); }}
+              onClick={() => { closeReviewModal(); queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] }); }}
               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors"
             >
               View in Talent Pool

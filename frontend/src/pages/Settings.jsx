@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Users, Plus, X } from 'lucide-react';
 import { users as usersApi, departments as deptApi } from '../lib/api';
+import { useAuth } from '../lib/authContext';
 
 function Section({ title, isOpen, onToggle, children }) {
   return (
@@ -25,7 +26,8 @@ const ROLE_COLORS = {
   recruiter: 'bg-emerald-100 text-emerald-700',
 };
 
-export default function Settings({ user }) {
+export default function Settings() {
+  const { user } = useAuth();
   const [openSection, setOpenSection] = useState('Manage Users');
   const [usersList, setUsersList] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
