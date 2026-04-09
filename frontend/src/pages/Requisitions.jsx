@@ -662,7 +662,7 @@ export default function Requisitions({ user }) {
 
                 {/* Row 4: Priority | Type of Employment */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Priority:</FieldLabel>
+                  <FieldLabel>Priority:</FieldLabel>
                   <SelectField value={createForm.priority} onChange={(e) => setField('priority', e.target.value)}>
                     {['low', 'medium', 'high', 'critical'].map((p) => (
                       <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -671,7 +671,7 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Type of Employment:</FieldLabel>
+                  <FieldLabel>Type of Employment:</FieldLabel>
                   <SelectField value={createForm.employment_type} onChange={(e) => setField('employment_type', e.target.value)}>
                     <option value="">--Select--</option>
                     <option value="permanent">Permanent</option>
@@ -682,7 +682,7 @@ export default function Requisitions({ user }) {
 
                 {/* Row 5: Requisition Type | Client's Name */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Requisition Type:</FieldLabel>
+                  <FieldLabel>Requisition Type:</FieldLabel>
                   <SelectField value={createForm.requisition_type} onChange={(e) => setField('requisition_type', e.target.value)}>
                     <option value="">--Select--</option>
                     <option value="new">New</option>
@@ -691,7 +691,7 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Client's Name:</FieldLabel>
+                  <FieldLabel>Client's Name:</FieldLabel>
                   <TextField
                     value={createForm.client_name}
                     onChange={(e) => setField('client_name', e.target.value)}
@@ -712,7 +712,7 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>
+                  <FieldLabel>
                     Annual CTC Range
                     <span className="ml-1 text-gray-400 cursor-help" title="CTC in Lakhs per annum">ℹ</span>
                   </FieldLabel>
@@ -798,7 +798,7 @@ export default function Requisitions({ user }) {
 
                 {/* Row 9: Expected Start Date | Reference Number */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Expected Start date:</FieldLabel>
+                  <FieldLabel>Expected Start date:</FieldLabel>
                   <TextField
                     type="date"
                     value={createForm.expected_start_date}
@@ -839,7 +839,7 @@ export default function Requisitions({ user }) {
 
                 {/* Row 11: Desirable Skills | Skills To Be Evaluated On */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Desirable Skills:</FieldLabel>
+                  <FieldLabel>Desirable Skills:</FieldLabel>
                   <TagInput
                     value={createForm.skills_desirable}
                     onChange={(val) => setField('skills_desirable', val)}
@@ -848,7 +848,7 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Skills To Be Evaluated On:</FieldLabel>
+                  <FieldLabel>Skills To Be Evaluated On:</FieldLabel>
                   <TagInput
                     value={createForm.skills_to_evaluate}
                     onChange={(val) => setField('skills_to_evaluate', val)}
@@ -1000,14 +1000,14 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Priority:</FieldLabel>
+                  <FieldLabel>Priority:</FieldLabel>
                   <SelectField value={editForm.priority} onChange={(e) => setEditField('priority', e.target.value)}>
                     {['low','medium','high','critical'].map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
                   </SelectField>
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Type of Employment:</FieldLabel>
+                  <FieldLabel>Type of Employment:</FieldLabel>
                   <SelectField value={editForm.employment_type} onChange={(e) => setEditField('employment_type', e.target.value)}>
                     <option value="permanent">Permanent</option>
                     <option value="contract">Contract</option>
