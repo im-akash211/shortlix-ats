@@ -70,7 +70,7 @@ export default function RightPanel({ filters = {}, onFilterChange, filterOptions
   const recruiters = (filterOptions.hiring_managers || []).filter((u) => u.role === 'recruiter');
 
   return (
-    <div className="w-80 shrink-0 flex flex-col gap-4">
+    <div className="w-60 shrink-0 flex flex-col gap-4 overflow-y-auto min-h-0">
       {/* Actions Pending */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
         <div className="flex items-center justify-between mb-4">
@@ -96,8 +96,8 @@ export default function RightPanel({ filters = {}, onFilterChange, filterOptions
       {/* Job Filters */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
         <div className="flex items-center justify-between mb-1">
-          <span className="font-semibold text-slate-800 text-sm">Job Filters</span>
-          {hasActiveFilters && (
+          <span className="font-semibold text-slate-800 text-sm">Filters</span>
+          {hasActiveFilters ? (
             <button
               onClick={clearAll}
               className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 transition-colors"
@@ -105,6 +105,8 @@ export default function RightPanel({ filters = {}, onFilterChange, filterOptions
               <X className="w-3 h-3" />
               Clear all
             </button>
+          ) : (
+            <Filter className="w-4 h-4 text-slate-800" />
           )}
         </div>
 
