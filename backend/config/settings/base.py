@@ -92,9 +92,9 @@ STORAGES = {
     'default': {
         'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
         'OPTIONS': {
-            'access_key': env('AWS_ACCESS_KEY_ID'),
-            'secret_key': env('AWS_SECRET_ACCESS_KEY'),
-            'bucket_name': env('AWS_S3_BUCKET'),
+            'access_key': env('AWS_ACCESS_KEY_ID', default=''),
+            'secret_key': env('AWS_SECRET_ACCESS_KEY', default=''),
+            'bucket_name': env('AWS_S3_BUCKET', default=''),
             'region_name': env('AWS_REGION', default='us-west-2'),
             'default_acl': 'private',
             'file_overwrite': False,
