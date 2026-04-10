@@ -3,7 +3,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { useEffect } from 'react';
 import { Wand2, Bold, Italic, List, ListOrdered } from 'lucide-react';
 
-export default function RichTextEditor({ label, required, value, onChange, onGenerate, generating }) {
+export default function RichTextEditor({ label, required, value, onChange, onGenerate, generating, aiGenerated }) {
   const editor = useEditor({
     extensions: [StarterKit],
     content: value || '',
@@ -48,7 +48,7 @@ export default function RichTextEditor({ label, required, value, onChange, onGen
             className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
           >
             <Wand2 size={14} />
-            {generating ? 'Generating...' : 'Generate'}
+            {generating ? 'Generating...' : aiGenerated ? 'Regenerate' : 'Generate'}
           </button>
         )}
       </div>

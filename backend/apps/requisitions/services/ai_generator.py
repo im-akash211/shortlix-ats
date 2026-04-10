@@ -94,7 +94,7 @@ def generate_requisition_content(
     # If both are 0 (Django default), we apply your business logic default of 0-3 years
     if exp_min == 0 and exp_max == 0:
         exp_min = 0.0
-        exp_max = 3.0
+        exp_max = 2.0
     
     # Ensure min isn't higher than max by mistake
     if exp_min > exp_max and exp_max != 0:
@@ -122,9 +122,7 @@ def generate_requisition_content(
 
         ### INPUT DATA:
         - Role Context: {context_str}
-        - Department: {department}
-        - Vertical Focus: {sub_vertical_1}, {sub_vertical_2}
-        - Experience Range: {exp_min} - {exp_max} years
+
 
         ### ROLE-SPECIFIC LOGIC ENGINE:
         1. **Engineering (AI/Data/Software):** Focus on scalability, technical debt management, system architecture, and "production-grade" reliability.

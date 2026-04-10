@@ -60,6 +60,9 @@ class InterviewFeedbackCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         interview = generics.get_object_or_404(Interview, pk=self.kwargs['pk'])
+        if InterviewFeedback.objects.filter(interview=interview).exists():
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'detail': 'Feedback has already been submitted for this interview.'})
         interview.status = 'completed'
         interview.save(update_fields=['status'])
         serializer.save(interview=interview, interviewer=self.request.user)
