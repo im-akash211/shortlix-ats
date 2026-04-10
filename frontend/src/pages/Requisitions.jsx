@@ -423,6 +423,8 @@ export default function Requisitions({ user }) {
         requisition_title: createForm.title,
         sub_vertical_1:    sv1Name,
         sub_vertical_2:    sv2Name,
+        experience_min:    createForm.experience_min,
+        experience_max:    createForm.experience_max,
       });
       setAiCache(result);
       setAiGenerated(true);
