@@ -306,7 +306,8 @@ export default function Requisitions({ user }) {
     }
     setCreateLoading(true);
     try {
-      await reqApi.create(createForm);
+      const payload = { ...createForm, expected_start_date: createForm.expected_start_date || null };
+      await reqApi.create(payload);
       handleCloseCreate();
       queryClient.invalidateQueries({ queryKey: ['requisitions', 'list'] });
     } catch (err) {
@@ -444,7 +445,6 @@ export default function Requisitions({ user }) {
   };
 
   const handleRegenerateAll = async () => {
-    if (!window.confirm('This will regenerate all AI content (Job Description, Roles & Responsibilities, and Skills), overwriting any edits. Continue?')) return;
     setAiCache(null);
     setAiGenerated(false);
     await _callAiGenerate();
@@ -663,8 +663,9 @@ export default function Requisitions({ user }) {
                     required
                     value={createForm.job_description}
                     onChange={(val) => setField('job_description', val)}
-                    onGenerate={handleGenerateJd}
+                    onGenerate={handleRegenerateAll}
                     generating={aiGenerating}
+                    aiGenerated={aiGenerated}
                   />
                 </div>
 
@@ -674,8 +675,9 @@ export default function Requisitions({ user }) {
                     required
                     value={createForm.roles_responsibilities}
                     onChange={(val) => setField('roles_responsibilities', val)}
-                    onGenerate={handleGenerateRoles}
+                    onGenerate={handleRegenerateAll}
                     generating={aiGenerating}
+                    aiGenerated={aiGenerated}
                   />
                 </div>
 
@@ -930,19 +932,6 @@ export default function Requisitions({ user }) {
               {/* Footer buttons */}
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-100">
                 <div className="flex items-center gap-3">
-                  {aiGenerated && (
-                    <button
-                      type="button"
-                      onClick={handleRegenerateAll}
-                      disabled={aiGenerating}
-                      className="flex items-center gap-1.5 text-sm text-purple-600 hover:text-purple-700 border border-purple-200 hover:border-purple-300 bg-purple-50 hover:bg-purple-100 px-4 py-2 rounded-md disabled:opacity-50 transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Regenerate All
-                    </button>
-                  )}
                   {aiError && (
                     <p className="text-xs text-red-500">{aiError}</p>
                   )}

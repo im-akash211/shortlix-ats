@@ -112,14 +112,10 @@ export default function Jobs({ user }) {
 
   // ── URL-based Filter state — use stable primitives to avoid infinite loops ──
   // getAll() returns a new array each render; join to a string for stable deps.
-  const deptFilter = searchParams.getAll('department')[0] || '';
-  const hmFilter   = searchParams.getAll('hiring_manager')[0] || '';
-  const locFilter  = searchParams.getAll('location')[0] || '';
-  // Keep the object shape for UI consumption (checked state etc.)
   const filters = {
-    department:      deptFilter ? [deptFilter] : [],
-    hiring_manager:  hmFilter   ? [hmFilter]   : [],
-    location:        locFilter  ? [locFilter]  : [],
+    department:     searchParams.getAll('department'),
+    hiring_manager: searchParams.getAll('hiring_manager'),
+    location:       searchParams.getAll('location'),
   };
   // Phase B: filter options fetched once, cached forever — they don't change during a session
   const { data: filterOptions = { departments: [], hiringManagers: [], locations: [] } } = useQuery({
@@ -228,13 +224,16 @@ export default function Jobs({ user }) {
 
   // Filter options now handled by React Query above (see filterOptions useQuery)
 
-  // ── Toggle filter (single-select per group) ──────────────────────────────────
-  // ── Toggle filter (single-select per group) ──────────────────────────────────
+  // ── Toggle filter (multi-select per group) ───────────────────────────────────
   const toggleFilter = (key, id) => {
     setSearchParams(prev => {
       const current = prev.getAll(key);
       prev.delete(key);
-      if (!current.includes(id)) prev.append(key, id);
+      if (current.includes(id)) {
+        current.filter(v => v !== id).forEach(v => prev.append(key, v));
+      } else {
+        [...current, id].forEach(v => prev.append(key, v));
+      }
       return prev;
     });
   };
@@ -249,22 +248,22 @@ export default function Jobs({ user }) {
   };
 
   const activeFilterCount =
-    (filters.department.length > 0 ? 1 : 0) +
-    (filters.hiring_manager.length > 0 ? 1 : 0) +
-    (filters.location.length > 0 ? 1 : 0);
+    filters.department.length +
+    filters.hiring_manager.length +
+    filters.location.length;
 
   // ── Phase B+C: jobs list — cached per filter combination; previous data shown while new results load ──
-  const jobsQueryKey = ['jobs', 'list', { tab: activeTab, status: statusFilter, search, dept: deptFilter, hm: hmFilter, loc: locFilter }];
+  const jobsQueryKey = ['jobs', 'list', { tab: activeTab, status: statusFilter, search, dept: filters.department, hm: filters.hiring_manager, loc: filters.location }];
   const { data: jobsQueryData, isLoading: loading } = useQuery({
     queryKey: jobsQueryKey,
     queryFn: () => {
       const params = {};
       if (statusFilter !== 'all') params.status = statusFilter;
       if (activeTab === 'My Jobs') params.tab = 'mine';
-      if (search)     params.search         = search;
-      if (deptFilter) params.department     = deptFilter;
-      if (hmFilter)   params.hiring_manager = hmFilter;
-      if (locFilter)  params.location       = locFilter;
+      if (search)                          params.search         = search;
+      if (filters.department.length > 0)   params.department     = filters.department.join(',');
+      if (filters.hiring_manager.length > 0) params.hiring_manager = filters.hiring_manager.join(',');
+      if (filters.location.length > 0)     params.location       = filters.location.join(',');
       return jobsApi.list(params);
     },
     placeholderData: (previousData) => previousData,
