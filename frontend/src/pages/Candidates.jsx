@@ -241,6 +241,7 @@ export default function Candidates({ user }) {
   const [uploadLoading, setUploadLoading]   = useState(false);
   const [uploadResult, setUploadResult]     = useState(null); // ingestion record
   const [uploadError, setUploadError]       = useState('');
+  const [uploadDuplicate, setUploadDuplicate] = useState(null); // 409 duplicate payload
   const fileInputRef                        = useRef(null);
   const pollIntervalRef                     = useRef(null);
 
@@ -427,6 +428,7 @@ export default function Candidates({ user }) {
     setUploadFile(null);
     setUploadResult(null);
     setUploadError('');
+    setUploadDuplicate(null);
     setUploadLoading(false);
     setActiveModal('upload');
   };
@@ -440,6 +442,7 @@ export default function Candidates({ user }) {
     setUploadFile(null);
     setUploadResult(null);
     setUploadError('');
+    setUploadDuplicate(null);
   };
 
   // ── Phase 2: Review handlers ───────────────────────────────────────────────
@@ -588,6 +591,7 @@ export default function Candidates({ user }) {
     if (!uploadFile) return;
     setUploadLoading(true);
     setUploadError('');
+    setUploadDuplicate(null);
     try {
       const record = await resumesApi.upload(uploadFile);
       setUploadResult(record);
@@ -596,8 +600,12 @@ export default function Candidates({ user }) {
         startPolling(record.id);
       }
     } catch (err) {
-      const msg = err.data?.file?.[0] || err.data?.detail || err.message || 'Upload failed';
-      setUploadError(msg);
+      if (err.status === 409 && err.data?.duplicate) {
+        setUploadDuplicate(err.data);
+      } else {
+        const msg = err.data?.file?.[0] || err.data?.detail || err.message || 'Upload failed';
+        setUploadError(msg);
+      }
     } finally {
       setUploadLoading(false);
     }
@@ -1514,6 +1522,43 @@ export default function Candidates({ user }) {
                   onChange={handleFileSelect}
                 />
               </div>
+
+              {uploadDuplicate && (
+                <div className="flex flex-col gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+                  <div className="flex items-start gap-2 text-amber-800">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                    <div>
+                      <p className="font-semibold">Duplicate Resume Detected</p>
+                      <p className="text-amber-700 mt-0.5">
+                        This exact file has already been uploaded — even if the filename is different.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-amber-100 rounded-lg px-4 py-3 flex flex-col gap-1.5 text-slate-600">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400 uppercase tracking-wide">Status</span>
+                      <span className="text-xs font-medium capitalize text-slate-700">
+                        {uploadDuplicate.existing_status?.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400 uppercase tracking-wide">Uploaded</span>
+                      <span className="text-xs font-medium text-slate-700">
+                        {new Date(uploadDuplicate.uploaded_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-400 uppercase tracking-wide">Record ID</span>
+                      <span className="text-xs font-mono text-slate-500 truncate max-w-[180px]">
+                        {uploadDuplicate.existing_resume_id}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-amber-700">
+                    To re-upload, please ask an admin to remove the existing record first.
+                  </p>
+                </div>
+              )}
 
               {uploadError && (
                 <div className="flex items-start gap-2 bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-700">
