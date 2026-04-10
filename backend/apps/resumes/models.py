@@ -43,7 +43,7 @@ class ResumeIngestion(models.Model):
         on_delete=models.PROTECT,
         related_name="resume_ingestions",
     )
-    file = models.FileField(upload_to="resumes/%Y/%m/")
+    file = models.FileField(upload_to="ats/resumes/")
     original_filename = models.CharField(max_length=255)
     file_type = models.CharField(max_length=10)
     file_size = models.BigIntegerField(help_text="File size in bytes")
