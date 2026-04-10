@@ -44,6 +44,10 @@ class ResumeIngestion(models.Model):
         related_name="resume_ingestions",
     )
     file = models.FileField(upload_to="ats/resumes/")
+    file_hash = models.CharField(
+        max_length=64, unique=True, db_index=True, null=True, blank=True,
+        help_text="SHA-256 hex digest of file contents — used for exact duplicate detection",
+    )
     original_filename = models.CharField(max_length=255)
     file_type = models.CharField(max_length=10)
     file_size = models.BigIntegerField(help_text="File size in bytes")
