@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, CheckCircle2, XCircle, Search, ChevronDown, FolderSearch } from 'lucide-react';
@@ -56,6 +56,21 @@ export default function Approvals({ user }) {
       alert(err.data?.error || 'Failed to approve');
     }
   };
+
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const STATUS_OPTIONS = [
+    { value: 'pending_approval', label: 'Pending Approval' },
+    { value: 'approved',         label: 'Approved' },
+    { value: 'rejected',         label: 'Rejected' },
+  ];
 
   const handleReject = async (id) => {
     try {
@@ -115,9 +130,27 @@ export default function Approvals({ user }) {
             <Search className="w-4 h-4 text-slate-400" />
             <input type="text" placeholder="Search requisitions" className="bg-transparent outline-none text-sm w-full" />
           </div>
-          <div className="ml-auto flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-            <span className="text-sm text-slate-600 capitalize">{activeStatus.replace('_', ' ')}</span>
-            <ChevronDown className="w-4 h-4 text-slate-400" />
+          <div className="ml-auto relative" ref={dropdownRef}>
+            <button
+              onClick={() => setDropdownOpen(o => !o)}
+              className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-100 transition-colors"
+            >
+              <span className="text-sm text-slate-600 capitalize">{STATUS_OPTIONS.find(o => o.value === activeStatus)?.label}</span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {dropdownOpen && (
+              <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-20 overflow-hidden">
+                {STATUS_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setActiveStatus(opt.value); setDropdownOpen(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${activeStatus === opt.value ? 'bg-blue-50 text-blue-600 font-medium' : 'text-slate-700 hover:bg-slate-50'}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
