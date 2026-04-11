@@ -1,11 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://atsshorthills-ai-production.up.railway.app/api/:path*"
-    },
-    {
-      "source": "/((?!api/).*)",
+      "source": "/((?!_next/).*)",
       "destination": "/index.html"
     }
   ]
