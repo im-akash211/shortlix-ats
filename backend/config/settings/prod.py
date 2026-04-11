@@ -19,6 +19,10 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 
+# Required for Django admin to accept POST requests over HTTPS
+# Set to your Railway URL, e.g. https://yourapp.up.railway.app
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])  # noqa: F405
+
 # ─── Static files via Whitenoise ────────────────────────────────────────────
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')  # noqa: F405
 STORAGES['staticfiles'] = {  # noqa: F405
