@@ -158,7 +158,7 @@ export default function Topbar({ user, onLogout }) {
                           <Check className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <button onClick={(e) => deleteNotif(e, n.id)} className="text-slate-200 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100" title="Delete">
+                      <button onClick={(e) => deleteNotif(e, n.id)} className="text-slate-300 hover:text-rose-500 transition-colors" title="Delete">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
