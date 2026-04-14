@@ -164,7 +164,7 @@ export default function Requisitions({ user }) {
   // Phase B+C: list cached per tab+search combination; placeholderData keeps previous results
   // visible while new filtered data loads — no blank-table flash on filter change.
   const reqQueryKey = ['requisitions', 'list', { tab: activeTab, search }];
-  const { data: reqQueryData, isLoading: loading } = useQuery({
+  const { data: reqQueryData, isLoading: reqIsLoading, isPlaceholderData: reqIsPlaceholder } = useQuery({
     queryKey: reqQueryKey,
     queryFn: () => {
       const params = {};
@@ -174,6 +174,7 @@ export default function Requisitions({ user }) {
     },
     placeholderData: (previousData) => previousData,
   });
+  const loading = reqIsLoading || reqIsPlaceholder;
 
   const data  = reqQueryData ? (reqQueryData.results || reqQueryData) : [];
   const total = reqQueryData?.count ?? data.length;
