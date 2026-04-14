@@ -22,7 +22,7 @@ INSTALLED_APPS = [
     'storages',
     'apps.accounts', 'apps.departments', 'apps.requisitions',
     'apps.jobs', 'apps.candidates', 'apps.interviews',
-    'apps.dashboard', 'apps.core', 'apps.resumes',
+    'apps.dashboard', 'apps.core', 'apps.resumes', 'apps.notifications',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
