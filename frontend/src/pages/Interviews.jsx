@@ -76,11 +76,12 @@ export default function Interviews() {
   const [accordionOpen, setAccordionOpen] = useState(true);
 
   // Phase B+C: list is cached per tab; previous tab data stays visible while switching
-  const { data: listData, isLoading } = useQuery({
+  const { data: listData, isLoading, isPlaceholderData } = useQuery({
     queryKey: ['interviews', 'list', activeTab],
     queryFn: () => interviewsApi.list({ tab: activeTab }),
     placeholderData: (previousData) => previousData,
   });
+  const listLoading = isLoading || isPlaceholderData;
 
   // Phase B: summary counts — cached independently; invalidated after mutations
   const { data: summary = { pending_confirmation: 0, upcoming: 0, pending_feedback: 0, completed: 0 } } = useQuery({
@@ -218,7 +219,7 @@ export default function Interviews() {
         </div>
 
         <div className="overflow-auto flex-1">
-          {isLoading ? (
+          {listLoading ? (
             <PageLoader label="Loading interviews…" />
           ) : filteredData.length === 0 ? (
             <div className="flex items-center justify-center h-48 text-slate-400 text-sm">No interviews found.</div>
