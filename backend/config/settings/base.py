@@ -4,7 +4,9 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env()
-environ.Env.read_env(BASE_DIR / '.env')
+_env_file = BASE_DIR / '.env'
+if _env_file.exists():
+    environ.Env.read_env(_env_file)
 
 SECRET_KEY = env('SECRET_KEY')
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
@@ -17,6 +19,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles',
     'rest_framework', 'rest_framework_simplejwt.token_blacklist',
     'corsheaders', 'django_filters', 'drf_spectacular',
+    'storages',
     'apps.accounts', 'apps.departments', 'apps.requisitions',
     'apps.jobs', 'apps.candidates', 'apps.interviews',
     'apps.dashboard', 'apps.core', 'apps.resumes',
@@ -81,9 +84,29 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {'TITLE': 'ATS API', 'VERSION': '1.0.0'}
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# ── S3 file storage ────────────────────────────────────────────────────────────
+STORAGES = {
+    'default': {
+        'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+        'OPTIONS': {
+            'access_key': env('AWS_ACCESS_KEY_ID', default=''),
+            'secret_key': env('AWS_SECRET_ACCESS_KEY', default=''),
+            'bucket_name': env('AWS_S3_BUCKET', default=''),
+            'region_name': env('AWS_REGION', default='us-west-2'),
+            'default_acl': 'private',
+            'file_overwrite': False,
+            'querystring_auth': True,
+        },
+    },
+    'staticfiles': {
+        'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+    },
+}
 
 # ── Gemini AI ──────────────────────────────────────────────────────────────────
 # Supports both single key (GEMINI_API_KEY) and multi-key rotation (GEMINI_API_KEYS)

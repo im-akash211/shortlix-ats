@@ -64,7 +64,7 @@ class ResumeFile(models.Model):
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='uploaded_resumes'
     )
-    file = models.FileField(upload_to='resumes/%Y/%m/')
+    file = models.FileField(upload_to='ats/resumes/')
     original_filename = models.CharField(max_length=255)
     file_type = models.CharField(max_length=4, choices=FILE_TYPE_CHOICES)
     file_size_bytes = models.PositiveIntegerField()
