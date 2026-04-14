@@ -1109,7 +1109,7 @@ export default function Jobs({ user }) {
                           onClick={() => openJobDetails(job)}
                           className="text-base font-bold text-slate-800 hover:text-blue-600 text-left transition-colors"
                         >
-                          {job.job_code} — {job.title}
+                          {job.title}
                         </button>
                         <StatusBadge status={job.status} />
                       </div>
@@ -1576,12 +1576,16 @@ export default function Jobs({ user }) {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700">Round Number</label>
-                  <input type="number" min="1" value={scheduleForm.round_number} onChange={(e) => setScheduleForm({ ...scheduleForm, round_number: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700">Round Label</label>
-                  <input type="text" placeholder="e.g. Technical Round" value={scheduleForm.round_label} onChange={(e) => setScheduleForm({ ...scheduleForm, round_label: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                  <label className="text-sm font-medium text-slate-700">Round</label>
+                  <select value={scheduleForm.round_label} onChange={(e) => setScheduleForm({ ...scheduleForm, round_label: e.target.value, round_number: e.target.selectedIndex })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white">
+                    <option value="">Select round…</option>
+                    <option value="Screening Round">Screening Round</option>
+                    <option value="Technical Round 1">Technical Round 1</option>
+                    <option value="Technical Round 2">Technical Round 2</option>
+                    <option value="Managerial Round">Managerial Round</option>
+                    <option value="HR Round">HR Round</option>
+                    <option value="Final Round">Final Round</option>
+                  </select>
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Interviewer *</label>
@@ -1591,8 +1595,28 @@ export default function Jobs({ user }) {
                   </select>
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-slate-700">Scheduled At *</label>
-                  <input type="datetime-local" value={scheduleForm.scheduled_at} onChange={(e) => setScheduleForm({ ...scheduleForm, scheduled_at: e.target.value })} className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
+                  <label className="text-sm font-medium text-slate-700">Date *</label>
+                  <input
+                    type="date"
+                    value={scheduleForm.scheduled_at ? scheduleForm.scheduled_at.split('T')[0] : ''}
+                    onChange={(e) => {
+                      const time = scheduleForm.scheduled_at ? scheduleForm.scheduled_at.split('T')[1] : '00:00';
+                      setScheduleForm({ ...scheduleForm, scheduled_at: `${e.target.value}T${time}` });
+                    }}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Time *</label>
+                  <input
+                    type="time"
+                    value={scheduleForm.scheduled_at ? scheduleForm.scheduled_at.split('T')[1] : ''}
+                    onChange={(e) => {
+                      const date = scheduleForm.scheduled_at ? scheduleForm.scheduled_at.split('T')[0] : '';
+                      setScheduleForm({ ...scheduleForm, scheduled_at: `${date}T${e.target.value}` });
+                    }}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Duration (minutes)</label>
