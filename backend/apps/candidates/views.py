@@ -8,6 +8,8 @@ from .serializers import (
     CandidateListSerializer, CandidateDetailSerializer, CandidateCreateSerializer,
     CandidateJobMappingSerializer, CandidateNoteSerializer
 )
+from apps.accounts.models import User
+from apps.notifications.models import InAppNotification
 
 
 class CandidateListCreateView(generics.ListCreateAPIView):
@@ -142,3 +144,28 @@ class CandidateMoveJobView(APIView):
                 changed_by=request.user, notes=f'Moved from job {from_job_id}'
             )
         return Response(CandidateJobMappingSerializer(new_mapping).data, status=status.HTTP_201_CREATED)
+
+
+class CandidateShareView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        candidate = generics.get_object_or_404(Candidate, pk=pk)
+        user_ids = request.data.get('user_ids', [])
+        if not user_ids:
+            return Response({'error': 'user_ids is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        recipients = User.objects.filter(id__in=user_ids)
+        sender = request.user
+        notifications = [
+            InAppNotification(
+                recipient=recipient,
+                sender=sender,
+                notification_type='candidate_shared',
+                message=f'{sender.full_name} shared the profile of {candidate.full_name} with you.',
+                candidate=candidate,
+            )
+            for recipient in recipients
+        ]
+        InAppNotification.objects.bulk_create(notifications)
+        return Response({'shared_with': len(notifications)}, status=status.HTTP_201_CREATED)

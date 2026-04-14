@@ -217,6 +217,24 @@ export const ai = {
     request('/requisitions/ai/generate/', { method: 'POST', body: JSON.stringify(data) }),
 };
 
+// ---- Notifications ---- //
+export const notifications = {
+  list: () => request('/notifications/'),
+  markRead: (id) => request(`/notifications/${id}/read/`, { method: 'PATCH' }),
+  markAllRead: () => request('/notifications/mark-all-read/', { method: 'POST' }),
+  delete: (id) => request(`/notifications/${id}/delete/`, { method: 'DELETE' }),
+  deleteAll: () => request('/notifications/delete-all/', { method: 'DELETE' }),
+};
+
+// ---- Candidates Share ---- //
+export const candidateShare = {
+  share: (candidateId, userIds) =>
+    request(`/candidates/${candidateId}/share/`, {
+      method: 'POST',
+      body: JSON.stringify({ user_ids: userIds }),
+    }),
+};
+
 // ---- Users (Admin) ---- //
 export const users = {
   dropdown: () => request('/users/dropdown/'),

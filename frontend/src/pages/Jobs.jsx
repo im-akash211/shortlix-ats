@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '../lib/useDebounce';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
@@ -6,13 +6,14 @@ import { PageLoader } from '../components/LoadingDots';
 import { ROUTES } from '../routes/constants';
 import {
   Search, MapPin, Clock, Eye, Mail, UserPlus, Users, ChevronDown, ChevronUp,
-  User, X, Filter, Phone, Briefcase, Building2, ChevronRight, Edit2, BookOpen, Trash2, FileText,
+  User, X, Filter, Phone, Briefcase, Building2, ChevronRight, Edit2, BookOpen, Trash2, FileText, Share2,
 } from 'lucide-react';
 import {
   jobs as jobsApi,
   candidates as candidatesApi,
   interviews as interviewsApi,
   users as usersApi,
+  candidateShare as candidateShareApi,
 } from '../lib/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -294,6 +295,20 @@ export default function Jobs({ user }) {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [usersList, setUsersList]             = useState([]);
   const [scheduleToast, setScheduleToast]     = useState(null);
+
+  // ── Share candidate state ────────────────────────────────────────────────────
+  const [shareOpen, setShareOpen]           = useState(null); // candidate id
+  const [shareSearch, setShareSearch]       = useState('');
+  const [shareSelected, setShareSelected]   = useState([]);
+  const shareRef                            = useRef(null);
+  useEffect(() => {
+    if (!shareOpen) return;
+    // load users if not already loaded
+    if (usersList.length === 0) usersApi.dropdown().then((res) => setUsersList(Array.isArray(res) ? res : (res.results || []))).catch(console.error);
+    const handler = (e) => { if (shareRef.current && !shareRef.current.contains(e.target)) { setShareOpen(null); setShareSearch(''); setShareSelected([]); } };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [shareOpen]);
 
   // Filter options now handled by React Query above (see filterOptions useQuery)
 
@@ -579,7 +594,12 @@ export default function Jobs({ user }) {
   };
 
   // ── Candidate card ───────────────────────────────────────────────────────────
-  const renderCandidateCard = (c) => (
+  const renderCandidateCard = (c) => {
+    const isShareOpen = shareOpen === c.id;
+    const filteredUsers = usersList.filter(u =>
+      u.full_name.toLowerCase().includes(shareSearch.toLowerCase())
+    );
+    return (
     <div key={c.id} className="flex gap-4 border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-white">
       <button
         onClick={() => openCandidateProfile(c)}
@@ -621,6 +641,64 @@ export default function Jobs({ user }) {
                 Schedule Interview
               </button>
             )}
+            {/* Share button + popover */}
+            <div className="relative" ref={isShareOpen ? shareRef : null}>
+              <button
+                onClick={() => { setShareOpen(isShareOpen ? null : c.id); setShareSearch(''); setShareSelected([]); }}
+                className="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                title="Share"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+              </button>
+              {isShareOpen && (
+                <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-[300] flex flex-col overflow-hidden">
+                  <div className="p-2 border-b border-slate-100">
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Search users..."
+                      value={shareSearch}
+                      onChange={(e) => setShareSearch(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="overflow-y-auto max-h-52">
+                    {filteredUsers.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-4">No users found</p>
+                    ) : filteredUsers.map((u) => (
+                      <label key={u.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={shareSelected.includes(u.id)}
+                          onChange={() => setShareSelected(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])}
+                          className="accent-blue-600"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">{u.full_name}</p>
+                          <p className="text-xs text-slate-400 truncate capitalize">{u.role?.replace('_', ' ')}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="p-2 border-t border-slate-100">
+                    <button
+                      disabled={shareSelected.length === 0}
+                      onClick={async () => {
+                        try {
+                          await candidateShareApi.share(c.candidate, shareSelected);
+                        } catch (err) {
+                          console.error('Share failed', err);
+                        }
+                        setShareOpen(null); setShareSearch(''); setShareSelected([]);
+                      }}
+                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium py-2 rounded-lg transition-colors"
+                    >
+                      Share{shareSelected.length > 0 ? ` (${shareSelected.length})` : ''}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -645,7 +723,7 @@ export default function Jobs({ user }) {
         )}
       </div>
     </div>
-  );
+  ); };
 
   // ────────────────────────────────────────────────────────────────────────────
   // RENDER
