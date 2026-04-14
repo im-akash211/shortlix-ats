@@ -1,0 +1,38 @@
+# Secrets — never bake into the image
+.env
+.env.*
+
+# Virtual environment — installed fresh in Docker
+venv/
+.venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# User-uploaded files — served from S3 in production
+media/
+uploads/
+
+# Collected static files — regenerated at build time
+staticfiles/
+
+# Logs
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Dev-only files
+Dockerfile.dev
+README.md
+seed.py
+
+# IDE
+.idea/
+.vscode/
+*.swp

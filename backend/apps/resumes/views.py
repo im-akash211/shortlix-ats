@@ -1,7 +1,7 @@
 import logging
 import threading
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework import generics, status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -52,14 +52,48 @@ class ResumeUploadView(APIView):
         file = serializer.validated_data["file"]
         ext  = file.name.rsplit(".", 1)[-1].lower()
 
-        ingestion = ResumeIngestion.objects.create(
-            uploaded_by=request.user,
-            file=file,
-            original_filename=file.name,
-            file_type=ext,
-            file_size=file.size,
-            status=ResumeIngestion.STATUS_QUEUED,
-        )
+        # ── Exact duplicate detection via SHA-256 hash ─────────────────────────
+        from .utils.file_hash import generate_file_hash  # noqa: PLC0415
+        file_hash = generate_file_hash(file)
+
+        existing = ResumeIngestion.objects.filter(file_hash=file_hash).first()
+        if existing:
+            return Response(
+                {
+                    "duplicate": True,
+                    "message": "This exact resume file has already been uploaded.",
+                    "existing_resume_id": str(existing.id),
+                    "existing_status": existing.status,
+                    "uploaded_at": existing.created_at,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # ── New file — proceed with normal pipeline ────────────────────────────
+        try:
+            ingestion = ResumeIngestion.objects.create(
+                uploaded_by=request.user,
+                file=file,
+                original_filename=file.name,
+                file_type=ext,
+                file_size=file.size,
+                file_hash=file_hash,
+                status=ResumeIngestion.STATUS_QUEUED,
+            )
+        except IntegrityError:
+            # Race condition: another request saved the same hash between our
+            # filter check and this insert — treat it as a duplicate.
+            existing = ResumeIngestion.objects.filter(file_hash=file_hash).first()
+            return Response(
+                {
+                    "duplicate": True,
+                    "message": "This exact resume file has already been uploaded.",
+                    "existing_resume_id": str(existing.id) if existing else None,
+                    "existing_status": existing.status if existing else None,
+                    "uploaded_at": existing.created_at if existing else None,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
 
         from .tasks import process_resume  # noqa: PLC0415
         _dispatch_task(process_resume, str(ingestion.id))
