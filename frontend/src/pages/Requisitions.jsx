@@ -876,7 +876,7 @@ export default function Requisitions({ user }) {
                   <TagInput
                     value={createForm.skills_to_evaluate}
                     onChange={(val) => setField('skills_to_evaluate', val)}
-                    placeholder="Tag your jobs with popular keywords"
+                    placeholder="Comma separated skills to evaluate candidates on."
                   />
                 </div>
 

@@ -6,7 +6,7 @@ import { PageLoader } from '../components/LoadingDots';
 import { ROUTES } from '../routes/constants';
 import {
   Search, MapPin, Clock, Eye, Mail, UserPlus, Users, ChevronDown, ChevronUp,
-  User, X, Filter, Phone, Briefcase, Building2, ChevronRight, Edit2, BookOpen, Trash2,
+  User, X, Filter, Phone, Briefcase, Building2, ChevronRight, Edit2, BookOpen, Trash2, FileText,
 } from 'lucide-react';
 import {
   jobs as jobsApi,
@@ -16,6 +16,48 @@ import {
 } from '../lib/api';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-2xl' }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className={`bg-white rounded-xl shadow-xl w-full ${maxWidth} max-h-[90vh] flex flex-col overflow-hidden`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
+          <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="overflow-y-auto p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const SOURCE_LABELS = {
+  recruiter_upload: 'Recruiter Upload',
+  naukri: 'Naukri',
+  linkedin: 'LinkedIn',
+  referral: 'Referral',
+  manual: 'Manual',
+};
+
+const STAGE_LABELS = {
+  pending: 'Pending', shortlisted: 'Shortlisted', interview: 'Interview',
+  on_hold: 'On Hold', selected: 'Selected', rejected: 'Rejected',
+  offered: 'Offered', joined: 'Joined',
+};
+
+const STAGE_COLORS = {
+  pending:     'bg-amber-100 text-amber-700',
+  shortlisted: 'bg-blue-100 text-blue-700',
+  interview:   'bg-purple-100 text-purple-700',
+  on_hold:     'bg-slate-100 text-slate-600',
+  selected:    'bg-emerald-100 text-emerald-700',
+  rejected:    'bg-rose-100 text-rose-700',
+  offered:     'bg-cyan-100 text-cyan-700',
+  joined:      'bg-green-100 text-green-700',
+};
 
 function StatusBadge({ status }) {
   const map = {
@@ -210,6 +252,37 @@ export default function Jobs({ user }) {
 
   // ── Shortlist action state ────────────────────────────────────────────────────
   const [shortlistingId, setShortlistingId] = useState(null);
+
+  // ── Candidate profile modal state ────────────────────────────────────────────
+  const [candidateProfile, setCandidateProfile] = useState(null);
+  const [candidateProfileLoading, setCandidateProfileLoading] = useState(false);
+
+  const openCandidateProfile = async (c) => {
+    setCandidateProfile(null);
+    setCandidateProfileLoading(true);
+    try {
+      const detail = await candidatesApi.detail(c.candidate);
+      setCandidateProfile(detail);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCandidateProfileLoading(false);
+    }
+  };
+
+  // ── Resume viewer state ──────────────────────────────────────────────────────
+  const [resumeModal, setResumeModal] = useState(null);
+  const openResume = async (candidate) => {
+    try {
+      const files = candidate.resume_files || [];
+      const latest = files.find(f => f.is_latest) || files[0];
+      if (files.length === 0) { setResumeModal({ name: candidate.full_name, empty: true }); return; }
+      if (!latest?.file_url) { setResumeModal({ name: candidate.full_name, missing: true }); return; }
+      setResumeModal({ url: latest.file_url, filename: latest.original_filename, type: latest.file_type, name: candidate.full_name });
+    } catch (err) {
+      setResumeModal({ name: candidate.full_name, error: true });
+    }
+  };
 
   // ── Schedule Interview modal state ───────────────────────────────────────────
   const [isScheduleOpen, setIsScheduleOpen]         = useState(false);
@@ -508,36 +581,47 @@ export default function Jobs({ user }) {
   // ── Candidate card ───────────────────────────────────────────────────────────
   const renderCandidateCard = (c) => (
     <div key={c.id} className="flex gap-4 border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-white">
-      <div className="w-11 h-11 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold shrink-0">
+      <button
+        onClick={() => openCandidateProfile(c)}
+        className="w-11 h-11 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold shrink-0 hover:bg-blue-200 transition-colors"
+      >
         {c.candidate_name ? c.candidate_name.slice(0, 2).toUpperCase() : '?'}
-      </div>
+      </button>
       <div className="flex-1 flex flex-col gap-3 min-w-0">
         <div className="flex justify-between items-start gap-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-800">{c.candidate_name}</h3>
+          <div className="flex-1 min-w-0">
+            <button onClick={() => openCandidateProfile(c)} className="text-sm font-bold text-slate-800 hover:text-blue-600 transition-colors text-left">{c.candidate_name}</button>
             <p className="text-xs text-slate-500 mt-0.5">Stage: <span className="capitalize font-medium text-slate-700">{c.stage}</span></p>
           </div>
-          {c.stage === 'pending' && (
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => handleShortlist(c)}
-              disabled={shortlistingId === c.id}
-              className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded font-medium transition-colors shrink-0"
+              onClick={() => openCandidateProfile(c)}
+              className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium transition-colors"
             >
-              {shortlistingId === c.id ? 'Moving…' : 'Shortlist'}
+              View Profile
             </button>
-          )}
-          {c.stage === 'shortlisted' && (
-            <button
-              onClick={() => {
-                setScheduleCandidate(c);
-                setIsScheduleOpen(true);
-                usersApi.list().then((res) => setUsersList(res.results || res)).catch(console.error);
-              }}
-              className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded font-medium transition-colors shrink-0"
-            >
-              Schedule Interview
-            </button>
-          )}
+            {c.stage === 'pending' && (
+              <button
+                onClick={() => handleShortlist(c)}
+                disabled={shortlistingId === c.id}
+                className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded font-medium transition-colors"
+              >
+                {shortlistingId === c.id ? 'Moving…' : 'Shortlist'}
+              </button>
+            )}
+            {c.stage === 'shortlisted' && (
+              <button
+                onClick={() => {
+                  setScheduleCandidate(c);
+                  setIsScheduleOpen(true);
+                  usersApi.list().then((res) => setUsersList(res.results || res)).catch(console.error);
+                }}
+                className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded font-medium transition-colors"
+              >
+                Schedule Interview
+              </button>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
@@ -568,6 +652,145 @@ export default function Jobs({ user }) {
   // ────────────────────────────────────────────────────────────────────────────
   return (
     <>
+      {/* ══════════ CANDIDATE PROFILE MODAL ══════════ */}
+      <Modal isOpen={candidateProfile !== null || candidateProfileLoading} onClose={() => { setCandidateProfile(null); setCandidateProfileLoading(false); }} title="Candidate Profile" maxWidth="max-w-3xl">
+        {candidateProfileLoading ? (
+          <PageLoader label="Loading profile…" />
+        ) : candidateProfile ? (
+          <div className="flex flex-col gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-2xl font-bold shrink-0">
+                {candidateProfile.full_name?.slice(0, 2).toUpperCase() || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-xl font-bold text-slate-800 truncate">{candidateProfile.full_name}</h3>
+                {candidateProfile.designation && <p className="text-sm text-slate-600 mt-0.5">{candidateProfile.designation}</p>}
+                {candidateProfile.current_employer && <p className="text-xs text-slate-500 mt-0.5">{candidateProfile.current_employer}</p>}
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  {candidateProfile.source && (
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full">
+                      {SOURCE_LABELS[candidateProfile.source] || candidateProfile.source}
+                    </span>
+                  )}
+                  <span className="text-xs text-slate-400">
+                    Added {new Date(candidateProfile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => openResume(candidateProfile)}
+                className="shrink-0 flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" /> Resume
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-xl p-4">
+              {[
+                { icon: <Mail className="w-4 h-4" />,     label: 'Email',      value: candidateProfile.email || '—' },
+                { icon: <Phone className="w-4 h-4" />,    label: 'Phone',      value: candidateProfile.phone || '—' },
+                { icon: <MapPin className="w-4 h-4" />,   label: 'Location',   value: candidateProfile.location || '—' },
+                { icon: <Briefcase className="w-4 h-4" />,label: 'Experience', value: candidateProfile.total_experience_years ? `${candidateProfile.total_experience_years} years` : '—' },
+              ].map(({ icon, label, value }) => (
+                <div key={label} className="flex items-start gap-2.5">
+                  <span className="text-slate-400 mt-0.5 shrink-0">{icon}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">{label}</p>
+                    <p className="text-sm font-medium text-slate-800 truncate">{value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {candidateProfile.skills?.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-slate-700 mb-2">Skills</p>
+                <div className="flex flex-wrap gap-2">
+                  {candidateProfile.skills.map((s, i) => (
+                    <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {candidateProfile.job_mappings?.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-slate-700 mb-2">Job Applications ({candidateProfile.job_mappings.length})</p>
+                <div className="flex flex-col gap-2">
+                  {candidateProfile.job_mappings.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between border border-slate-200 rounded-lg px-4 py-2.5 bg-white">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{m.job_title}</p>
+                        <p className="text-xs text-slate-500">{m.job_code}</p>
+                      </div>
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ml-3 ${STAGE_COLORS[m.stage] || 'bg-slate-100 text-slate-600'}`}>
+                        {STAGE_LABELS[m.stage] || m.stage}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {candidateProfile.notes?.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-slate-700 mb-2">Notes ({candidateProfile.notes.length})</p>
+                <div className="flex flex-col gap-2">
+                  {candidateProfile.notes.map((n) => (
+                    <div key={n.id} className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      <p className="text-sm text-slate-700 leading-relaxed">{n.content}</p>
+                      <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+                        <User className="w-3 h-3" />
+                        <span>{n.user_name}</span>
+                        <span>·</span>
+                        <Clock className="w-3 h-3" />
+                        <span>{new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </Modal>
+
+      {/* ══════════ RESUME VIEWER MODAL ══════════ */}
+      <Modal isOpen={!!resumeModal} onClose={() => setResumeModal(null)} title={resumeModal ? `Resume — ${resumeModal.name}` : ''} maxWidth="max-w-4xl">
+        {resumeModal && (
+          resumeModal.error ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500">
+              <FileText className="w-16 h-16 text-slate-300" />
+              <p className="text-sm font-medium text-slate-600">Failed to load resume.</p>
+            </div>
+          ) : resumeModal.empty ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500">
+              <FileText className="w-16 h-16 text-slate-300" />
+              <p className="text-sm font-medium text-slate-600">No resume uploaded</p>
+              <p className="text-xs text-slate-400">This candidate does not have a resume on file.</p>
+            </div>
+          ) : resumeModal.missing ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500">
+              <FileText className="w-16 h-16 text-slate-300" />
+              <p className="text-sm font-medium text-slate-600">Resume file not found</p>
+              <p className="text-xs text-slate-400">The file may have been deleted. Please upload a new resume.</p>
+            </div>
+          ) : resumeModal.type === 'pdf' ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-500">{resumeModal.filename}</span>
+                <a href={resumeModal.url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">Open in new tab</a>
+              </div>
+              <iframe src={resumeModal.url} className="w-full rounded-lg border border-slate-200" style={{ height: '70vh' }} title="Resume" />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-4 py-12 text-slate-500">
+              <FileText className="w-16 h-16 text-slate-300" />
+              <p className="text-sm text-slate-600">Preview not available for .docx files.</p>
+              <a href={resumeModal.url} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                Download Resume
+              </a>
+            </div>
+          )
+        )}
+      </Modal>
+
       {/* ══════════════════ JOB DETAIL VIEW ══════════════════ */}
       {viewingJob ? (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
