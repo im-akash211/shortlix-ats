@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Candidate, CandidateJobMapping, PipelineStageLog, CandidateNote
+from .models import Candidate, CandidateJobMapping, PipelineStageLog, CandidateNote, ResumeFile
 
 
 class CandidateNoteSerializer(serializers.ModelSerializer):
@@ -66,9 +66,31 @@ class CandidateListSerializer(serializers.ModelSerializer):
         return mapping.stage if mapping else None
 
 
+class ResumeFileSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ResumeFile
+        fields = ['id', 'original_filename', 'file_type', 'file_size_bytes', 'is_latest', 'created_at', 'file_url']
+
+    def get_file_url(self, obj):
+        if not obj.file:
+            return None
+        try:
+            if not obj.file.storage.exists(obj.file.name):
+                return None
+        except Exception:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url
+
+
 class CandidateDetailSerializer(serializers.ModelSerializer):
     job_mappings = CandidateJobMappingSerializer(many=True, read_only=True)
     notes = CandidateNoteSerializer(many=True, read_only=True)
+    resume_files = ResumeFileSerializer(many=True, read_only=True)
 
     class Meta:
         model = Candidate

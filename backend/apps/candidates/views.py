@@ -58,7 +58,7 @@ class CandidateListCreateView(generics.ListCreateAPIView):
 
 
 class CandidateDetailView(generics.RetrieveUpdateAPIView):
-    queryset = Candidate.objects.prefetch_related('job_mappings__job', 'notes__user').all()
+    queryset = Candidate.objects.prefetch_related('job_mappings__job', 'notes__user', 'resume_files').all()
 
     def get_serializer_class(self):
         if self.request.method in ('PUT', 'PATCH'):

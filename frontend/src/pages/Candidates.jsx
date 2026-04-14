@@ -4,7 +4,7 @@ import { useDebounce } from '../lib/useDebounce';
 import { useSearchParams, useNavigate, useMatch } from 'react-router-dom';
 import { PageLoader } from '../components/LoadingDots';
 import {
-  Search, Eye, Edit, MapPin, Phone, Mail, Filter, Trash2,
+  Search, Edit, MapPin, Phone, Mail, Filter, Trash2,
   MessageSquarePlus, X, ChevronDown, ChevronUp, Briefcase, User, Clock,
   Upload, CheckCircle, AlertCircle, Loader, FileText, Plus, GraduationCap,
   ArrowUpDown, ArrowUp, ArrowDown,
@@ -190,6 +190,29 @@ export default function Candidates({ user }) {
   // View profile
   const [profileDetail, setProfileDetail]   = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
+
+  // Resume viewer
+  const [resumeModal, setResumeModal] = useState(null); // { url, filename, type, name } | { empty/missing/error }
+  const openResume = async (c) => {
+    try {
+      const detail = await candidatesApi.detail(c.id);
+      const files = detail.resume_files || [];
+      const latest = files.find(f => f.is_latest) || files[0];
+
+      if (files.length === 0) {
+        setResumeModal({ name: c.full_name, empty: true });
+        return;
+      }
+      if (!latest?.file_url) {
+        setResumeModal({ name: c.full_name, missing: true });
+        return;
+      }
+
+      setResumeModal({ url: latest.file_url, filename: latest.original_filename, type: latest.file_type, name: c.full_name });
+    } catch (err) {
+      setResumeModal({ name: c.full_name, error: true });
+    }
+  };
 
   // Edit modal
   const [editForm, setEditForm]       = useState({});
@@ -803,7 +826,7 @@ export default function Candidates({ user }) {
                             </div>
                             {/* Action icons */}
                             <div className="flex items-center gap-2 text-slate-400">
-                              <button onClick={() => openViewProfile(c)} className="hover:text-blue-600 transition-colors" title="View Profile"><Eye className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => openResume(c)} className="hover:text-blue-600 transition-colors" title="View Resume"><FileText className="w-3.5 h-3.5" /></button>
                               <button onClick={() => openModal('note', c)} className="hover:text-blue-600 transition-colors" title="Add Note"><MessageSquarePlus className="w-3.5 h-3.5" /></button>
                               <button onClick={() => openModal('edit', c)} className="hover:text-blue-600 transition-colors" title="Edit Profile"><Edit className="w-3.5 h-3.5" /></button>
                               <button onClick={() => openDeleteConfirm(c)} className="hover:text-rose-600 transition-colors" title="Delete Candidate"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -1009,6 +1032,12 @@ export default function Candidates({ user }) {
                   </span>
                 </div>
               </div>
+              <button
+                onClick={() => openResume(profileDetail)}
+                className="shrink-0 flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" /> Resume
+              </button>
             </div>
 
             {/* Contact + Professional info grid */}
@@ -1727,6 +1756,47 @@ export default function Candidates({ user }) {
             </div>
           )}
         </div>
+      </Modal>
+
+      {/* ══════════ RESUME VIEWER MODAL ══════════ */}
+      <Modal isOpen={!!resumeModal} onClose={() => setResumeModal(null)} title={resumeModal ? `Resume — ${resumeModal.name}` : ''} maxWidth="max-w-4xl">
+        {resumeModal && (
+          resumeModal.error ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500">
+              <FileText className="w-16 h-16 text-slate-300" />
+              <p className="text-sm font-medium text-slate-600">Failed to load resume.</p>
+              <p className="text-xs text-slate-400">Please try again later.</p>
+            </div>
+          ) : resumeModal.empty ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500">
+              <FileText className="w-16 h-16 text-slate-300" />
+              <p className="text-sm font-medium text-slate-600">No resume uploaded</p>
+              <p className="text-xs text-slate-400">This candidate does not have a resume on file.</p>
+            </div>
+          ) : resumeModal.missing ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-500">
+              <FileText className="w-16 h-16 text-slate-300" />
+              <p className="text-sm font-medium text-slate-600">Resume file not found</p>
+              <p className="text-xs text-slate-400">The file may have been deleted. Please upload a new resume.</p>
+            </div>
+          ) : resumeModal.type === 'pdf' ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-500">{resumeModal.filename}</span>
+                <a href={resumeModal.url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">Open in new tab</a>
+              </div>
+              <iframe src={resumeModal.url} className="w-full rounded-lg border border-slate-200" style={{ height: '70vh' }} title="Resume" />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-4 py-12 text-slate-500">
+              <FileText className="w-16 h-16 text-slate-300" />
+              <p className="text-sm text-slate-600">Preview not available for .docx files.</p>
+              <a href={resumeModal.url} target="_blank" rel="noreferrer" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                Download Resume
+              </a>
+            </div>
+          )
+        )}
       </Modal>
 
       {/* ══════════ DELETE CANDIDATE CONFIRMATION MODAL ══════════ */}
