@@ -294,6 +294,7 @@ export default function Jobs({ user }) {
   });
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [usersList, setUsersList]             = useState([]);
+  const [usersLoading, setUsersLoading]       = useState(false);
   const [scheduleToast, setScheduleToast]     = useState(null);
 
   // ── Share candidate state ────────────────────────────────────────────────────
@@ -304,7 +305,13 @@ export default function Jobs({ user }) {
   useEffect(() => {
     if (!shareOpen) return;
     // load users if not already loaded
-    if (usersList.length === 0) usersApi.dropdown().then((res) => setUsersList(Array.isArray(res) ? res : (res.results || []))).catch(console.error);
+    if (usersList.length === 0) {
+      setUsersLoading(true);
+      usersApi.dropdown()
+        .then((res) => setUsersList(Array.isArray(res) ? res : (res.results || [])))
+        .catch(console.error)
+        .finally(() => setUsersLoading(false));
+    }
     const handler = (e) => { if (shareRef.current && !shareRef.current.contains(e.target)) { setShareOpen(null); setShareSearch(''); setShareSelected([]); } };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -663,7 +670,12 @@ export default function Jobs({ user }) {
                     />
                   </div>
                   <div className="overflow-y-auto max-h-52">
-                    {filteredUsers.length === 0 ? (
+                    {usersLoading ? (
+                      <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
+                        <svg className="animate-spin w-4 h-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                        <span className="text-xs">Loading users...</span>
+                      </div>
+                    ) : filteredUsers.length === 0 ? (
                       <p className="text-xs text-slate-400 text-center py-4">No users found</p>
                     ) : filteredUsers.map((u) => (
                       <label key={u.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
