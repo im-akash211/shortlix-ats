@@ -83,7 +83,7 @@ export default function Dashboard({ user }) {
             <Maximize2 className="w-4 h-4" />
           </button>
           <div className="border-b-2 border-slate-800 pb-1 flex items-center gap-1 cursor-pointer">
-            <span className="text-sm font-semibold text-slate-800">Live</span>
+            <span className="text-sm font-semibold text-slate-800">Current Month</span>
             <ChevronDown className="w-4 h-4 text-slate-800" />
           </div>
         </div>
