@@ -296,6 +296,7 @@ export default function Jobs({ user }) {
   const [usersList, setUsersList]             = useState([]);
   const [usersLoading, setUsersLoading]       = useState(false);
   const [scheduleToast, setScheduleToast]     = useState(null);
+  const [shareToast, setShareToast]           = useState(null);
 
   // ── Share candidate state ────────────────────────────────────────────────────
   const [shareOpen, setShareOpen]           = useState(null); // candidate id
@@ -696,8 +697,11 @@ export default function Jobs({ user }) {
                     <button
                       disabled={shareSelected.length === 0}
                       onClick={async () => {
+                        const count = shareSelected.length;
                         try {
                           await candidateShareApi.share(c.candidate, shareSelected);
+                          setShareToast(`Profile shared with ${count} user${count > 1 ? 's' : ''} successfully`);
+                          setTimeout(() => setShareToast(null), 3000);
                         } catch (err) {
                           console.error('Share failed', err);
                         }
@@ -1773,6 +1777,14 @@ export default function Jobs({ user }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Share success toast */}
+      {shareToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] bg-green-600 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
+          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+          {shareToast}
         </div>
       )}
     </>

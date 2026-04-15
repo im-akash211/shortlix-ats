@@ -221,6 +221,7 @@ export default function Candidates({ user }) {
   const [shareSelected, setShareSelected] = useState([]);
   const [usersList, setUsersList]         = useState([]);
   const [usersLoading, setUsersLoading]   = useState(false);
+  const [shareToast, setShareToast]       = useState(null);
   const shareRef                          = useRef(null);
 
   const openShare = (e, candidateId) => {
@@ -1790,6 +1791,14 @@ export default function Candidates({ user }) {
       </Modal>
 
       {/* ══════════ SHARE MODAL ══════════ */}
+      {/* Share success toast */}
+      {shareToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] bg-green-600 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fade-in">
+          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+          {shareToast}
+        </div>
+      )}
+
       {shareOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div ref={shareRef} className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
@@ -1834,7 +1843,12 @@ export default function Candidates({ user }) {
                 <button
                   disabled={shareSelected.length === 0}
                   onClick={async () => {
-                    try { await candidateShareApi.share(shareOpen, shareSelected); } catch (err) { console.error(err); }
+                    const count = shareSelected.length;
+                    try {
+                      await candidateShareApi.share(shareOpen, shareSelected);
+                      setShareToast(`Profile shared with ${count} user${count > 1 ? 's' : ''} successfully`);
+                      setTimeout(() => setShareToast(null), 3000);
+                    } catch (err) { console.error(err); }
                     setShareOpen(null); setShareSearch(''); setShareSelected([]);
                   }}
                   className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors font-medium"
