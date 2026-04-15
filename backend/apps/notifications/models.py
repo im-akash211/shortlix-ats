@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 
@@ -58,6 +59,33 @@ class NotificationSetting(models.Model):
     def __str__(self):
         status = 'ON' if self.is_enabled else 'OFF'
         return f'{self.label} [{status}]'
+
+
+class InAppNotification(models.Model):
+    """In-app notification shown in the bell dropdown."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifications'
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='sent_notifications'
+    )
+    notification_type = models.CharField(max_length=50, default='candidate_shared')
+    message = models.TextField()
+    candidate = models.ForeignKey(
+        'candidates.Candidate', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='notifications'
+    )
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'in_app_notifications'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Notification for {self.recipient} — {self.message[:50]}'
 
 
 class EmailStatus(models.TextChoices):
