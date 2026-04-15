@@ -3,11 +3,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db import transaction
+from django.core.mail import EmailMultiAlternatives
+from django.conf import settings
 from .models import Candidate, CandidateJobMapping, PipelineStageLog, CandidateNote
 from .serializers import (
     CandidateListSerializer, CandidateDetailSerializer, CandidateCreateSerializer,
     CandidateJobMappingSerializer, CandidateNoteSerializer
 )
+from apps.accounts.models import User
+from apps.notifications.models import InAppNotification
 
 
 class CandidateListCreateView(generics.ListCreateAPIView):
@@ -142,3 +146,68 @@ class CandidateMoveJobView(APIView):
                 changed_by=request.user, notes=f'Moved from job {from_job_id}'
             )
         return Response(CandidateJobMappingSerializer(new_mapping).data, status=status.HTTP_201_CREATED)
+
+
+class CandidateShareView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        candidate = generics.get_object_or_404(Candidate, pk=pk)
+        user_ids = request.data.get('user_ids', [])
+        if not user_ids:
+            return Response({'error': 'user_ids is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        recipients = User.objects.filter(id__in=user_ids)
+        sender = request.user
+        notifications = [
+            InAppNotification(
+                recipient=recipient,
+                sender=sender,
+                notification_type='candidate_shared',
+                message=f'{sender.full_name} shared the profile of {candidate.full_name} with you.',
+                candidate=candidate,
+            )
+            for recipient in recipients
+        ]
+        InAppNotification.objects.bulk_create(notifications)
+
+        # Send email notifications
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        candidate_url = f"{frontend_url}/candidates/{candidate.id}"
+        for recipient in recipients:
+            subject = f"{sender.full_name} shared a candidate profile with you"
+            text_body = (
+                f"Hi {recipient.full_name},\n\n"
+                f"{sender.full_name} has shared the profile of {candidate.full_name} with you on the ATS platform.\n\n"
+                f"View profile: {candidate_url}\n\n"
+                f"— Shorthills AI ATS"
+            )
+            html_body = f"""
+            <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;">
+              <h2 style="color:#1e293b;margin-bottom:8px;">Candidate Profile Shared</h2>
+              <p style="color:#475569;">Hi <strong>{recipient.full_name}</strong>,</p>
+              <p style="color:#475569;">
+                <strong>{sender.full_name}</strong> has shared the profile of
+                <strong>{candidate.full_name}</strong> with you on the ATS platform.
+              </p>
+              <a href="{candidate_url}"
+                 style="display:inline-block;margin-top:16px;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">
+                View Candidate Profile
+              </a>
+              <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Shorthills AI ATS</p>
+            </div>
+            """
+            try:
+                msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=text_body,
+                    from_email=f"{sender.full_name} via ATS <{settings.EMAIL_HOST_USER}>",
+                    to=[recipient.email],
+                    reply_to=[sender.email],
+                )
+                msg.attach_alternative(html_body, "text/html")
+                msg.send()
+            except Exception:
+                pass  # Don't fail the request if email sending fails
+
+        return Response({'shared_with': len(notifications)}, status=status.HTTP_201_CREATED)
