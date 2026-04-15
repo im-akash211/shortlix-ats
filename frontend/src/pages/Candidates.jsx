@@ -7,9 +7,9 @@ import {
   Search, Edit, MapPin, Phone, Mail, Filter, Trash2,
   MessageSquarePlus, X, ChevronDown, ChevronUp, Briefcase, User, Clock,
   Upload, CheckCircle, AlertCircle, Loader, FileText, Plus, GraduationCap,
-  ArrowUpDown, ArrowUp, ArrowDown,
+  ArrowUpDown, ArrowUp, ArrowDown, Share2,
 } from 'lucide-react';
-import { candidates as candidatesApi, jobs as jobsApi, resumes as resumesApi } from '../lib/api';
+import { candidates as candidatesApi, jobs as jobsApi, resumes as resumesApi, candidateShare as candidateShareApi, users as usersApi } from '../lib/api';
 import { ROUTES } from '../routes/constants';
 
 // ─── Skill chip editor ─────────────────────────────────────────────────────────
@@ -213,6 +213,36 @@ export default function Candidates({ user }) {
       setResumeModal({ name: c.full_name, error: true });
     }
   };
+
+  // Share popover
+  const [shareOpen, setShareOpen]         = useState(null); // candidate id
+  const [sharePos, setSharePos]           = useState({ top: 0, left: 0 });
+  const [shareSearch, setShareSearch]     = useState('');
+  const [shareSelected, setShareSelected] = useState([]);
+  const [usersList, setUsersList]         = useState([]);
+  const [usersLoading, setUsersLoading]   = useState(false);
+  const [shareToast, setShareToast]       = useState(null);
+  const shareRef                          = useRef(null);
+
+  const openShare = (e, candidateId) => {
+    setShareOpen(candidateId);
+    setShareSearch('');
+    setShareSelected([]);
+  };
+
+  useEffect(() => {
+    if (!shareOpen) return;
+    if (usersList.length === 0) {
+      setUsersLoading(true);
+      usersApi.dropdown()
+        .then(res => setUsersList(Array.isArray(res) ? res : (res.results || [])))
+        .catch(console.error)
+        .finally(() => setUsersLoading(false));
+    }
+    const handler = (e) => { if (shareRef.current && !shareRef.current.contains(e.target)) { setShareOpen(null); setShareSearch(''); setShareSelected([]); } };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [shareOpen]);
 
   // Edit modal
   const [editForm, setEditForm]       = useState({});
@@ -830,6 +860,8 @@ export default function Candidates({ user }) {
                               <button onClick={() => openModal('note', c)} className="hover:text-blue-600 transition-colors" title="Add Note"><MessageSquarePlus className="w-3.5 h-3.5" /></button>
                               <button onClick={() => openModal('edit', c)} className="hover:text-blue-600 transition-colors" title="Edit Profile"><Edit className="w-3.5 h-3.5" /></button>
                               <button onClick={() => openDeleteConfirm(c)} className="hover:text-rose-600 transition-colors" title="Delete Candidate"><Trash2 className="w-3.5 h-3.5" /></button>
+                              {/* Share */}
+                              <button onClick={(e) => openShare(e, shareOpen === c.id ? null : c.id)} className="hover:text-blue-600 transition-colors" title="Share Profile"><Share2 className="w-3.5 h-3.5" /></button>
                             </div>
                           </div>
                         </div>
@@ -1757,6 +1789,77 @@ export default function Candidates({ user }) {
           )}
         </div>
       </Modal>
+
+      {/* ══════════ SHARE MODAL ══════════ */}
+      {/* Share success toast */}
+      {shareToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] bg-green-600 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fade-in">
+          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+          {shareToast}
+        </div>
+      )}
+
+      {shareOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div ref={shareRef} className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-800">Share Candidate Profile</h3>
+              <button onClick={() => { setShareOpen(null); setShareSearch(''); setShareSelected([]); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {/* Search */}
+            <div className="px-5 py-3 border-b border-slate-100">
+              <input autoFocus type="text" placeholder="Search users..." value={shareSearch} onChange={e => setShareSearch(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500" />
+            </div>
+            {/* User list */}
+            <div className="overflow-y-auto max-h-64">
+              {usersLoading ? (
+                <div className="flex items-center justify-center py-8 gap-2 text-slate-400">
+                  <svg className="animate-spin w-4 h-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  <span className="text-xs">Loading users...</span>
+                </div>
+              ) : usersList.filter(u => u.full_name.toLowerCase().includes(shareSearch.toLowerCase())).length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-8">No users found</p>
+              ) : usersList.filter(u => u.full_name.toLowerCase().includes(shareSearch.toLowerCase())).map(u => (
+                <label key={u.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0">
+                  <input type="checkbox" checked={shareSelected.includes(u.id)} onChange={() => setShareSelected(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])} className="accent-blue-600 w-4 h-4 shrink-0" />
+                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+                    {u.full_name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800">{u.full_name}</p>
+                    <p className="text-xs text-slate-400 capitalize">{u.role?.replace('_', ' ')}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-slate-100 flex items-center justify-between gap-3">
+              <span className="text-xs text-slate-400">{shareSelected.length > 0 ? `${shareSelected.length} user${shareSelected.length > 1 ? 's' : ''} selected` : 'Select users to share with'}</span>
+              <div className="flex gap-2">
+                <button onClick={() => { setShareOpen(null); setShareSearch(''); setShareSelected([]); }} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+                <button
+                  disabled={shareSelected.length === 0}
+                  onClick={async () => {
+                    const count = shareSelected.length;
+                    try {
+                      await candidateShareApi.share(shareOpen, shareSelected);
+                      setShareToast(`Profile shared with ${count} user${count > 1 ? 's' : ''} successfully`);
+                      setTimeout(() => setShareToast(null), 3000);
+                    } catch (err) { console.error(err); }
+                    setShareOpen(null); setShareSearch(''); setShareSelected([]);
+                  }}
+                  className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors font-medium"
+                >
+                  Share{shareSelected.length > 0 ? ` (${shareSelected.length})` : ''}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══════════ RESUME VIEWER MODAL ══════════ */}
       <Modal isOpen={!!resumeModal} onClose={() => setResumeModal(null)} title={resumeModal ? `Resume — ${resumeModal.name}` : ''} maxWidth="max-w-4xl">

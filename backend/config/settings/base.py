@@ -22,7 +22,7 @@ INSTALLED_APPS = [
     'storages',
     'apps.accounts', 'apps.departments', 'apps.requisitions',
     'apps.jobs', 'apps.candidates', 'apps.interviews',
-    'apps.dashboard', 'apps.core', 'apps.resumes',
+    'apps.dashboard', 'apps.core', 'apps.resumes', 'apps.notifications',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -126,3 +126,13 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── Email (Gmail SMTP) ─────────────────────────────────────────────────────────
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default=EMAIL_HOST_USER)
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:3000')
