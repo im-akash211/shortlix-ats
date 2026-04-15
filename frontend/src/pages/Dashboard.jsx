@@ -9,7 +9,7 @@ import { Download, ChevronDown, Maximize2 } from 'lucide-react';
 import { dashboard } from '../lib/api';
 import { ROUTES } from '../routes/constants';
 
-const STATUS_OPTIONS = ['open', 'hidden', 'closed', 'all'];
+const STATUS_OPTIONS = ['open', 'abandoned', 'closed', 'all'];
 
 export default function Dashboard({ user }) {
   const navigate = useNavigate();

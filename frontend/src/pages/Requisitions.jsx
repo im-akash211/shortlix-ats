@@ -51,6 +51,8 @@ const INITIAL_FORM = {
   tags: [],
   min_qualification: '',
   expected_start_date: '',
+  tat_days: '',
+  budget: '',
   reference_number: '',
   project_name: '',
   hiring_manager: '',
@@ -227,6 +229,8 @@ export default function Requisitions({ user }) {
           tags:                detail.tags || [],
           min_qualification:   detail.min_qualification || '',
           expected_start_date: detail.expected_start_date || '',
+          tat_days:            detail.tat_days ?? '',
+          budget:              detail.budget ?? '',
           reference_number:    detail.reference_number || '',
           project_name:        detail.project_name || '',
           hiring_manager:      detail.hiring_manager || '',
@@ -840,6 +844,31 @@ export default function Requisitions({ user }) {
                   />
                 </div>
 
+                {/* TAT (Turn Around Time) */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>TAT (Days):</FieldLabel>
+                  <TextField
+                    type="number"
+                    min="1"
+                    value={createForm.tat_days}
+                    onChange={(e) => setField('tat_days', e.target.value)}
+                    placeholder="e.g. 30"
+                  />
+                </div>
+
+                {/* Budget */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
+                  <TextField
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={createForm.budget}
+                    onChange={(e) => setField('budget', e.target.value)}
+                    placeholder="e.g. 12.50 (optional)"
+                  />
+                </div>
+
                 {/* Row 10: Tags | Mandatory Skills */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Tags:</FieldLabel>
@@ -1074,6 +1103,31 @@ export default function Requisitions({ user }) {
                   <FieldLabel required>Mandatory Skills:</FieldLabel>
                   <TagInput value={editForm.skills_required} onChange={(val) => setEditField('skills_required', val)} placeholder="Please add at least 3 comma separated mandatory skills." error={editErrors.skills_required} />
                   <FieldError msg={editErrors.skills_required} />
+                </div>
+
+                {/* TAT (Turn Around Time) */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>TAT (Days):</FieldLabel>
+                  <TextField
+                    type="number"
+                    min="1"
+                    value={editForm.tat_days}
+                    onChange={(e) => setEditField('tat_days', e.target.value)}
+                    placeholder="e.g. 30"
+                  />
+                </div>
+
+                {/* Budget */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
+                  <TextField
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editForm.budget}
+                    onChange={(e) => setEditField('budget', e.target.value)}
+                    placeholder="e.g. 12.50 (optional)"
+                  />
                 </div>
 
               </div>

@@ -61,9 +61,9 @@ const STAGE_COLORS = {
 
 function StatusBadge({ status }) {
   const map = {
-    open: 'bg-emerald-100 text-emerald-700',
-    hidden: 'bg-amber-100 text-amber-700',
-    closed: 'bg-slate-100 text-slate-600',
+    open:      'bg-emerald-100 text-emerald-700',
+    abandoned: 'bg-amber-100 text-amber-700',
+    closed:    'bg-slate-100 text-slate-600',
   };
   return (
     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${map[status] || map.closed}`}>
@@ -226,9 +226,14 @@ export default function Jobs({ user }) {
   }, [matchJobId, isCandidatesRoute]);
 
   // ── Edit modal state ─────────────────────────────────────────────────────────
-  const [isEditOpen, setIsEditOpen]   = useState(false);
-  const [editForm, setEditForm]       = useState({});
-  const [editLoading, setEditLoading] = useState(false);
+  const [isEditOpen, setIsEditOpen]         = useState(false);
+  const [editForm, setEditForm]             = useState({});
+  const [editLoading, setEditLoading]       = useState(false);
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
+
+  // ── Job history state ────────────────────────────────────────────────────────
+  const [jobHistory, setJobHistory]         = useState([]);
+  const [expandedHistoryId, setExpandedHistoryId] = useState(null);
 
   // ── Delete job state ─────────────────────────────────────────────────────────
   const [isDeleteJobOpen, setIsDeleteJobOpen] = useState(false);
@@ -366,6 +371,18 @@ export default function Jobs({ user }) {
       .catch(console.error);
   }, [viewingJob]);
 
+  // ── Job history — load when a job is opened ──────────────────────────────────
+  useEffect(() => {
+    if (!viewingJob) {
+      setJobHistory([]);
+      setExpandedHistoryId(null);
+      return;
+    }
+    jobsApi.history(viewingJob.id)
+      .then((res) => setJobHistory(res.results || res))
+      .catch(console.error);
+  }, [viewingJob]);
+
   // ── Pipeline candidates — only load when the panel is open ──────────────────
   useEffect(() => {
     if (!viewingJob || !isPipelinePanelOpen) return;
@@ -405,6 +422,10 @@ export default function Jobs({ user }) {
       setViewingJob((prev) => ({ ...prev, title: updated.title, location: updated.location, status: updated.status }));
       setIsEditOpen(false);
       queryClient.invalidateQueries({ queryKey: ['jobs', 'list'] });
+      // Refresh history after save
+      jobsApi.history(updated.id)
+        .then((res) => setJobHistory(res.results || res))
+        .catch(console.error);
     } catch (err) {
       alert(err.data?.detail || JSON.stringify(err.data) || 'Failed to save changes');
     } finally {
@@ -468,6 +489,7 @@ export default function Jobs({ user }) {
       // Refresh detail collaborators list if viewing that job
       if (viewingJob?.id === selectedJob.id) {
         jobsApi.detail(selectedJob.id).then(setJobDetail).catch(console.error);
+        jobsApi.history(selectedJob.id).then((res) => setJobHistory(res.results || res)).catch(console.error);
       }
     } catch (err) {
       setCollabError(err.data?.non_field_errors?.[0] || err.data?.detail || 'Could not add collaborator.');
@@ -484,6 +506,7 @@ export default function Jobs({ user }) {
       fetchCollaborators(selectedJob.id);
       if (viewingJob?.id === selectedJob.id) {
         jobsApi.detail(selectedJob.id).then(setJobDetail).catch(console.error);
+        jobsApi.history(selectedJob.id).then((res) => setJobHistory(res.results || res)).catch(console.error);
       }
     } catch (err) {
       setCollabError(err.data?.detail || 'Could not remove collaborator.');
@@ -885,7 +908,27 @@ export default function Jobs({ user }) {
                           : '—'}
                       </InfoRow>
                       <InfoRow label="Status"><StatusBadge status={jobDetail.status} /></InfoRow>
-                      
+
+                      {jobDetail.tat_days != null && (
+                        <InfoRow label="TAT">{jobDetail.tat_days} days</InfoRow>
+                      )}
+
+                      {(user?.role === 'admin' || user?.role === 'recruiter') && jobDetail.budget != null && (
+                        <InfoRow label="Budget">₹{jobDetail.budget} L</InfoRow>
+                      )}
+
+                      {jobDetail.recruiters_working?.length > 0 && (
+                        <InfoRow label="Working On">
+                          <div className="flex flex-wrap gap-1.5">
+                            {jobDetail.recruiters_working.map((r) => (
+                              <span key={r.id} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
+                                {r.name}
+                              </span>
+                            ))}
+                          </div>
+                        </InfoRow>
+                      )}
+
                       {jobDetail.skills_required?.length > 0 && (
                         <div className="py-4 border-b border-slate-100 last:border-0">
                           <span className="block text-sm text-slate-500 font-medium mb-2">Required Skills</span>
@@ -993,46 +1036,47 @@ export default function Jobs({ user }) {
                 </div>
               )}
 
-              {/* Job History / Audit */}
+              {/* Activity Log / History */}
               <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5" /> Job History
+                  <BookOpen className="w-3.5 h-3.5" /> Activity Log
                 </p>
-                {jobDetail ? (
-                  <div className="flex flex-col gap-3">
-                    <div className="flex gap-2.5">
-                      <div className="w-2 h-2 rounded-full bg-blue-400 mt-1 shrink-0" />
-                      <div>
-                        <p className="text-xs font-medium text-slate-700">Job created</p>
-                        <p className="text-xs text-slate-500">
-                          {new Date(jobDetail.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </p>
-                        {jobDetail.hiring_manager_name && (
-                          <p className="text-xs text-slate-500">by {jobDetail.hiring_manager_name}</p>
-                        )}
-                      </div>
-                    </div>
-                    {jobDetail.collaborators?.length > 0 && (
-                      <div className="flex gap-2.5">
-                        <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1 shrink-0" />
-                        <div>
-                          <p className="text-xs font-medium text-slate-700">Collaborators added</p>
-                          <p className="text-xs text-slate-500">{jobDetail.collaborators.map((c) => c.user_name).join(', ')}</p>
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex gap-2.5">
-                      <div className="w-2 h-2 rounded-full bg-slate-300 mt-1 shrink-0" />
-                      <div>
-                        <p className="text-xs font-medium text-slate-700">Last updated</p>
-                        <p className="text-xs text-slate-500">
-                          {new Date(jobDetail.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                {jobHistory.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">No activity recorded yet.</p>
                 ) : (
-                  <p className="text-xs text-slate-400 italic">Loading…</p>
+                  <div className="flex flex-col">
+                    {jobHistory.map((entry, idx) => (
+                      <div key={entry.id} className="flex gap-2.5 relative pb-3 last:pb-0">
+                        {/* Timeline spine */}
+                        {idx < jobHistory.length - 1 && (
+                          <div className="absolute left-[4px] top-2.5 bottom-0 w-px bg-slate-200" />
+                        )}
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-400 mt-0.5 shrink-0 z-10" />
+                        <button
+                          className="flex-1 text-left"
+                          onClick={() => setExpandedHistoryId(expandedHistoryId === entry.id ? null : entry.id)}
+                        >
+                          <p className="text-xs font-medium text-slate-700 leading-snug">{entry.description}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {entry.changed_by_name && <span>{entry.changed_by_name} · </span>}
+                            {new Date(entry.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </p>
+                          {expandedHistoryId === entry.id && entry.previous_value != null && (
+                            <div className="mt-1.5 bg-slate-50 border border-slate-100 rounded-md px-2.5 py-2 text-xs text-slate-600 leading-relaxed">
+                              {Object.keys(entry.previous_value).map((k) => (
+                                <p key={k}>
+                                  <span className="font-medium">{k}:</span>{' '}
+                                  <span className="text-rose-500">{String(entry.previous_value[k])}</span>
+                                  {' → '}
+                                  <span className="text-emerald-600">{String(entry.new_value?.[k] ?? '')}</span>
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
@@ -1073,7 +1117,7 @@ export default function Jobs({ user }) {
               {total} Jobs Found
             </div>
             <div className="flex items-center gap-4 text-sm text-slate-600 shrink-0">
-              {['open', 'hidden', 'closed', 'all'].map((s) => (
+              {['open', 'abandoned', 'closed', 'all'].map((s) => (
                 <label key={s} className="flex items-center gap-1.5 cursor-pointer">
                   <input
                     type="radio"
@@ -1280,6 +1324,36 @@ export default function Jobs({ user }) {
         </>
       )}
 
+      {/* ══════════════════ CLOSE JOB CONFIRMATION ══════════════════ */}
+      {isCloseConfirmOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[300]">
+          <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[92vw] p-6 flex flex-col gap-4">
+            <h3 className="text-lg font-bold text-slate-800">Close this job?</h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Closing a job is <strong>permanent and irreversible</strong>. Once closed, the status
+              cannot be changed and the job cannot be reopened or abandoned.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setIsCloseConfirmOpen(false)}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setEditForm((f) => ({ ...f, status: 'closed' }));
+                  setIsCloseConfirmOpen(false);
+                }}
+                className="px-4 py-2 text-sm bg-rose-600 text-white rounded-lg hover:bg-rose-700 font-medium transition-colors"
+              >
+                Yes, Close Job
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══════════════════ EDIT JOB MODAL ══════════════════ */}
       {isEditOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
@@ -1315,15 +1389,34 @@ export default function Jobs({ user }) {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Status</label>
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="open">Open</option>
-                    <option value="hidden">Hidden</option>
-                    <option value="closed">Closed</option>
-                  </select>
+                  {jobDetail?.status === 'closed' ? (
+                    <div className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-400 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+                      Closed — no further changes allowed
+                    </div>
+                  ) : (
+                    <select
+                      value={editForm.status}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'closed') {
+                          setIsCloseConfirmOpen(true);
+                        } else {
+                          setEditForm({ ...editForm, status: val });
+                        }
+                      }}
+                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                    >
+                      {(jobDetail?.status === 'open'
+                        ? ['open', 'closed', 'abandoned']
+                        : jobDetail?.status === 'abandoned'
+                        ? ['abandoned', 'open', 'closed']
+                        : ['open', 'abandoned', 'closed']
+                      ).map((s) => (
+                        <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Experience Min (yrs)</label>

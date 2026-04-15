@@ -55,6 +55,8 @@ class Requisition(models.Model):
     min_qualification = models.CharField(max_length=100, blank=True)
     reference_number = models.CharField(max_length=100, blank=True)
     expected_start_date = models.DateField(null=True, blank=True)
+    tat_days = models.PositiveIntegerField(null=True, blank=True, help_text='Target Turn Around Time in calendar days')
+    budget = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text='Allocated budget in INR Lakhs')
     # Candidate signals — Educational
     iit_grad = models.BooleanField(default=False)
     nit_grad = models.BooleanField(default=False)
