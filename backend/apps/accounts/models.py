@@ -25,6 +25,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('admin', 'Admin'),
         ('hiring_manager', 'Hiring Manager'),
         ('recruiter', 'Recruiter'),
+        ('interviewer', 'Interviewer'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
