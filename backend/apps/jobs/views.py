@@ -10,6 +10,7 @@ from .serializers import (
 )
 from apps.candidates.models import CandidateJobMapping
 from apps.candidates.serializers import CandidateJobMappingSerializer
+from apps.core.permissions import IsAdmin
 
 
 def log_job_history(job, event_type, changed_by, description, previous_value=None, new_value=None):
@@ -58,7 +59,7 @@ class JobListView(generics.ListAPIView):
 
 class JobDetailView(generics.RetrieveUpdateAPIView):
     queryset = Job.objects.select_related(
-        'department', 'hiring_manager', 'created_by', 'requisition'
+        'department', 'hiring_manager', 'created_by', 'requisition', 'requisition__created_by'
     ).prefetch_related('collaborators__user', 'history__changed_by')
     serializer_class = JobDetailSerializer
 
@@ -144,6 +145,11 @@ class JobPipelineStatsView(APIView):
 class JobCollaboratorListCreateView(generics.ListCreateAPIView):
     serializer_class = JobCollaboratorSerializer
 
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAuthenticated(), IsAdmin()]
+        return [IsAuthenticated()]
+
     def get_queryset(self):
         return JobCollaborator.objects.filter(
             job_id=self.kwargs['pk']
@@ -162,6 +168,8 @@ class JobCollaboratorListCreateView(generics.ListCreateAPIView):
 
 
 class JobCollaboratorDeleteView(APIView):
+    permission_classes = [IsAuthenticated, IsAdmin]
+
     def delete(self, request, pk, user_id):
         try:
             collab = JobCollaborator.objects.select_related('user', 'job').get(

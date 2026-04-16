@@ -25,6 +25,7 @@ def auto_create_job(sender, instance, created, **kwargs):
             title=req.title,
             department=req.department,
             hiring_manager=req.hiring_manager,
+            created_by=req.created_by,
             location=req.location,
             skills_required=req.skills_required,
             job_description=req.job_description,
