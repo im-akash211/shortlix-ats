@@ -16,7 +16,7 @@ def _generate_purpose_code(purpose):
         except ValueError:
             pass
     next_num = max(numbers) + 1 if numbers else 0
-    return f'{prefix}-{next_num}'
+    return f'{prefix}-{next_num:03d}'
 
 
 class RequisitionApprovalSerializer(serializers.ModelSerializer):

@@ -103,7 +103,7 @@ class Command(BaseCommand):
 
         def _gen_purpose_code(purpose):
             prefix = 'SHT-INT' if purpose == 'internal' else 'SHT-CLT'
-            code = f'{prefix}-{_counters[purpose]}'
+            code = f'{prefix}-{_counters[purpose]:03d}'
             _counters[purpose] += 1
             return code
 
