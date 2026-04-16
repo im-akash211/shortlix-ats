@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Phone, Mail, Briefcase, Search, X, Star, ChevronDown, ChevronRight } from 'lucide-react';
 import { PageLoader } from '../components/LoadingDots';
 import { interviews as interviewsApi } from '../lib/api';
+import { useAuth } from '../lib/authContext';
 
 const MODE_LABELS = {
   virtual: 'Virtual',
@@ -49,10 +50,13 @@ function StarRating({ value, onChange }) {
 
 export default function Interviews() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const role = user?.role;
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Phase D: activeTab is URL-backed — survives refresh and browser navigation
-  const activeTab = searchParams.get('tab') || 'my';
+  const defaultTab = role === 'recruiter' ? 'scheduled_by_me' : 'my';
+  const activeTab = searchParams.get('tab') || defaultTab;
   const setActiveTab = (val) => {
     setSearchParams(p => { p.set('tab', val); return p; });
     setActiveFilter(null);
@@ -83,13 +87,17 @@ export default function Interviews() {
   });
   const listLoading = isLoading || isPlaceholderData;
 
-  // Phase B: summary counts — cached independently; invalidated after mutations
-  const { data: summary = { pending_confirmation: 0, upcoming: 0, pending_feedback: 0, completed: 0 } } = useQuery({
-    queryKey: ['interviews', 'summary'],
-    queryFn: interviewsApi.summary,
-  });
-
   const data = listData ? (listData.results || listData) : [];
+
+  const now = new Date();
+
+  // Compute summary counts from the current tab's data so they stay in sync
+  const summary = {
+    pending_confirmation: 0,
+    upcoming: data.filter((iv) => iv.status === 'scheduled' && new Date(iv.scheduled_at) >= now).length,
+    pending_feedback: data.filter((iv) => isPendingFeedback(iv)).length,
+    completed: data.filter((iv) => iv.status === 'completed').length,
+  };
 
   const handleCancel = async (id) => {
     try {
@@ -137,8 +145,6 @@ export default function Interviews() {
       } catch (_) {}
     }
   };
-
-  const now = new Date();
 
   let filteredData = search.trim()
     ? data.filter((iv) =>
@@ -191,10 +197,10 @@ export default function Interviews() {
           {/* Tabs */}
           <div className="flex items-center gap-1">
             {[
-              { key: 'my',              label: 'My Interviews' },
-              { key: 'scheduled_by_me', label: 'Scheduled by Me' },
-              { key: 'all',             label: 'All Schedules' },
-            ].map((t) => (
+              { key: 'my',              label: 'My Interviews',   roles: ['admin', 'hiring_manager', 'interviewer'] },
+              { key: 'scheduled_by_me', label: 'Scheduled by Me', roles: ['admin', 'hiring_manager', 'recruiter'] },
+              { key: 'all',             label: 'All Schedules',   roles: ['admin', 'hiring_manager', 'recruiter', 'interviewer'] },
+            ].filter((t) => t.roles.includes(role)).map((t) => (
               <button
                 key={t.key}
                 onClick={() => setActiveTab(t.key)}
