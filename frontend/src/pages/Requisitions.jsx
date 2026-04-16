@@ -514,10 +514,6 @@ export default function Requisitions({ user }) {
                     <th className="px-4 py-3 border-b border-slate-200">Department</th>
                     <th className="px-4 py-3 border-b border-slate-200">Created on</th>
                     <th className="px-4 py-3 border-b border-slate-200">Hiring Manager</th>
-                    <th className="px-4 py-3 border-b border-slate-200 text-center">Applies</th>
-                    <th className="px-4 py-3 border-b border-slate-200 text-center">Shortlists</th>
-                    <th className="px-4 py-3 border-b border-slate-200 text-center">Offers</th>
-                    <th className="px-4 py-3 border-b border-slate-200 text-center">Joined</th>
                     <th className="px-4 py-3 border-b border-slate-200 text-center">Actions</th>
                   </tr>
                 </thead>
@@ -546,18 +542,6 @@ export default function Requisitions({ user }) {
                       <td className="px-4 py-4 align-top text-slate-600">{req.department_name}</td>
                       <td className="px-4 py-4 align-top text-slate-600">{new Date(req.created_at).toLocaleDateString('en-GB')}</td>
                       <td className="px-4 py-4 align-top text-slate-600">{req.hiring_manager_name}</td>
-                      <td className="px-4 py-4 align-top text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-slate-100 text-slate-700 font-semibold">{req.applies_count ?? 0}</span>
-                      </td>
-                      <td className="px-4 py-4 align-top text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-blue-50 text-blue-700 font-semibold">{req.shortlists_count ?? 0}</span>
-                      </td>
-                      <td className="px-4 py-4 align-top text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-slate-100 text-slate-700 font-semibold">{req.offers_count ?? 0}</span>
-                      </td>
-                      <td className="px-4 py-4 align-top text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-slate-100 text-slate-700 font-semibold">{req.joined_count ?? 0}</span>
-                      </td>
                       <td className="px-4 py-4 align-top text-center relative">
                         <button
                           onClick={() => setActionMenuId(actionMenuId === req.id ? null : req.id)}
