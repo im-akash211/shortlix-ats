@@ -36,6 +36,7 @@ const INITIAL_FORM = {
   priority: 'medium',
   employment_type: 'permanent',
   requisition_type: 'new',
+  purpose: '',
   client_name: '',
   positions_count: 1,
   experience_min: 0,
@@ -50,6 +51,9 @@ const INITIAL_FORM = {
   expected_start_date: '',
   tat_days: '',
   budget: '',
+  salary_min: '',
+  salary_max: '',
+  work_mode: '',
   reference_number: '',
   project_name: '',
   hiring_manager: '',
@@ -211,6 +215,7 @@ export default function Requisitions({ user }) {
           priority:            detail.priority || 'medium',
           employment_type:     detail.employment_type || 'permanent',
           requisition_type:    detail.requisition_type || 'new',
+          purpose:             detail.purpose || '',
           client_name:         detail.client_name || '',
           positions_count:     detail.positions_count || 1,
           experience_min:      detail.experience_min ?? 0,
@@ -225,6 +230,9 @@ export default function Requisitions({ user }) {
           expected_start_date: detail.expected_start_date || '',
           tat_days:            detail.tat_days ?? '',
           budget:              detail.budget ?? '',
+          salary_min:          detail.salary_min ?? '',
+          salary_max:          detail.salary_max ?? '',
+          work_mode:           detail.work_mode || '',
           reference_number:    detail.reference_number || '',
           project_name:        detail.project_name || '',
           hiring_manager:      detail.hiring_manager || '',
@@ -291,6 +299,11 @@ export default function Requisitions({ user }) {
     if (!createForm.title) errs.title = 'Required';
     if (!createForm.department) errs.department = 'Required';
     if (!createForm.location) errs.location = 'Required';
+    if (!createForm.purpose) errs.purpose = 'Required';
+    if (createForm.purpose === 'client' && !createForm.client_name) errs.client_name = 'Required for client requisitions';
+    if (!createForm.work_mode) errs.work_mode = 'Required';
+    if (!createForm.salary_min) errs.salary_min = 'Required';
+    if (!createForm.salary_max) errs.salary_max = 'Required';
     if (!createForm.hiring_manager) errs.hiring_manager = 'Required';
     if (!createForm.l1_approver) errs.l1_approver = 'Required';
     if (createForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
@@ -506,13 +519,10 @@ export default function Requisitions({ user }) {
                   <tr>
                     <th className="px-4 py-3 border-b border-slate-200">Requisition</th>
                     <th className="px-4 py-3 border-b border-slate-200">Status</th>
+                    <th className="px-4 py-3 border-b border-slate-200">Purpose</th>
                     <th className="px-4 py-3 border-b border-slate-200">Department</th>
                     <th className="px-4 py-3 border-b border-slate-200">Created on</th>
                     <th className="px-4 py-3 border-b border-slate-200">Hiring Manager</th>
-                    <th className="px-4 py-3 border-b border-slate-200 text-center">Applies</th>
-                    <th className="px-4 py-3 border-b border-slate-200 text-center">Shortlists</th>
-                    <th className="px-4 py-3 border-b border-slate-200 text-center">Offers</th>
-                    <th className="px-4 py-3 border-b border-slate-200 text-center">Joined</th>
                     <th className="px-4 py-3 border-b border-slate-200 text-center">Actions</th>
                   </tr>
                 </thead>
@@ -531,21 +541,16 @@ export default function Requisitions({ user }) {
                           {req.status?.replace('_', ' ')}
                         </div>
                       </td>
+                      <td className="px-4 py-4 align-top">
+                        {req.purpose ? (
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${req.purpose === 'client' ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700'}`}>
+                            {req.purpose_code || req.purpose}
+                          </span>
+                        ) : '—'}
+                      </td>
                       <td className="px-4 py-4 align-top text-slate-600">{req.department_name}</td>
                       <td className="px-4 py-4 align-top text-slate-600">{new Date(req.created_at).toLocaleDateString('en-GB')}</td>
                       <td className="px-4 py-4 align-top text-slate-600">{req.hiring_manager_name}</td>
-                      <td className="px-4 py-4 align-top text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-slate-100 text-slate-700 font-semibold">{req.applies_count ?? 0}</span>
-                      </td>
-                      <td className="px-4 py-4 align-top text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-blue-50 text-blue-700 font-semibold">{req.shortlists_count ?? 0}</span>
-                      </td>
-                      <td className="px-4 py-4 align-top text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-slate-100 text-slate-700 font-semibold">{req.offers_count ?? 0}</span>
-                      </td>
-                      <td className="px-4 py-4 align-top text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-slate-100 text-slate-700 font-semibold">{req.joined_count ?? 0}</span>
-                      </td>
                       <td className="px-4 py-4 align-top text-center relative">
                         <button
                           onClick={() => setActionMenuId(actionMenuId === req.id ? null : req.id)}
@@ -555,15 +560,6 @@ export default function Requisitions({ user }) {
                         </button>
                         {actionMenuId === req.id && (
                           <div className="absolute right-4 top-10 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[160px] text-left">
-                            {req.status === 'draft' && (
-                              <button onClick={() => handleAction('submit', req.id)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-slate-700">Submit for Approval</button>
-                            )}
-                            {req.status === 'pending_approval' && user?.role !== 'recruiter' && (
-                              <>
-                                <button onClick={() => handleAction('approve', req.id)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-emerald-600">Approve</button>
-                                <button onClick={() => handleAction('reject', req.id)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-rose-600">Reject</button>
-                              </>
-                            )}
                             <button
                               onClick={() => openEdit(req)}
                               className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-blue-600 flex items-center gap-2"
@@ -713,13 +709,27 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel>Client's Name:</FieldLabel>
-                  <TextField
-                    value={createForm.client_name}
-                    onChange={(e) => setField('client_name', e.target.value)}
-                    placeholder=""
-                  />
+                  <FieldLabel required>Purpose:</FieldLabel>
+                  <SelectField value={createForm.purpose} onChange={(e) => { setField('purpose', e.target.value); if (e.target.value !== 'client') setField('client_name', ''); }} error={formErrors.purpose}>
+                    <option value="">--Select--</option>
+                    <option value="internal">Internal</option>
+                    <option value="client">Client</option>
+                  </SelectField>
+                  <FieldError msg={formErrors.purpose} />
                 </div>
+
+                {createForm.purpose === 'client' && (
+                  <div className="flex flex-col gap-1">
+                    <FieldLabel required>Client's Name:</FieldLabel>
+                    <TextField
+                      value={createForm.client_name}
+                      onChange={(e) => setField('client_name', e.target.value)}
+                      placeholder="Enter client name"
+                      error={formErrors.client_name}
+                    />
+                    <FieldError msg={formErrors.client_name} />
+                  </div>
+                )}
 
                 {/* Row 6: Location */}
                 <div className="flex flex-col gap-1">
@@ -828,6 +838,47 @@ export default function Requisitions({ user }) {
                     onChange={(e) => setField('budget', e.target.value)}
                     placeholder="e.g. 12.50 (optional)"
                   />
+                </div>
+
+                {/* Work Mode */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Work Mode:</FieldLabel>
+                  <SelectField value={createForm.work_mode} onChange={(e) => setField('work_mode', e.target.value)} error={formErrors.work_mode}>
+                    <option value="">--Select--</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="remote">Remote</option>
+                    <option value="office">Office</option>
+                  </SelectField>
+                  <FieldError msg={formErrors.work_mode} />
+                </div>
+
+                {/* Salary Range */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Salary Range (₹ LPA):</FieldLabel>
+                  <div className="flex gap-2 items-center">
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={createForm.salary_min}
+                      onChange={(e) => setField('salary_min', e.target.value)}
+                      placeholder="Min"
+                      error={formErrors.salary_min}
+                    />
+                    <span className="text-slate-400 shrink-0">–</span>
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={createForm.salary_max}
+                      onChange={(e) => setField('salary_max', e.target.value)}
+                      placeholder="Max"
+                      error={formErrors.salary_max}
+                    />
+                  </div>
+                  {(formErrors.salary_min || formErrors.salary_max) && (
+                    <FieldError msg={formErrors.salary_min || formErrors.salary_max} />
+                  )}
                 </div>
 
                 {/* Row 10: Tags | Mandatory Skills */}
@@ -1017,6 +1068,15 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
+                  <FieldLabel required>Purpose:</FieldLabel>
+                  <SelectField value={editForm.purpose} onChange={(e) => setEditField('purpose', e.target.value)}>
+                    <option value="">--Select--</option>
+                    <option value="internal">Internal</option>
+                    <option value="client">Client</option>
+                  </SelectField>
+                </div>
+
+                <div className="flex flex-col gap-1">
                   <FieldLabel required>Location:</FieldLabel>
                   <select
                     value={editForm.location}
@@ -1098,6 +1158,41 @@ export default function Requisitions({ user }) {
                     onChange={(e) => setEditField('budget', e.target.value)}
                     placeholder="e.g. 12.50 (optional)"
                   />
+                </div>
+
+                {/* Work Mode */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Work Mode:</FieldLabel>
+                  <SelectField value={editForm.work_mode} onChange={(e) => setEditField('work_mode', e.target.value)}>
+                    <option value="">--Select--</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="remote">Remote</option>
+                    <option value="office">Office</option>
+                  </SelectField>
+                </div>
+
+                {/* Salary Range */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Salary Range (₹ LPA):</FieldLabel>
+                  <div className="flex gap-2 items-center">
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={editForm.salary_min}
+                      onChange={(e) => setEditField('salary_min', e.target.value)}
+                      placeholder="Min"
+                    />
+                    <span className="text-slate-400 shrink-0">–</span>
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={editForm.salary_max}
+                      onChange={(e) => setEditField('salary_max', e.target.value)}
+                      placeholder="Max"
+                    />
+                  </div>
                 </div>
 
               </div>

@@ -17,7 +17,13 @@ def auto_create_job(sender, instance, created, **kwargs):
 
     year = timezone.now().year
     with transaction.atomic():
-        count = Job.objects.filter(job_code__startswith=f'JOB-{year}-').count() + 1
+        existing_codes = set(
+            Job.objects.filter(job_code__startswith=f'JOB-{year}-')
+            .values_list('job_code', flat=True)
+        )
+        count = 1
+        while f'JOB-{year}-{count:04d}' in existing_codes:
+            count += 1
         job_code = f'JOB-{year}-{count:04d}'
         Job.objects.create(
             requisition=req,
