@@ -21,3 +21,13 @@ class IsJobCollaborator(BasePermission):
         if request.user.role == 'admin':
             return True
         return obj.collaborators.filter(user=request.user).exists()
+
+
+class IsAdminRecruiterOrHM(BasePermission):
+    """Allows Admin, Recruiter, and Hiring Manager — blocks Interviewer from creating requisitions."""
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and hasattr(request.user, 'role')
+            and request.user.role in ('admin', 'recruiter', 'hiring_manager')
+        )

@@ -62,9 +62,9 @@ const STAGE_COLORS = {
 
 function StatusBadge({ status }) {
   const map = {
-    open: 'bg-emerald-100 text-emerald-700',
-    hidden: 'bg-amber-100 text-amber-700',
-    closed: 'bg-slate-100 text-slate-600',
+    open:      'bg-emerald-100 text-emerald-700',
+    abandoned: 'bg-amber-100 text-amber-700',
+    closed:    'bg-slate-100 text-slate-600',
   };
   return (
     <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${map[status] || map.closed}`}>
@@ -227,9 +227,10 @@ export default function Jobs({ user }) {
   }, [matchJobId, isCandidatesRoute]);
 
   // ── Edit modal state ─────────────────────────────────────────────────────────
-  const [isEditOpen, setIsEditOpen]   = useState(false);
-  const [editForm, setEditForm]       = useState({});
-  const [editLoading, setEditLoading] = useState(false);
+  const [isEditOpen, setIsEditOpen]         = useState(false);
+  const [editForm, setEditForm]             = useState({});
+  const [editLoading, setEditLoading]       = useState(false);
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
 
   // ── Delete job state ─────────────────────────────────────────────────────────
   const [isDeleteJobOpen, setIsDeleteJobOpen] = useState(false);
@@ -886,7 +887,8 @@ export default function Jobs({ user }) {
       </Modal>
 
       {/* ══════════════════ JOB DETAIL VIEW ══════════════════ */}
-      {viewingJob ? (
+      {/* Show detail container immediately when URL matches a job ID — avoids listing flash on refresh */}
+      {(viewingJob || matchJobId) ? (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
 
           {/* Header bar */}
@@ -919,8 +921,9 @@ export default function Jobs({ user }) {
                 <Trash2 className="w-3.5 h-3.5" /> Delete
               </button>
               <button
-                onClick={() => openCollabModal(viewingJob)}
-                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors shadow-sm"
+                onClick={() => viewingJob && openCollabModal(viewingJob)}
+                disabled={!viewingJob}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors shadow-sm"
               >
                 <Users className="w-3.5 h-3.5" /> Collaborators
               </button>
@@ -979,7 +982,29 @@ export default function Jobs({ user }) {
                           : '—'}
                       </InfoRow>
                       <InfoRow label="Status"><StatusBadge status={jobDetail.status} /></InfoRow>
-                      
+
+                      <InfoRow label="TAT">
+                        {jobDetail.tat_days != null ? `${jobDetail.tat_days} days` : 'N/A'}
+                      </InfoRow>
+
+                      {(user?.role === 'admin' || user?.role === 'recruiter') && (
+                        <InfoRow label="Budget">
+                          {jobDetail.budget != null ? `₹${jobDetail.budget} L` : 'N/A'}
+                        </InfoRow>
+                      )}
+
+                      <InfoRow label="Recruiter">
+                        {jobDetail.recruiters_working?.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {jobDetail.recruiters_working.map((r) => (
+                              <span key={r.id} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
+                                {r.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : 'N/A'}
+                      </InfoRow>
+
                       {jobDetail.skills_required?.length > 0 && (
                         <div className="py-4 border-b border-slate-100 last:border-0">
                           <span className="block text-sm text-slate-500 font-medium mb-2">Required Skills</span>
@@ -994,7 +1019,10 @@ export default function Jobs({ user }) {
                       {jobDetail.job_description && (
                         <div className="py-4 last:border-0">
                           <span className="block text-sm text-slate-500 font-medium mb-2">Job Description</span>
-                          <p className="whitespace-pre-wrap leading-relaxed text-slate-700 text-sm">{jobDetail.job_description}</p>
+                          <div
+                            className="text-sm text-slate-700 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:mb-1 [&_strong]:font-semibold"
+                            dangerouslySetInnerHTML={{ __html: jobDetail.job_description }}
+                          />
                         </div>
                       )}
                     </div>
@@ -1050,7 +1078,7 @@ export default function Jobs({ user }) {
                 <div className="flex flex-col gap-1">
                   {[
                     { icon: <UserPlus className="w-4 h-4" />, label: 'Add Profile',          action: () => setIsAddProfileOpen(true) },
-                    { icon: <Users className="w-4 h-4" />,    label: 'Manage Collaborators',  action: () => openCollabModal(viewingJob) },
+                    { icon: <Users className="w-4 h-4" />,    label: 'Manage Collaborators',  action: () => viewingJob && openCollabModal(viewingJob), disabled: !viewingJob },
                     { icon: <Edit2 className="w-4 h-4" />,    label: 'Edit Job Details',      action: openEdit, disabled: !jobDetail },
                   ].map(({ icon, label, action, disabled }) => (
                     <button
@@ -1087,48 +1115,53 @@ export default function Jobs({ user }) {
                 </div>
               )}
 
-              {/* Job History / Audit */}
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5" /> Job History
-                </p>
-                {jobDetail ? (
-                  <div className="flex flex-col gap-3">
-                    <div className="flex gap-2.5">
-                      <div className="w-2 h-2 rounded-full bg-blue-400 mt-1 shrink-0" />
-                      <div>
-                        <p className="text-xs font-medium text-slate-700">Job created</p>
-                        <p className="text-xs text-slate-500">
-                          {new Date(jobDetail.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </p>
-                        {jobDetail.hiring_manager_name && (
-                          <p className="text-xs text-slate-500">by {jobDetail.hiring_manager_name}</p>
-                        )}
-                      </div>
-                    </div>
-                    {jobDetail.collaborators?.length > 0 && (
-                      <div className="flex gap-2.5">
-                        <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1 shrink-0" />
-                        <div>
-                          <p className="text-xs font-medium text-slate-700">Collaborators added</p>
-                          <p className="text-xs text-slate-500">{jobDetail.collaborators.map((c) => c.user_name).join(', ')}</p>
+              {/* Activity Log — always shows creation at top, then changes oldest→newest */}
+              {jobDetail && (() => {
+                // 1. Creation entry — always pinned at top, sourced from jobDetail directly
+                const creationEntry = {
+                  id: '__created__',
+                  event_type: 'job_created',
+                  description: `Job Created`,
+                  changed_by_name: jobDetail.created_by_name || null,
+                  created_at: jobDetail.created_at,
+                };
+                // 2. All subsequent changes — filter out any job_created from API history
+                //    (to avoid duplicate), then reverse so oldest change is first (top → bottom)
+                const changeEntries = (jobDetail.history || [])
+                  .filter((e) => e.event_type !== 'job_created')
+                  .slice()
+                  .reverse();
+                const allEntries = [creationEntry, ...changeEntries];
+
+                return (
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5" /> Activity Log
+                    </p>
+                    <div className="flex flex-col">
+                      {allEntries.map((entry, idx) => (
+                        <div key={entry.id} className="flex gap-2.5 relative pb-3 last:pb-0">
+                          {/* Timeline spine connecting entries */}
+                          {idx < allEntries.length - 1 && (
+                            <div className="absolute left-[4px] top-2.5 bottom-0 w-px bg-slate-200" />
+                          )}
+                          {/* Dot — green for creation, blue for changes */}
+                          <div className={`w-2.5 h-2.5 rounded-full mt-0.5 shrink-0 z-10 ${entry.event_type === 'job_created' ? 'bg-emerald-400' : 'bg-blue-400'}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-slate-700 leading-snug">{entry.description}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {entry.changed_by_name && (
+                                <span className="font-medium text-slate-500">{entry.changed_by_name} · </span>
+                              )}
+                              {new Date(entry.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    <div className="flex gap-2.5">
-                      <div className="w-2 h-2 rounded-full bg-slate-300 mt-1 shrink-0" />
-                      <div>
-                        <p className="text-xs font-medium text-slate-700">Last updated</p>
-                        <p className="text-xs text-slate-500">
-                          {new Date(jobDetail.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </p>
-                      </div>
+                      ))}
                     </div>
                   </div>
-                ) : (
-                  <p className="text-xs text-slate-400 italic">Loading…</p>
-                )}
-              </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1167,7 +1200,7 @@ export default function Jobs({ user }) {
               {total} Jobs Found
             </div>
             <div className="flex items-center gap-4 text-sm text-slate-600 shrink-0">
-              {['open', 'hidden', 'closed', 'all'].map((s) => (
+              {['open', 'abandoned', 'closed', 'all'].map((s) => (
                 <label key={s} className="flex items-center gap-1.5 cursor-pointer">
                   <input
                     type="radio"
@@ -1379,6 +1412,36 @@ export default function Jobs({ user }) {
         </>
       )}
 
+      {/* ══════════════════ CLOSE JOB CONFIRMATION ══════════════════ */}
+      {isCloseConfirmOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[300]">
+          <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[92vw] p-6 flex flex-col gap-4">
+            <h3 className="text-lg font-bold text-slate-800">Close this job?</h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Closing a job is <strong>permanent and irreversible</strong>. Once closed, the status
+              cannot be changed and the job cannot be reopened or abandoned.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setIsCloseConfirmOpen(false)}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setEditForm((f) => ({ ...f, status: 'closed' }));
+                  setIsCloseConfirmOpen(false);
+                }}
+                className="px-4 py-2 text-sm bg-rose-600 text-white rounded-lg hover:bg-rose-700 font-medium transition-colors"
+              >
+                Yes, Close Job
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══════════════════ EDIT JOB MODAL ══════════════════ */}
       {isEditOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
@@ -1414,15 +1477,34 @@ export default function Jobs({ user }) {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Status</label>
-                  <select
-                    value={editForm.status}
-                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="open">Open</option>
-                    <option value="hidden">Hidden</option>
-                    <option value="closed">Closed</option>
-                  </select>
+                  {jobDetail?.status === 'closed' ? (
+                    <div className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-400 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+                      Closed — no further changes allowed
+                    </div>
+                  ) : (
+                    <select
+                      value={editForm.status}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'closed') {
+                          setIsCloseConfirmOpen(true);
+                        } else {
+                          setEditForm({ ...editForm, status: val });
+                        }
+                      }}
+                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                    >
+                      {(jobDetail?.status === 'open'
+                        ? ['open', 'closed', 'abandoned']
+                        : jobDetail?.status === 'abandoned'
+                        ? ['abandoned', 'open', 'closed']
+                        : ['open', 'abandoned', 'closed']
+                      ).map((s) => (
+                        <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-slate-700">Experience Min (yrs)</label>
@@ -1527,74 +1609,83 @@ export default function Jobs({ user }) {
                             <p className="text-xs text-slate-500">{c.user_email}</p>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleRemoveCollab(c.user)}
-                          disabled={collabActionLoading}
-                          className="text-xs text-rose-600 hover:text-rose-800 font-medium disabled:opacity-50 transition-colors"
-                        >
-                          Remove
-                        </button>
+                        {user?.role === 'admin' && (
+                          <button
+                            onClick={() => handleRemoveCollab(c.user)}
+                            disabled={collabActionLoading}
+                            className="text-xs text-rose-600 hover:text-rose-800 font-medium disabled:opacity-50 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Add collaborator */}
-              <div>
-                <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-slate-400" /> Add Collaborator
-                </h4>
-                <p className="text-xs text-slate-500 mb-3">Search by email address to find a registered user.</p>
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    value={collabEmail}
-                    onChange={(e) => { setCollabEmail(e.target.value); setCollabSearchResults([]); }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleCollabSearch()}
-                    placeholder="user@example.com"
-                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-                  />
-                  <button
-                    onClick={handleCollabSearch}
-                    disabled={collabSearchLoading || !collabEmail.trim()}
-                    className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50 transition-colors shrink-0"
-                  >
-                    {collabSearchLoading ? '…' : 'Search'}
-                  </button>
-                </div>
-                {collabSearchResults.length > 0 && (
-                  <div className="mt-3 flex flex-col gap-2">
-                    {collabSearchResults.map((u) => {
-                      const already = collabList.some((c) => c.user === u.id);
-                      return (
-                        <div key={u.id} className="flex items-center justify-between border border-slate-200 rounded-lg px-4 py-2.5 bg-white">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold shrink-0">
-                              {u.full_name ? u.full_name.slice(0, 2).toUpperCase() : '?'}
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-slate-800">{u.full_name}</p>
-                              <p className="text-xs text-slate-500">{u.email} · <span className="capitalize">{u.role}</span></p>
-                            </div>
-                          </div>
-                          {already ? (
-                            <span className="text-xs text-slate-400 italic">Already added</span>
-                          ) : (
-                            <button
-                              onClick={() => handleAddCollab(u.id)}
-                              disabled={collabActionLoading}
-                              className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                            >
-                              Add
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
+              {/* Add collaborator — admin only */}
+              {user?.role === 'admin' ? (
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-slate-400" /> Add Collaborator
+                  </h4>
+                  <p className="text-xs text-slate-500 mb-3">Search by email address to find a registered user.</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={collabEmail}
+                      onChange={(e) => { setCollabEmail(e.target.value); setCollabSearchResults([]); }}
+                      onKeyDown={(e) => e.key === 'Enter' && handleCollabSearch()}
+                      placeholder="user@example.com"
+                      className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={handleCollabSearch}
+                      disabled={collabSearchLoading || !collabEmail.trim()}
+                      className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50 transition-colors shrink-0"
+                    >
+                      {collabSearchLoading ? '…' : 'Search'}
+                    </button>
                   </div>
-                )}
-              </div>
+                  {collabSearchResults.length > 0 && (
+                    <div className="mt-3 flex flex-col gap-2">
+                      {collabSearchResults.map((u) => {
+                        const already = collabList.some((c) => c.user === u.id);
+                        return (
+                          <div key={u.id} className="flex items-center justify-between border border-slate-200 rounded-lg px-4 py-2.5 bg-white">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold shrink-0">
+                                {u.full_name ? u.full_name.slice(0, 2).toUpperCase() : '?'}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">{u.full_name}</p>
+                                <p className="text-xs text-slate-500">{u.email} · <span className="capitalize">{u.role}</span></p>
+                              </div>
+                            </div>
+                            {already ? (
+                              <span className="text-xs text-slate-400 italic">Already added</span>
+                            ) : (
+                              <button
+                                onClick={() => handleAddCollab(u.id)}
+                                disabled={collabActionLoading}
+                                className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                              >
+                                Add
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 italic flex items-center gap-1.5 py-1">
+                  <Users className="w-3.5 h-3.5" />
+                  Only admins can add or remove collaborators.
+                </div>
+              )}
             </div>
 
             <div className="px-5 pb-5 pt-2 border-t border-slate-100">
