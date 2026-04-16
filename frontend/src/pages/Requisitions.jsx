@@ -551,15 +551,6 @@ export default function Requisitions({ user }) {
                         </button>
                         {actionMenuId === req.id && (
                           <div className="absolute right-4 top-10 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[160px] text-left">
-                            {req.status === 'draft' && (
-                              <button onClick={() => handleAction('submit', req.id)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-slate-700">Submit for Approval</button>
-                            )}
-                            {req.status === 'pending_approval' && user?.role !== 'recruiter' && (
-                              <>
-                                <button onClick={() => handleAction('approve', req.id)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-emerald-600">Approve</button>
-                                <button onClick={() => handleAction('reject', req.id)} className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-rose-600">Reject</button>
-                              </>
-                            )}
                             <button
                               onClick={() => openEdit(req)}
                               className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-blue-600 flex items-center gap-2"
