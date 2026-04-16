@@ -99,16 +99,13 @@ class Command(BaseCommand):
         )
 
         # ---- Requisitions ---- #
-        _used_purpose_codes = set()
+        _counters = {'internal': 0, 'client': 0}
 
         def _gen_purpose_code(purpose):
             prefix = 'SHT-INT' if purpose == 'internal' else 'SHT-CLT'
-            while True:
-                num = random.randint(1000, 9999)
-                code = f'{prefix}-{num}'
-                if code not in _used_purpose_codes:
-                    _used_purpose_codes.add(code)
-                    return code
+            code = f'{prefix}-{_counters[purpose]}'
+            _counters[purpose] += 1
+            return code
 
         def make_req(title, dept, hm, loc, status, days_ago=10, **kwargs):
             purpose = random.choice(['internal', 'client'])
