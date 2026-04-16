@@ -3,7 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db import transaction
-from apps.core.permissions import IsAdmin, IsAdminOrHM
+from apps.core.permissions import IsAdmin, IsAdminOrHM, IsAdminRecruiterOrHM
 from .models import Requisition, RequisitionApproval
 from .serializers import (
     RequisitionListSerializer, RequisitionDetailSerializer,
@@ -66,6 +66,11 @@ class RequisitionListCreateView(generics.ListCreateAPIView):
     search_fields = ['title', 'location', 'designation']
     filterset_fields = ['status', 'department', 'hiring_manager', 'priority']
     ordering_fields = ['created_at', 'title']
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAuthenticated(), IsAdminRecruiterOrHM()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         qs = Requisition.objects.select_related('department', 'hiring_manager', 'created_by')
