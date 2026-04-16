@@ -97,6 +97,18 @@ class CandidateDetailSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        if not (
+            request
+            and hasattr(request.user, 'role')
+            and request.user.role in ('admin', 'recruiter')
+        ):
+            data.pop('current_ctc_lakhs', None)
+            data.pop('notice_period_days', None)
+        return data
+
 
 class CandidateCreateSerializer(serializers.ModelSerializer):
     class Meta:

@@ -24,6 +24,7 @@ const ROLE_COLORS = {
   admin: 'bg-purple-100 text-purple-700',
   hiring_manager: 'bg-blue-100 text-blue-700',
   recruiter: 'bg-emerald-100 text-emerald-700',
+  interviewer: 'bg-amber-100 text-amber-700',
 };
 
 export default function Settings() {
@@ -213,6 +214,7 @@ export default function Settings() {
                     <option value="recruiter">Recruiter</option>
                     <option value="hiring_manager">Hiring Manager</option>
                     <option value="admin">Admin</option>
+                    <option value="interviewer">Interviewer</option>
                   </select>
                 </div>
                 <div className="flex flex-col gap-1.5">

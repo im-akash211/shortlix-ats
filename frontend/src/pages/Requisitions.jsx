@@ -41,9 +41,6 @@ const INITIAL_FORM = {
   positions_count: 1,
   experience_min: 0,
   experience_max: 3,
-  ctc_currency: 'INR',
-  ctc_min_lakhs: '',
-  ctc_max_lakhs: '',
   job_description: '',
   roles_responsibilities: '',
   skills_required: [],
@@ -52,6 +49,8 @@ const INITIAL_FORM = {
   tags: [],
   min_qualification: '',
   expected_start_date: '',
+  tat_days: '',
+  budget: '',
   reference_number: '',
   project_name: '',
   hiring_manager: '',
@@ -218,9 +217,6 @@ export default function Requisitions({ user }) {
           positions_count:     detail.positions_count || 1,
           experience_min:      detail.experience_min ?? 0,
           experience_max:      detail.experience_max ?? 2,
-          ctc_currency:        detail.ctc_currency || 'INR',
-          ctc_min_lakhs:       detail.ctc_min_lakhs || '',
-          ctc_max_lakhs:       detail.ctc_max_lakhs || '',
           job_description:     detail.job_description || '',
           roles_responsibilities: detail.roles_responsibilities || '',
           skills_required:     detail.skills_required || [],
@@ -229,6 +225,8 @@ export default function Requisitions({ user }) {
           tags:                detail.tags || [],
           min_qualification:   detail.min_qualification || '',
           expected_start_date: detail.expected_start_date || '',
+          tat_days:            detail.tat_days ?? '',
+          budget:              detail.budget ?? '',
           reference_number:    detail.reference_number || '',
           project_name:        detail.project_name || '',
           hiring_manager:      detail.hiring_manager || '',
@@ -749,53 +747,20 @@ export default function Requisitions({ user }) {
                   </div>
                 )}
 
-                {/* Row 6: Location | Annual CTC Range */}
+                {/* Row 6: Location */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Location:</FieldLabel>
-                  <TextField
+                  <select
                     value={createForm.location}
                     onChange={(e) => setField('location', e.target.value)}
-                    placeholder="Can be multiple comma separated locations"
-                    error={formErrors.location}
-                  />
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="">Select location...</option>
+                    <option value="Gurgaon">Gurgaon</option>
+                    <option value="Noida">Noida</option>
+                    <option value="Remote">Remote</option>
+                  </select>
                   <FieldError msg={formErrors.location} />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>
-                    Annual CTC Range
-                    <span className="ml-1 text-gray-400 cursor-help" title="CTC in Lakhs per annum">ℹ</span>
-                  </FieldLabel>
-                  <div className="flex items-center gap-2">
-                    <div className="relative w-20 shrink-0">
-                      <select
-                        value={createForm.ctc_currency}
-                        onChange={(e) => setField('ctc_currency', e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg p-2.5 text-sm outline-none appearance-none bg-white focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="INR">INR</option>
-                        <option value="USD">USD</option>
-                      </select>
-                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-                    </div>
-                    <input
-                      type="number"
-                      min="0"
-                      value={createForm.ctc_min_lakhs}
-                      onChange={(e) => setField('ctc_min_lakhs', e.target.value)}
-                      placeholder="Min CTC"
-                      className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="text-gray-500 text-sm shrink-0">to</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={createForm.ctc_max_lakhs}
-                      onChange={(e) => setField('ctc_max_lakhs', e.target.value)}
-                      placeholder="Max CTC"
-                      className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
                 </div>
 
                 {/* Row 7: blank | Years of Experience */}
@@ -863,6 +828,31 @@ export default function Requisitions({ user }) {
                     value={createForm.reference_number}
                     onChange={(e) => setField('reference_number', e.target.value)}
                     placeholder="Reference Number"
+                  />
+                </div>
+
+                {/* TAT (Turn Around Time) */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>TAT (Days):</FieldLabel>
+                  <TextField
+                    type="number"
+                    min="1"
+                    value={createForm.tat_days}
+                    onChange={(e) => setField('tat_days', e.target.value)}
+                    placeholder="e.g. 30"
+                  />
+                </div>
+
+                {/* Budget */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
+                  <TextField
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={createForm.budget}
+                    onChange={(e) => setField('budget', e.target.value)}
+                    placeholder="e.g. 12.50 (optional)"
                   />
                 </div>
 
@@ -1063,7 +1053,16 @@ export default function Requisitions({ user }) {
 
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Location:</FieldLabel>
-                  <TextField value={editForm.location} onChange={(e) => setEditField('location', e.target.value)} placeholder="Location" error={editErrors.location} />
+                  <select
+                    value={editForm.location}
+                    onChange={(e) => setEditField('location', e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="">Select location...</option>
+                    <option value="Gurgaon">Gurgaon</option>
+                    <option value="Noida">Noida</option>
+                    <option value="Remote">Remote</option>
+                  </select>
                   <FieldError msg={editErrors.location} />
                 </div>
 
@@ -1109,6 +1108,31 @@ export default function Requisitions({ user }) {
                   <FieldLabel required>Mandatory Skills:</FieldLabel>
                   <TagInput value={editForm.skills_required} onChange={(val) => setEditField('skills_required', val)} placeholder="Please add at least 3 comma separated mandatory skills." error={editErrors.skills_required} />
                   <FieldError msg={editErrors.skills_required} />
+                </div>
+
+                {/* TAT (Turn Around Time) */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>TAT (Days):</FieldLabel>
+                  <TextField
+                    type="number"
+                    min="1"
+                    value={editForm.tat_days}
+                    onChange={(e) => setEditField('tat_days', e.target.value)}
+                    placeholder="e.g. 30"
+                  />
+                </div>
+
+                {/* Budget */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
+                  <TextField
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editForm.budget}
+                    onChange={(e) => setEditField('budget', e.target.value)}
+                    placeholder="e.g. 12.50 (optional)"
+                  />
                 </div>
 
               </div>

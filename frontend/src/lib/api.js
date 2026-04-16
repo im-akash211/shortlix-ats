@@ -131,6 +131,7 @@ export const jobs = {
   removeCollaborator: (id, userId) =>
     request(`/jobs/${id}/collaborators/${userId}/`, { method: 'DELETE' }),
   delete: (id) => request(`/jobs/${id}/delete/`, { method: 'DELETE' }),
+  history: (id) => request(`/jobs/${id}/history/`),
 };
 
 // ---- Candidates ---- //
