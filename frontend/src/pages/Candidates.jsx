@@ -741,7 +741,6 @@ export default function Candidates({ user: _userProp }) {
                     {/* Applicant — sortable */}
                     <th className="px-2 py-1 border-b border-slate-200 text-xs">
                       <div className="flex items-center gap-2">
-                        <input type="checkbox" className="rounded border-slate-300 cursor-pointer" />
                         <button
                           onClick={() => setSort('full_name')}
                           className="flex items-center gap-1 hover:text-blue-600 transition-colors"
@@ -850,7 +849,6 @@ export default function Candidates({ user: _userProp }) {
                       {/* Applicant cell */}
                       <td className="px-2 py-1.5 align-top">
                         <div className="flex items-start gap-2">
-                          <input type="checkbox" className="mt-0.5 rounded border-slate-300 cursor-pointer" />
                           <div className="flex flex-col gap-0.5">
                             <button
                               onClick={() => openViewProfile(c)}
