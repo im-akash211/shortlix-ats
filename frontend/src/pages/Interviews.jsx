@@ -292,7 +292,7 @@ export default function Interviews() {
                     {/* Actions */}
                     <td className="px-4 py-4 align-top text-center">
                       <div className="flex items-center justify-center gap-2">
-                        {(isPendingFeedback(iv) || (iv.status === 'completed' && !iv.has_feedback)) && (
+                        {(isPendingFeedback(iv) || (iv.status === 'completed' && !iv.has_feedback)) && iv.interviewer === user?.id && (
                           <button
                             onClick={() => openFeedback(iv)}
                             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1"
@@ -492,7 +492,7 @@ export default function Interviews() {
                       </div>
                       {feedbackDetail.comments && <p className="text-slate-600 text-xs">{feedbackDetail.comments}</p>}
                     </div>
-                  ) : (isPendingFeedback(detailPanel) || (detailPanel.status === 'completed' && !detailPanel.has_feedback)) ? (
+                  ) : (isPendingFeedback(detailPanel) || (detailPanel.status === 'completed' && !detailPanel.has_feedback)) && detailPanel.interviewer === user?.id ? (
                     <button
                       onClick={() => { setDetailPanel(null); openFeedback(detailPanel); }}
                       className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors self-start"
