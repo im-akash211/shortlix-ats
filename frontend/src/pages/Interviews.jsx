@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Phone, Mail, Briefcase, Search, X, Star, ChevronDown, ChevronRight } from 'lucide-react';
 import { PageLoader } from '../components/LoadingDots';
 import { interviews as interviewsApi } from '../lib/api';
+import { useAuth } from '../lib/authContext';
 
 const MODE_LABELS = {
   virtual: 'Virtual',
@@ -49,10 +50,13 @@ function StarRating({ value, onChange }) {
 
 export default function Interviews() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const role = user?.role;
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Phase D: activeTab is URL-backed — survives refresh and browser navigation
-  const activeTab = searchParams.get('tab') || 'my';
+  const defaultTab = role === 'recruiter' ? 'scheduled_by_me' : 'my';
+  const activeTab = searchParams.get('tab') || defaultTab;
   const setActiveTab = (val) => {
     setSearchParams(p => { p.set('tab', val); return p; });
     setActiveFilter(null);
@@ -193,10 +197,10 @@ export default function Interviews() {
           {/* Tabs */}
           <div className="flex items-center gap-1">
             {[
-              { key: 'my',              label: 'My Interviews' },
-              { key: 'scheduled_by_me', label: 'Scheduled by Me' },
-              { key: 'all',             label: 'All Schedules' },
-            ].map((t) => (
+              { key: 'my',              label: 'My Interviews',   roles: ['admin', 'hiring_manager', 'interviewer'] },
+              { key: 'scheduled_by_me', label: 'Scheduled by Me', roles: ['admin', 'hiring_manager', 'recruiter'] },
+              { key: 'all',             label: 'All Schedules',   roles: ['admin', 'hiring_manager', 'recruiter', 'interviewer'] },
+            ].filter((t) => t.roles.includes(role)).map((t) => (
               <button
                 key={t.key}
                 onClick={() => setActiveTab(t.key)}
