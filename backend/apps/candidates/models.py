@@ -35,7 +35,6 @@ class Candidate(models.Model):
     total_experience_years = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     skills = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     current_ctc_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
-    expected_ctc_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     notice_period_days = models.PositiveIntegerField(null=True, blank=True)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual', db_index=True)
     sub_source = models.CharField(max_length=255, blank=True)
