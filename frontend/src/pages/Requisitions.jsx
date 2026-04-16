@@ -51,6 +51,9 @@ const INITIAL_FORM = {
   expected_start_date: '',
   tat_days: '',
   budget: '',
+  salary_min: '',
+  salary_max: '',
+  work_mode: '',
   reference_number: '',
   project_name: '',
   hiring_manager: '',
@@ -227,6 +230,9 @@ export default function Requisitions({ user }) {
           expected_start_date: detail.expected_start_date || '',
           tat_days:            detail.tat_days ?? '',
           budget:              detail.budget ?? '',
+          salary_min:          detail.salary_min ?? '',
+          salary_max:          detail.salary_max ?? '',
+          work_mode:           detail.work_mode || '',
           reference_number:    detail.reference_number || '',
           project_name:        detail.project_name || '',
           hiring_manager:      detail.hiring_manager || '',
@@ -295,6 +301,9 @@ export default function Requisitions({ user }) {
     if (!createForm.location) errs.location = 'Required';
     if (!createForm.purpose) errs.purpose = 'Required';
     if (createForm.purpose === 'client' && !createForm.client_name) errs.client_name = 'Required for client requisitions';
+    if (!createForm.work_mode) errs.work_mode = 'Required';
+    if (!createForm.salary_min) errs.salary_min = 'Required';
+    if (!createForm.salary_max) errs.salary_max = 'Required';
     if (!createForm.hiring_manager) errs.hiring_manager = 'Required';
     if (!createForm.l1_approver) errs.l1_approver = 'Required';
     if (createForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
@@ -831,6 +840,47 @@ export default function Requisitions({ user }) {
                   />
                 </div>
 
+                {/* Work Mode */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Work Mode:</FieldLabel>
+                  <SelectField value={createForm.work_mode} onChange={(e) => setField('work_mode', e.target.value)} error={formErrors.work_mode}>
+                    <option value="">--Select--</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="remote">Remote</option>
+                    <option value="office">Office</option>
+                  </SelectField>
+                  <FieldError msg={formErrors.work_mode} />
+                </div>
+
+                {/* Salary Range */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Salary Range (₹ LPA):</FieldLabel>
+                  <div className="flex gap-2 items-center">
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={createForm.salary_min}
+                      onChange={(e) => setField('salary_min', e.target.value)}
+                      placeholder="Min"
+                      error={formErrors.salary_min}
+                    />
+                    <span className="text-slate-400 shrink-0">–</span>
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={createForm.salary_max}
+                      onChange={(e) => setField('salary_max', e.target.value)}
+                      placeholder="Max"
+                      error={formErrors.salary_max}
+                    />
+                  </div>
+                  {(formErrors.salary_min || formErrors.salary_max) && (
+                    <FieldError msg={formErrors.salary_min || formErrors.salary_max} />
+                  )}
+                </div>
+
                 {/* Row 10: Tags | Mandatory Skills */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Tags:</FieldLabel>
@@ -1108,6 +1158,41 @@ export default function Requisitions({ user }) {
                     onChange={(e) => setEditField('budget', e.target.value)}
                     placeholder="e.g. 12.50 (optional)"
                   />
+                </div>
+
+                {/* Work Mode */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Work Mode:</FieldLabel>
+                  <SelectField value={editForm.work_mode} onChange={(e) => setEditField('work_mode', e.target.value)}>
+                    <option value="">--Select--</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="remote">Remote</option>
+                    <option value="office">Office</option>
+                  </SelectField>
+                </div>
+
+                {/* Salary Range */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Salary Range (₹ LPA):</FieldLabel>
+                  <div className="flex gap-2 items-center">
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={editForm.salary_min}
+                      onChange={(e) => setEditField('salary_min', e.target.value)}
+                      placeholder="Min"
+                    />
+                    <span className="text-slate-400 shrink-0">–</span>
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={editForm.salary_max}
+                      onChange={(e) => setEditField('salary_max', e.target.value)}
+                      placeholder="Max"
+                    />
+                  </div>
                 </div>
 
               </div>
