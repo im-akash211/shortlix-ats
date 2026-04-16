@@ -1072,27 +1072,6 @@ export default function Jobs({ user }) {
                 </div>
               </div>
 
-              {/* Quick Actions */}
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Quick Actions</p>
-                <div className="flex flex-col gap-1">
-                  {[
-                    { icon: <UserPlus className="w-4 h-4" />, label: 'Add Profile',          action: () => setIsAddProfileOpen(true) },
-                    { icon: <Users className="w-4 h-4" />,    label: 'Manage Collaborators',  action: () => viewingJob && openCollabModal(viewingJob), disabled: !viewingJob },
-                    { icon: <Edit2 className="w-4 h-4" />,    label: 'Edit Job Details',      action: openEdit, disabled: !jobDetail },
-                  ].map(({ icon, label, action, disabled }) => (
-                    <button
-                      key={label}
-                      onClick={action}
-                      disabled={disabled}
-                      className="flex items-center gap-2.5 w-full text-sm text-slate-700 hover:text-blue-600 hover:bg-slate-50 px-3 py-2 rounded-lg transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {icon} {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Collaborators list */}
               {jobDetail?.collaborators?.length > 0 && (
                 <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
@@ -1248,6 +1227,11 @@ export default function Jobs({ user }) {
                         )}
                         {job.hiring_manager_name && (
                           <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {job.hiring_manager_name}</span>
+                        )}
+                        {job.purpose && (
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${job.purpose === 'client' ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700'}`}>
+                            {job.purpose_code || job.purpose}
+                          </span>
                         )}
                       </div>
                       <div className="flex items-center gap-4 text-sm font-medium text-blue-600">

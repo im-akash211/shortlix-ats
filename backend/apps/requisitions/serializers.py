@@ -3,6 +3,22 @@ from django.db.models import Count, Q
 from .models import Requisition, RequisitionApproval
 
 
+def _generate_purpose_code(purpose):
+    """Generate next sequential purpose code: SHT-INT-N or SHT-CLT-N (max+1)."""
+    prefix = 'SHT-INT' if purpose == 'internal' else 'SHT-CLT'
+    existing = Requisition.objects.filter(
+        purpose_code__startswith=prefix
+    ).values_list('purpose_code', flat=True)
+    numbers = []
+    for code in existing:
+        try:
+            numbers.append(int(code.split('-')[-1]))
+        except ValueError:
+            pass
+    next_num = max(numbers) + 1 if numbers else 0
+    return f'{prefix}-{next_num:03d}'
+
+
 class RequisitionApprovalSerializer(serializers.ModelSerializer):
     acted_by_name = serializers.CharField(source='acted_by.full_name', read_only=True)
 
@@ -24,6 +40,7 @@ class RequisitionListSerializer(serializers.ModelSerializer):
         model = Requisition
         fields = ['id', 'title', 'department', 'department_name', 'location', 'status',
                   'hiring_manager', 'hiring_manager_name', 'positions_count', 'priority',
+                  'purpose', 'purpose_code',
                   'created_at', 'applies_count', 'shortlists_count', 'offers_count', 'joined_count']
 
     def _get_job_stage_count(self, obj, stages):
@@ -65,4 +82,9 @@ class RequisitionCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Requisition
         fields = '__all__'
-        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'status']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'status', 'purpose_code']
+
+    def create(self, validated_data):
+        purpose = validated_data.get('purpose', 'internal')
+        validated_data['purpose_code'] = _generate_purpose_code(purpose)
+        return super().create(validated_data)

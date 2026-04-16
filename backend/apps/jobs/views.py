@@ -32,7 +32,7 @@ class JobListView(generics.ListAPIView):
 
     def get_queryset(self):
         # All four counts are computed as conditional COUNTs in one SQL query — no per-row queries.
-        qs = Job.objects.select_related('department', 'hiring_manager').annotate(
+        qs = Job.objects.select_related('department', 'hiring_manager', 'requisition').annotate(
             applies_count=Count('candidate_mappings', distinct=True),
             shortlists_count=Count(
                 'candidate_mappings',

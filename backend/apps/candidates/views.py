@@ -207,7 +207,8 @@ class CandidateShareView(APIView):
                 )
                 msg.attach_alternative(html_body, "text/html")
                 msg.send()
-            except Exception:
-                pass  # Don't fail the request if email sending fails
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error("Failed to send share email to %s: %s", recipient.email, e)
 
         return Response({'shared_with': len(notifications)}, status=status.HTTP_201_CREATED)
