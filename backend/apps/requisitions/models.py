@@ -21,6 +21,9 @@ class Requisition(models.Model):
     REQUISITION_TYPE_CHOICES = [
         ('new', 'New'), ('backfill', 'Backfill'),
     ]
+    PURPOSE_CHOICES = [
+        ('internal', 'Internal'), ('client', 'Client'),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255)
@@ -38,6 +41,8 @@ class Requisition(models.Model):
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
     employment_type = models.CharField(max_length=15, choices=EMPLOYMENT_TYPE_CHOICES, default='permanent')
     requisition_type = models.CharField(max_length=10, choices=REQUISITION_TYPE_CHOICES, default='new')
+    purpose = models.CharField(max_length=10, choices=PURPOSE_CHOICES, default='internal')
+    purpose_code = models.CharField(max_length=20, blank=True, unique=True, null=True)
     positions_count = models.PositiveIntegerField(default=1)
     experience_min = models.DecimalField(max_digits=4, decimal_places=1, default=0)
     experience_max = models.DecimalField(max_digits=4, decimal_places=1, default=0)

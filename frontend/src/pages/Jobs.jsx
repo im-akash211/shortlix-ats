@@ -1216,6 +1216,11 @@ export default function Jobs({ user }) {
                         {job.hiring_manager_name && (
                           <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {job.hiring_manager_name}</span>
                         )}
+                        {job.purpose && (
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${job.purpose === 'client' ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700'}`}>
+                            {job.purpose_code || job.purpose}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-4 text-sm font-medium text-blue-600">
                         <button onClick={() => openJobDetails(job)} className="flex items-center gap-1 hover:text-blue-800">

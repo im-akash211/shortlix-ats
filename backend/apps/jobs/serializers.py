@@ -16,6 +16,8 @@ class JobCollaboratorSerializer(serializers.ModelSerializer):
 class JobListSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     hiring_manager_name = serializers.CharField(source='hiring_manager.full_name', read_only=True)
+    purpose = serializers.CharField(source='requisition.purpose', read_only=True, default='')
+    purpose_code = serializers.CharField(source='requisition.purpose_code', read_only=True, default='')
     # These fields are populated by annotations in JobListView.get_queryset() — no per-row DB queries.
     applies_count = serializers.IntegerField(read_only=True)
     shortlists_count = serializers.IntegerField(read_only=True)
@@ -26,7 +28,7 @@ class JobListSerializer(serializers.ModelSerializer):
         model = Job
         fields = ['id', 'job_code', 'title', 'department', 'department_name',
                   'hiring_manager', 'hiring_manager_name', 'location', 'status',
-                  'experience_min', 'experience_max', 'created_at',
+                  'experience_min', 'experience_max', 'created_at', 'purpose', 'purpose_code',
                   'applies_count', 'shortlists_count', 'offers_count', 'joined_count']
 
 
