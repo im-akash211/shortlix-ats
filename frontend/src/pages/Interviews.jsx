@@ -83,13 +83,17 @@ export default function Interviews() {
   });
   const listLoading = isLoading || isPlaceholderData;
 
-  // Phase B: summary counts — cached independently; invalidated after mutations
-  const { data: summary = { pending_confirmation: 0, upcoming: 0, pending_feedback: 0, completed: 0 } } = useQuery({
-    queryKey: ['interviews', 'summary'],
-    queryFn: interviewsApi.summary,
-  });
-
   const data = listData ? (listData.results || listData) : [];
+
+  const now = new Date();
+
+  // Compute summary counts from the current tab's data so they stay in sync
+  const summary = {
+    pending_confirmation: 0,
+    upcoming: data.filter((iv) => iv.status === 'scheduled' && new Date(iv.scheduled_at) >= now).length,
+    pending_feedback: data.filter((iv) => isPendingFeedback(iv)).length,
+    completed: data.filter((iv) => iv.status === 'completed').length,
+  };
 
   const handleCancel = async (id) => {
     try {
@@ -137,8 +141,6 @@ export default function Interviews() {
       } catch (_) {}
     }
   };
-
-  const now = new Date();
 
   let filteredData = search.trim()
     ? data.filter((iv) =>
