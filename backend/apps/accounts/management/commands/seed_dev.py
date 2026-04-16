@@ -99,12 +99,23 @@ class Command(BaseCommand):
         )
 
         # ---- Requisitions ---- #
+        _counters = {'internal': 0, 'client': 0}
+
+        def _gen_purpose_code(purpose):
+            prefix = 'SHT-INT' if purpose == 'internal' else 'SHT-CLT'
+            code = f'{prefix}-{_counters[purpose]:03d}'
+            _counters[purpose] += 1
+            return code
+
         def make_req(title, dept, hm, loc, status, days_ago=10, **kwargs):
+            purpose = random.choice(['internal', 'client'])
             req = Requisition.objects.create(
                 title=title, department=dept, hiring_manager=hm, l1_approver=admin,
                 created_by=rec1, location=loc, status=status,
                 priority=kwargs.get('priority', 'medium'),
                 employment_type='permanent', requisition_type='new',
+                purpose=purpose,
+                purpose_code=_gen_purpose_code(purpose),
                 positions_count=kwargs.get('positions_count', 1),
                 experience_min=kwargs.get('exp_min', 2),
                 experience_max=kwargs.get('exp_max', 5),
