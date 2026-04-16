@@ -36,6 +36,7 @@ const INITIAL_FORM = {
   priority: 'medium',
   employment_type: 'permanent',
   requisition_type: 'new',
+  purpose: '',
   client_name: '',
   positions_count: 1,
   experience_min: 0,
@@ -212,6 +213,7 @@ export default function Requisitions({ user }) {
           priority:            detail.priority || 'medium',
           employment_type:     detail.employment_type || 'permanent',
           requisition_type:    detail.requisition_type || 'new',
+          purpose:             detail.purpose || '',
           client_name:         detail.client_name || '',
           positions_count:     detail.positions_count || 1,
           experience_min:      detail.experience_min ?? 0,
@@ -293,6 +295,8 @@ export default function Requisitions({ user }) {
     if (!createForm.title) errs.title = 'Required';
     if (!createForm.department) errs.department = 'Required';
     if (!createForm.location) errs.location = 'Required';
+    if (!createForm.purpose) errs.purpose = 'Required';
+    if (createForm.purpose === 'client' && !createForm.client_name) errs.client_name = 'Required for client requisitions';
     if (!createForm.hiring_manager) errs.hiring_manager = 'Required';
     if (!createForm.l1_approver) errs.l1_approver = 'Required';
     if (createForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
@@ -508,6 +512,7 @@ export default function Requisitions({ user }) {
                   <tr>
                     <th className="px-4 py-3 border-b border-slate-200">Requisition</th>
                     <th className="px-4 py-3 border-b border-slate-200">Status</th>
+                    <th className="px-4 py-3 border-b border-slate-200">Purpose</th>
                     <th className="px-4 py-3 border-b border-slate-200">Department</th>
                     <th className="px-4 py-3 border-b border-slate-200">Created on</th>
                     <th className="px-4 py-3 border-b border-slate-200">Hiring Manager</th>
@@ -532,6 +537,13 @@ export default function Requisitions({ user }) {
                           {STATUS_ICON[req.status]}
                           {req.status?.replace('_', ' ')}
                         </div>
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        {req.purpose ? (
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${req.purpose === 'client' ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700'}`}>
+                            {req.purpose_code || req.purpose}
+                          </span>
+                        ) : '—'}
                       </td>
                       <td className="px-4 py-4 align-top text-slate-600">{req.department_name}</td>
                       <td className="px-4 py-4 align-top text-slate-600">{new Date(req.created_at).toLocaleDateString('en-GB')}</td>
@@ -715,13 +727,27 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel>Client's Name:</FieldLabel>
-                  <TextField
-                    value={createForm.client_name}
-                    onChange={(e) => setField('client_name', e.target.value)}
-                    placeholder=""
-                  />
+                  <FieldLabel required>Purpose:</FieldLabel>
+                  <SelectField value={createForm.purpose} onChange={(e) => { setField('purpose', e.target.value); if (e.target.value !== 'client') setField('client_name', ''); }} error={formErrors.purpose}>
+                    <option value="">--Select--</option>
+                    <option value="internal">Internal</option>
+                    <option value="client">Client</option>
+                  </SelectField>
+                  <FieldError msg={formErrors.purpose} />
                 </div>
+
+                {createForm.purpose === 'client' && (
+                  <div className="flex flex-col gap-1">
+                    <FieldLabel required>Client's Name:</FieldLabel>
+                    <TextField
+                      value={createForm.client_name}
+                      onChange={(e) => setField('client_name', e.target.value)}
+                      placeholder="Enter client name"
+                      error={formErrors.client_name}
+                    />
+                    <FieldError msg={formErrors.client_name} />
+                  </div>
+                )}
 
                 {/* Row 6: Location | Annual CTC Range */}
                 <div className="flex flex-col gap-1">
@@ -1023,6 +1049,15 @@ export default function Requisitions({ user }) {
                     <option value="permanent">Permanent</option>
                     <option value="contract">Contract</option>
                     <option value="internship">Internship</option>
+                  </SelectField>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Purpose:</FieldLabel>
+                  <SelectField value={editForm.purpose} onChange={(e) => setEditField('purpose', e.target.value)}>
+                    <option value="">--Select--</option>
+                    <option value="internal">Internal</option>
+                    <option value="client">Client</option>
                   </SelectField>
                 </div>
 

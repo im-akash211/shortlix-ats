@@ -24,6 +24,7 @@ class RequisitionListSerializer(serializers.ModelSerializer):
         model = Requisition
         fields = ['id', 'title', 'department', 'department_name', 'location', 'status',
                   'hiring_manager', 'hiring_manager_name', 'positions_count', 'priority',
+                  'purpose', 'purpose_code',
                   'created_at', 'applies_count', 'shortlists_count', 'offers_count', 'joined_count']
 
     def _get_job_stage_count(self, obj, stages):
@@ -65,4 +66,15 @@ class RequisitionCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Requisition
         fields = '__all__'
-        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'status']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'status', 'purpose_code']
+
+    def create(self, validated_data):
+        import random
+        purpose = validated_data.get('purpose', 'internal')
+        prefix = 'SHT-INT' if purpose == 'internal' else 'SHT-CLT'
+        while True:
+            code = f'{prefix}-{random.randint(1000, 9999)}'
+            if not Requisition.objects.filter(purpose_code=code).exists():
+                break
+        validated_data['purpose_code'] = code
+        return super().create(validated_data)
