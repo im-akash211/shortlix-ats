@@ -26,6 +26,8 @@ class InterviewListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(interviewer=user)
         elif tab == 'scheduled_by_me':
             qs = qs.filter(created_by=user)
+        elif tab == 'hm_interviews':
+            qs = qs.filter(mapping__job__hiring_manager=user)
         return qs
 
     def get_serializer_class(self):

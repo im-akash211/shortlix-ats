@@ -55,7 +55,7 @@ export default function Interviews() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Phase D: activeTab is URL-backed — survives refresh and browser navigation
-  const defaultTab = role === 'recruiter' ? 'scheduled_by_me' : 'my';
+  const defaultTab = role === 'recruiter' ? 'scheduled_by_me' : role === 'hiring_manager' ? 'hm_interviews' : 'my';
   const activeTab = searchParams.get('tab') || defaultTab;
   const setActiveTab = (val) => {
     setSearchParams(p => { p.set('tab', val); return p; });
@@ -197,8 +197,9 @@ export default function Interviews() {
           {/* Tabs */}
           <div className="flex items-center gap-1">
             {[
-              { key: 'my',              label: 'My Interviews',   roles: ['admin', 'hiring_manager', 'interviewer'] },
-              { key: 'scheduled_by_me', label: 'Scheduled by Me', roles: ['admin', 'hiring_manager', 'recruiter'] },
+              { key: 'my',              label: 'My Interviews',   roles: ['admin', 'interviewer'] },
+              { key: 'scheduled_by_me', label: 'Scheduled by Me', roles: ['admin', 'recruiter'] },
+              { key: 'hm_interviews',   label: 'Interviews',      roles: ['hiring_manager'] },
               { key: 'all',             label: 'All Schedules',   roles: ['admin', 'hiring_manager', 'recruiter', 'interviewer'] },
             ].filter((t) => t.roles.includes(role)).map((t) => (
               <button
