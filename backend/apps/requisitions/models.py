@@ -21,6 +21,11 @@ class Requisition(models.Model):
     REQUISITION_TYPE_CHOICES = [
         ('new', 'New'), ('backfill', 'Backfill'),
     ]
+    LOCATION_CHOICES = [
+        ('Gurgaon', 'Gurgaon'),
+        ('Noida', 'Noida'),
+        ('Remote', 'Remote'),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255)
@@ -33,7 +38,7 @@ class Requisition(models.Model):
         'departments.SubVertical', null=True, blank=True, on_delete=models.SET_NULL,
         related_name='requisitions_sv2'
     )
-    location = models.CharField(max_length=255)
+    location = models.CharField(max_length=50, choices=LOCATION_CHOICES)
     designation = models.CharField(max_length=255, blank=True)
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
     employment_type = models.CharField(max_length=15, choices=EMPLOYMENT_TYPE_CHOICES, default='permanent')
@@ -41,9 +46,6 @@ class Requisition(models.Model):
     positions_count = models.PositiveIntegerField(default=1)
     experience_min = models.DecimalField(max_digits=4, decimal_places=1, default=0)
     experience_max = models.DecimalField(max_digits=4, decimal_places=1, default=0)
-    ctc_currency = models.CharField(max_length=10, default='INR')
-    ctc_min_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
-    ctc_max_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     job_description = models.TextField(blank=True)
     roles_responsibilities = models.TextField(blank=True)
     skills_required = ArrayField(models.CharField(max_length=100), default=list, blank=True)
