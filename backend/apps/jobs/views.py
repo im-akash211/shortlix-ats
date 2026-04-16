@@ -53,7 +53,9 @@ class JobListView(generics.ListAPIView):
         tab = self.request.query_params.get('tab', 'all')
         user = self.request.user
         if tab == 'mine':
-            qs = qs.filter(created_by=user)
+            qs = qs.filter(
+                Q(created_by=user) | Q(collaborators__user=user)
+            ).distinct()
         return qs
 
 
