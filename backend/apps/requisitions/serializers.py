@@ -3,6 +3,22 @@ from django.db.models import Count, Q
 from .models import Requisition, RequisitionApproval
 
 
+def _generate_purpose_code(purpose):
+    """Generate next sequential purpose code: SHT-INT-N or SHT-CLT-N (max+1)."""
+    prefix = 'SHT-INT' if purpose == 'internal' else 'SHT-CLT'
+    existing = Requisition.objects.filter(
+        purpose_code__startswith=prefix
+    ).values_list('purpose_code', flat=True)
+    numbers = []
+    for code in existing:
+        try:
+            numbers.append(int(code.split('-')[-1]))
+        except ValueError:
+            pass
+    next_num = max(numbers) + 1 if numbers else 0
+    return f'{prefix}-{next_num}'
+
+
 class RequisitionApprovalSerializer(serializers.ModelSerializer):
     acted_by_name = serializers.CharField(source='acted_by.full_name', read_only=True)
 
@@ -69,12 +85,6 @@ class RequisitionCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'status', 'purpose_code']
 
     def create(self, validated_data):
-        import random
         purpose = validated_data.get('purpose', 'internal')
-        prefix = 'SHT-INT' if purpose == 'internal' else 'SHT-CLT'
-        while True:
-            code = f'{prefix}-{random.randint(1000, 9999)}'
-            if not Requisition.objects.filter(purpose_code=code).exists():
-                break
-        validated_data['purpose_code'] = code
+        validated_data['purpose_code'] = _generate_purpose_code(purpose)
         return super().create(validated_data)
