@@ -301,14 +301,12 @@ export default function Interviews() {
                             <ChevronDown className="w-3 h-3" />
                           </button>
                         )}
-                        {iv.status === 'completed' && iv.has_feedback && (
-                          <button
-                            onClick={() => openDetailPanel(iv)}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-xs font-medium transition-colors"
-                          >
-                            View Details
-                          </button>
-                        )}
+                        <button
+                          onClick={() => openDetailPanel(iv)}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+                        >
+                          View Details
+                        </button>
                         {iv.status === 'scheduled' && !isPendingFeedback(iv) && (
                           <button
                             onClick={() => { setSelected(iv); setIsCancelConfirm(true); }}
@@ -500,7 +498,7 @@ export default function Interviews() {
                       Provide Feedback
                     </button>
                   ) : (
-                    <p className="text-slate-400 text-xs">No feedback yet.</p>
+                    <p className="text-slate-400 text-xs">{detailPanel.interviewer === user?.id ? 'No feedback yet.' : 'Feedback not available.'}</p>
                   )}
                 </div>
               )}
