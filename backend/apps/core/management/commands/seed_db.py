@@ -344,7 +344,7 @@ class Command(BaseCommand):
             req = Requisition.objects.create(
                 title=title,
                 department=departments[dept_name],
-                location=random.choice(["Bangalore", "Gurgaon", "Hyderabad", "Remote"]),
+                location=random.choice(["Gurgaon", "Noida", "Remote"]),
                 designation=title,
                 priority=random.choice(["medium", "high", "critical"]),
                 employment_type="permanent",
@@ -352,8 +352,6 @@ class Command(BaseCommand):
                 positions_count=random.randint(1, 5),
                 experience_min=random.randint(1, 4),
                 experience_max=random.randint(5, 10),
-                ctc_min_lakhs=random.randint(8, 20),
-                ctc_max_lakhs=random.randint(20, 45),
                 job_description=f"Detailed JD for {title}",
                 roles_responsibilities="Ownership, execution, stakeholder management",
                 skills_required=["Python", "Django", "PostgreSQL"],
@@ -419,7 +417,7 @@ class Command(BaseCommand):
                 job_description=req.job_description,
                 experience_min=req.experience_min,
                 experience_max=req.experience_max,
-                status=random.choice(["open", "open", "hidden", "closed"]),
+                status=random.choice(["open", "open", "open", "closed"]),
                 view_count=random.randint(10, 300),
                 positions_filled=min(
                     random.randint(0, req.positions_count),
@@ -498,7 +496,6 @@ class Command(BaseCommand):
                     4,
                 ),
                 current_ctc_lakhs=random.randint(6, 25),
-                expected_ctc_lakhs=random.randint(12, 35),
                 notice_period_days=random.choice([15, 30, 60, 90]),
                 source=random.choice([
                     "linkedin",

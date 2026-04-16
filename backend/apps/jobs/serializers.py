@@ -49,6 +49,7 @@ class JobListSerializer(serializers.ModelSerializer):
 class JobDetailSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     hiring_manager_name = serializers.CharField(source='hiring_manager.full_name', read_only=True)
+    created_by_name = serializers.SerializerMethodField()
     collaborators = JobCollaboratorSerializer(many=True, read_only=True)
     pipeline_stats = serializers.SerializerMethodField()
     history = serializers.SerializerMethodField()
@@ -99,6 +100,16 @@ class JobDetailSerializer(serializers.ModelSerializer):
                     'email': c.user.email,
                 })
         return result
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.full_name
+        # Fallback for jobs created before the created_by field was populated:
+        # the requisition always has a non-null created_by.
+        try:
+            return obj.requisition.created_by.full_name
+        except Exception:
+            return None
 
     def get_tat_days(self, obj):
         try:
