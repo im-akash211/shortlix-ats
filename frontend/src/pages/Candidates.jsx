@@ -10,6 +10,7 @@ import {
   ArrowUpDown, ArrowUp, ArrowDown, Share2,
 } from 'lucide-react';
 import { candidates as candidatesApi, jobs as jobsApi, resumes as resumesApi, candidateShare as candidateShareApi, users as usersApi } from '../lib/api';
+import { useAuth } from '../lib/authContext';
 import { ROUTES } from '../routes/constants';
 
 // ─── Skill chip editor ─────────────────────────────────────────────────────────
@@ -127,7 +128,8 @@ const EMPTY_FILTERS = {
 };
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export default function Candidates({ user }) {
+export default function Candidates({ user: _userProp }) {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -267,6 +269,8 @@ export default function Candidates({ user }) {
               location:               detail.location || '',
               total_experience_years: detail.total_experience_years ?? '',
               designation:            detail.designation || '',
+              current_ctc_lakhs:      detail.current_ctc_lakhs ?? '',
+              notice_period_days:     detail.notice_period_days ?? '',
             });
           }
         })
@@ -426,6 +430,12 @@ export default function Candidates({ user }) {
         ...editForm,
         total_experience_years: editForm.total_experience_years !== ''
           ? Number(editForm.total_experience_years)
+          : null,
+        current_ctc_lakhs: editForm.current_ctc_lakhs !== ''
+          ? Number(editForm.current_ctc_lakhs)
+          : null,
+        notice_period_days: editForm.notice_period_days !== ''
+          ? Number(editForm.notice_period_days)
           : null,
       };
       await candidatesApi.update(selectedCandidate.id, payload);
@@ -1090,6 +1100,30 @@ export default function Candidates({ user }) {
               ))}
             </div>
 
+            {/* CTC + Notice Period (admin/recruiter only) */}
+            {(user?.role === 'admin' || user?.role === 'recruiter') && (profileDetail?.current_ctc_lakhs != null || profileDetail?.notice_period_days != null) && (
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-xl px-4 py-3">
+                {profileDetail?.current_ctc_lakhs != null && (
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-slate-400 mt-0.5 shrink-0"><Briefcase className="w-4 h-4" /></span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-500">Current CTC</p>
+                      <p className="text-sm font-medium text-slate-800">₹{profileDetail.current_ctc_lakhs} L</p>
+                    </div>
+                  </div>
+                )}
+                {profileDetail?.notice_period_days != null && (
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-slate-400 mt-0.5 shrink-0"><Clock className="w-4 h-4" /></span>
+                    <div className="min-w-0">
+                      <p className="text-xs text-slate-500">Notice Period</p>
+                      <p className="text-sm font-medium text-slate-800">{profileDetail.notice_period_days} days</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Skills */}
             {profileDetail.skills?.length > 0 && (
               <div>
@@ -1279,6 +1313,30 @@ export default function Candidates({ user }) {
                   className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
                 />
               </div>
+              {(user?.role === 'admin' || user?.role === 'recruiter') && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-700">Current CTC (Lakhs)</label>
+                    <input
+                      type="number" min="0" step="0.1"
+                      value={editForm.current_ctc_lakhs}
+                      onChange={(e) => setEditForm({ ...editForm, current_ctc_lakhs: e.target.value })}
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
+                      placeholder="e.g. 12.5"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-700">Notice Period (days)</label>
+                    <input
+                      type="number" min="0" step="1"
+                      value={editForm.notice_period_days}
+                      onChange={(e) => setEditForm({ ...editForm, notice_period_days: e.target.value })}
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
+                      placeholder="e.g. 30"
+                    />
+                  </div>
+                </>
+              )}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-medium text-slate-700">Designation</label>
                 <input
