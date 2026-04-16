@@ -82,6 +82,8 @@ class RequisitionListCreateView(generics.ListCreateAPIView):
             qs = qs.filter(created_by=user)
         elif user.role == 'hiring_manager':
             qs = qs.filter(department=user.department)
+        elif user.role == 'interviewer':
+            qs = qs.none()
         return qs
 
     def get_serializer_class(self):
@@ -99,6 +101,11 @@ class RequisitionDetailView(generics.RetrieveUpdateAPIView):
     ).prefetch_related('approval_logs')
     serializer_class = RequisitionDetailSerializer
 
+    def get_permissions(self):
+        if self.request.method in ('PUT', 'PATCH'):
+            return [IsAuthenticated(), IsAdminRecruiterOrHM()]
+        return [IsAuthenticated()]
+
     def get_serializer_class(self):
         if self.request.method in ('PUT', 'PATCH'):
             return RequisitionCreateSerializer
@@ -109,6 +116,8 @@ class RequisitionDetailView(generics.RetrieveUpdateAPIView):
 
 
 class RequisitionDeleteView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRecruiterOrHM]
+
     def delete(self, request, pk):
         req = generics.get_object_or_404(Requisition, pk=pk)
         req.delete()
@@ -116,6 +125,8 @@ class RequisitionDeleteView(APIView):
 
 
 class RequisitionSubmitView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRecruiterOrHM]
+
     def post(self, request, pk):
         req = generics.get_object_or_404(Requisition, pk=pk)
         if req.status != 'draft':
