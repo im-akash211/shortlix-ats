@@ -24,7 +24,7 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------ #
     def _clear(self):
         from apps.interviews.models import CompetencyRating, InterviewFeedback, Interview, FeedbackTemplate
-        from apps.candidates.models import PipelineStageLog, CandidateNote, CandidateJobMapping, Candidate
+        from apps.candidates.models import PipelineStageHistory, CandidateNote, CandidateJobMapping, Candidate
         from apps.jobs.models import JobCollaborator, Job
         from apps.requisitions.models import RequisitionApproval, Requisition
         from apps.departments.models import SubVertical, Department
@@ -34,7 +34,7 @@ class Command(BaseCommand):
         InterviewFeedback.objects.all().delete()
         Interview.objects.all().delete()
         FeedbackTemplate.objects.all().delete()
-        PipelineStageLog.objects.all().delete()
+        PipelineStageHistory.objects.all().delete()
         CandidateNote.objects.all().delete()
         CandidateJobMapping.objects.all().delete()
         Candidate.objects.all().delete()
@@ -52,7 +52,7 @@ class Command(BaseCommand):
         from apps.departments.models import Department, SubVertical
         from apps.requisitions.models import Requisition, RequisitionApproval
         from apps.jobs.models import Job, JobCollaborator
-        from apps.candidates.models import Candidate, CandidateJobMapping, PipelineStageLog, CandidateNote
+        from apps.candidates.models import Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote
         from apps.interviews.models import Interview, InterviewFeedback, CompetencyRating, FeedbackTemplate
 
         now = timezone.now()
@@ -218,10 +218,10 @@ class Command(BaseCommand):
 
         # ---- Pipeline mappings ---- #
         stage_cycle = [
-            'pending', 'shortlisted', 'interview', 'interview', 'on_hold',
-            'selected', 'offered', 'joined', 'rejected', 'pending',
-            'shortlisted', 'interview', 'on_hold', 'pending', 'shortlisted',
-            'interview', 'rejected', 'pending', 'shortlisted', 'interview',
+            'APPLIED', 'SHORTLISTED', 'INTERVIEW', 'INTERVIEW', 'INTERVIEW',
+            'SHORTLISTED', 'OFFERED', 'JOINED', 'DROPPED', 'APPLIED',
+            'SHORTLISTED', 'INTERVIEW', 'INTERVIEW', 'APPLIED', 'SHORTLISTED',
+            'INTERVIEW', 'DROPPED', 'APPLIED', 'SHORTLISTED', 'INTERVIEW',
         ]
         job_cycle = [job1, job1, job2, job3, job3, job4, job4, job5, job5, job1,
                      job2, job2, job3, job4, job5, job1, job2, job3, job4, job5]
@@ -230,11 +230,19 @@ class Command(BaseCommand):
         for i, candidate in enumerate(candidates):
             job = job_cycle[i]
             stage = stage_cycle[i]
+            extra = {}
+            if stage == 'INTERVIEW':
+                extra['current_interview_round'] = 'R1'
+            elif stage == 'DROPPED':
+                extra['drop_reason'] = 'REJECTED'
+            elif stage == 'OFFERED':
+                extra['offer_status'] = 'OFFER_SENT'
             m = CandidateJobMapping.objects.create(
-                candidate=candidate, job=job, stage=stage, moved_by=rec1
+                candidate=candidate, job=job, macro_stage=stage, moved_by=rec1, **extra
             )
-            PipelineStageLog.objects.create(
-                mapping=m, from_stage='', to_stage=stage, changed_by=rec1, notes='Initial assignment'
+            PipelineStageHistory.objects.create(
+                mapping=m, from_macro_stage='', to_macro_stage=stage,
+                moved_by=rec1, remarks='Initial assignment'
             )
             mappings.append(m)
 
@@ -253,7 +261,7 @@ class Command(BaseCommand):
 
         # ---- Interviews ---- #
         # 8 scheduled, 2 completed with feedback
-        interview_mappings = [m for m in mappings if m.stage in ('interview', 'shortlisted')][:10]
+        interview_mappings = [m for m in mappings if m.macro_stage in ('INTERVIEW', 'SHORTLISTED')][:10]
 
         for idx, mapping in enumerate(interview_mappings):
             scheduled_at = now + timedelta(days=idx - 2)  # some past, some future

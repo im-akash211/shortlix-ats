@@ -2,6 +2,7 @@ from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from .models import Interview, InterviewFeedback, FeedbackTemplate
@@ -97,3 +98,60 @@ class InterviewSummaryView(APIView):
             'pending_confirmation': 0,
             'archived': qs.filter(status='cancelled').count(),
         })
+
+
+class SetRoundResultView(APIView):
+    """
+    PATCH /interviews/{pk}/round-result/
+
+    Body: { "round_result": "PASS" | "FAIL" | "ON_HOLD" }
+
+    - Sets round_result and marks round_status = COMPLETED.
+    - FAIL  → auto-moves candidate to DROPPED (drop_reason=REJECTED).
+    - PASS at MGMT → returns suggest_move_to_offered=true hint.
+    """
+
+    VALID_RESULTS = {'PASS', 'FAIL', 'ON_HOLD'}
+
+    def patch(self, request, pk):
+        round_result = request.data.get('round_result')
+        if round_result not in self.VALID_RESULTS:
+            return Response(
+                {'error': f'round_result must be one of {sorted(self.VALID_RESULTS)}'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        interview = generics.get_object_or_404(
+            Interview.objects.select_related('mapping'), pk=pk
+        )
+
+        with transaction.atomic():
+            interview.round_result = round_result
+            interview.round_status = 'COMPLETED'
+            interview.status = 'completed'
+            interview.save(update_fields=['round_result', 'round_status', 'status'])
+
+            mapping = interview.mapping
+            response_data = InterviewListSerializer(interview).data
+
+            if round_result == 'FAIL':
+                from apps.candidates.models import PipelineStageHistory, VALID_TRANSITIONS
+                old_stage = mapping.macro_stage
+                if 'DROPPED' in VALID_TRANSITIONS.get(old_stage, []):
+                    mapping.macro_stage = 'DROPPED'
+                    mapping.drop_reason = 'REJECTED'
+                    mapping.moved_by = request.user
+                    mapping.save(update_fields=['macro_stage', 'drop_reason', 'moved_by', 'stage_updated_at'])
+                    PipelineStageHistory.objects.create(
+                        mapping=mapping,
+                        from_macro_stage=old_stage,
+                        to_macro_stage='DROPPED',
+                        moved_by=request.user,
+                        remarks=f'Auto-dropped: failed {interview.round_name or interview.round_label}',
+                    )
+                response_data['auto_dropped'] = True
+
+            elif round_result == 'PASS' and interview.round_name == 'MGMT':
+                response_data['suggest_move_to_offered'] = True
+
+        return Response(response_data)

@@ -6,7 +6,7 @@ from django.db.models.functions import TruncWeek
 from django.utils import timezone
 from datetime import timedelta
 from apps.jobs.models import Job
-from apps.candidates.models import CandidateJobMapping, PIPELINE_STAGES
+from apps.candidates.models import CandidateJobMapping, MACRO_STAGE_CHOICES
 from apps.requisitions.models import Requisition
 from apps.interviews.models import Interview
 
@@ -68,7 +68,7 @@ class DashboardSummaryView(APIView):
 
         # One GROUP BY query instead of one COUNT per stage (was 8+ queries).
         stage_counts = dict(
-            mappings.values('stage').annotate(c=Count('id')).values_list('stage', 'c')
+            mappings.values('macro_stage').annotate(c=Count('id')).values_list('macro_stage', 'c')
         )
         total_applies = sum(stage_counts.values())
 
@@ -92,8 +92,8 @@ class DashboardSummaryView(APIView):
 
         stage_history = {}
         stage_trend = {}
-        for key, _ in PIPELINE_STAGES:
-            qs = mappings.filter(stage=key)
+        for key, _ in MACRO_STAGE_CHOICES:
+            qs = mappings.filter(macro_stage=key)
             stage_history[key] = _weekly_history(qs)
             stage_trend[key] = _calc_trend(qs, now)
 
@@ -102,22 +102,20 @@ class DashboardSummaryView(APIView):
             return {'title': title, 'value': value, 'history': history, 'trend_pct': pct, 'trend_up': up}
 
         metrics = [
-            make_metric('Jobs',          jobs_qs.count(),                   jobs_history,                    jobs_trend),
-            make_metric('Views',         total_views,                       applies_history,                 applies_trend),
-            make_metric('Applies',       total_applies,                     applies_history,                 applies_trend),
-            make_metric('Pending',       stage_counts.get('pending', 0),    stage_history['pending'],        stage_trend['pending']),
-            make_metric('Shortlists',    stage_counts.get('shortlisted', 0),stage_history['shortlisted'],    stage_trend['shortlisted']),
-            make_metric('Interviews',    interviews_count,                  interviews_history,              interviews_trend),
-            make_metric('Final Selects', stage_counts.get('selected', 0),   stage_history['selected'],       stage_trend['selected']),
-            make_metric('Offers',        stage_counts.get('offered', 0),    stage_history['offered'],        stage_trend['offered']),
-            make_metric('Joined',        stage_counts.get('joined', 0),     stage_history['joined'],         stage_trend['joined']),
-            make_metric('On Hold',       stage_counts.get('on_hold', 0),    stage_history['on_hold'],        stage_trend['on_hold']),
-            make_metric('Rejects',       stage_counts.get('rejected', 0),   stage_history['rejected'],       stage_trend['rejected']),
-            make_metric('Not Joined',    0,                                  [],                              (0, None)),
+            make_metric('Jobs',        jobs_qs.count(),                         jobs_history,                      jobs_trend),
+            make_metric('Views',       total_views,                             applies_history,                   applies_trend),
+            make_metric('Applies',     total_applies,                           applies_history,                   applies_trend),
+            make_metric('Applied',     stage_counts.get('APPLIED', 0),         stage_history['APPLIED'],          stage_trend['APPLIED']),
+            make_metric('Shortlisted', stage_counts.get('SHORTLISTED', 0),     stage_history['SHORTLISTED'],      stage_trend['SHORTLISTED']),
+            make_metric('Interviews',  interviews_count,                        interviews_history,                interviews_trend),
+            make_metric('Interview',   stage_counts.get('INTERVIEW', 0),       stage_history['INTERVIEW'],        stage_trend['INTERVIEW']),
+            make_metric('Offered',     stage_counts.get('OFFERED', 0),         stage_history['OFFERED'],          stage_trend['OFFERED']),
+            make_metric('Joined',      stage_counts.get('JOINED', 0),          stage_history['JOINED'],           stage_trend['JOINED']),
+            make_metric('Dropped',     stage_counts.get('DROPPED', 0),         stage_history['DROPPED'],          stage_trend['DROPPED']),
         ]
 
         all_candidates = total_applies
-        progressed = total_applies - stage_counts.get('pending', 0) - stage_counts.get('rejected', 0)
+        progressed = total_applies - stage_counts.get('APPLIED', 0) - stage_counts.get('DROPPED', 0)
 
         def source_breakdown(qs):
             # One aggregate query instead of 4 separate COUNT queries per call.
@@ -140,13 +138,13 @@ class DashboardSummaryView(APIView):
                 'all_candidates': all_candidates,
                 'progressed_candidates': progressed,
                 'all_breakdown': source_breakdown(mappings),
-                'progressed_breakdown': source_breakdown(mappings.exclude(stage__in=['pending', 'rejected'])),
-                'offered_breakdown': source_breakdown(mappings.filter(stage='offered')),
-                'joined_breakdown': source_breakdown(mappings.filter(stage='joined')),
+                'progressed_breakdown': source_breakdown(mappings.exclude(macro_stage__in=['APPLIED', 'DROPPED'])),
+                'offered_breakdown': source_breakdown(mappings.filter(macro_stage='OFFERED')),
+                'joined_breakdown': source_breakdown(mappings.filter(macro_stage='JOINED')),
                 'pipeline_stages': [
-                    {'label': 'Shortlisted', 'value': stage_counts.get('shortlisted', 0)},
-                    {'label': 'Selected',    'value': stage_counts.get('selected', 0)},
-                    {'label': 'Pending',     'value': stage_counts.get('pending', 0)},
+                    {'label': 'Shortlisted', 'value': stage_counts.get('SHORTLISTED', 0)},
+                    {'label': 'Interview',   'value': stage_counts.get('INTERVIEW', 0)},
+                    {'label': 'Applied',     'value': stage_counts.get('APPLIED', 0)},
                 ],
             },
         })
@@ -193,11 +191,11 @@ class DashboardFunnelView(APIView):
 
         # One GROUP BY query instead of one COUNT per stage.
         stage_counts = dict(
-            mappings.values('stage').annotate(c=Count('id')).values_list('stage', 'c')
+            mappings.values('macro_stage').annotate(c=Count('id')).values_list('macro_stage', 'c')
         )
         funnel = [
             {'stage': key, 'label': label, 'count': stage_counts.get(key, 0)}
-            for key, label in PIPELINE_STAGES
+            for key, label in MACRO_STAGE_CHOICES
         ]
         return Response(funnel)
 

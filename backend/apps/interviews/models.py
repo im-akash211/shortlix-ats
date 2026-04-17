@@ -27,6 +27,25 @@ class Interview(models.Model):
         ('phone', 'Phone Call'),
         ('face_to_face', 'Face-to-Face'),
     ]
+    # Structured round names for the new pipeline
+    ROUND_NAME_CHOICES = [
+        ('R1', 'Round 1'),
+        ('R2', 'Round 2'),
+        ('CLIENT', 'Client Round'),
+        ('CDO', 'CDO Round'),
+        ('MGMT', 'Management Round'),
+    ]
+    # Round-level status (separate from the interview scheduling status above)
+    ROUND_STATUS_CHOICES = [
+        ('SCHEDULED', 'Scheduled'),
+        ('COMPLETED', 'Completed'),
+        ('ON_HOLD', 'On Hold'),
+    ]
+    ROUND_RESULT_CHOICES = [
+        ('PASS', 'Pass'),
+        ('FAIL', 'Fail'),
+        ('ON_HOLD', 'On Hold'),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     mapping = models.ForeignKey(
@@ -34,6 +53,18 @@ class Interview(models.Model):
     )
     round_number = models.PositiveSmallIntegerField(default=1)
     round_label = models.CharField(max_length=100, default='Round 1')
+
+    # New structured round fields (nullable to preserve existing records)
+    round_name = models.CharField(
+        max_length=10, choices=ROUND_NAME_CHOICES, null=True, blank=True
+    )
+    round_status = models.CharField(
+        max_length=15, choices=ROUND_STATUS_CHOICES, null=True, blank=True
+    )
+    round_result = models.CharField(
+        max_length=10, choices=ROUND_RESULT_CHOICES, null=True, blank=True
+    )
+
     interviewer = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='assigned_interviews'
     )

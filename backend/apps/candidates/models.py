@@ -4,16 +4,67 @@ from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
 
-PIPELINE_STAGES = [
-    ('pending', 'Pending'),
-    ('shortlisted', 'Shortlisted'),
-    ('interview', 'Interview'),
-    ('on_hold', 'On Hold'),
-    ('selected', 'Selected'),
-    ('rejected', 'Rejected'),
-    ('offered', 'Offered'),
-    ('joined', 'Joined'),
+# ---------------------------------------------------------------------------
+# Macro stage choices (replaces the old flat PIPELINE_STAGES)
+# ---------------------------------------------------------------------------
+MACRO_STAGE_CHOICES = [
+    ('APPLIED', 'Applied'),
+    ('SHORTLISTED', 'Shortlisted'),
+    ('INTERVIEW', 'Interview'),
+    ('OFFERED', 'Offered'),
+    ('JOINED', 'Joined'),
+    ('DROPPED', 'Dropped'),
 ]
+
+OFFER_STATUS_CHOICES = [
+    ('OFFER_SENT', 'Offer Sent'),
+    ('OFFER_ACCEPTED', 'Offer Accepted'),
+    ('OFFER_DECLINED', 'Offer Declined'),
+]
+
+DROP_REASON_CHOICES = [
+    ('REJECTED', 'Rejected'),
+    ('CANDIDATE_DROP', 'Candidate Drop'),
+    ('NO_SHOW', 'No Show'),
+]
+
+PRIORITY_CHOICES = [
+    ('LOW', 'Low'),
+    ('MEDIUM', 'Medium'),
+    ('HIGH', 'High'),
+]
+
+ROUND_CHOICES = [
+    ('R1', 'Round 1'),
+    ('R2', 'Round 2'),
+    ('CLIENT', 'Client Round'),
+    ('CDO', 'CDO Round'),
+    ('MGMT', 'Management Round'),
+]
+
+# Ordered progression for guided next-round flow
+ROUND_PROGRESSION = ['R1', 'R2', 'CLIENT', 'CDO', 'MGMT']
+
+# Numeric order for comparing stages (used for dimmed-card queries)
+STAGE_ORDER = {
+    'APPLIED': 0,
+    'SHORTLISTED': 1,
+    'INTERVIEW': 2,
+    'OFFERED': 3,
+    'JOINED': 4,
+    'DROPPED': 5,
+}
+
+# Valid macro-stage transitions
+VALID_TRANSITIONS = {
+    'APPLIED':     ['SHORTLISTED', 'DROPPED'],
+    'SHORTLISTED': ['INTERVIEW', 'DROPPED'],
+    # INTERVIEW → INTERVIEW is valid (round progression within interview stage)
+    'INTERVIEW':   ['INTERVIEW', 'OFFERED', 'DROPPED'],
+    'OFFERED':     ['JOINED', 'DROPPED'],
+    'JOINED':      [],
+    'DROPPED':     [],
+}
 
 
 class Candidate(models.Model):
@@ -83,7 +134,29 @@ class CandidateJobMapping(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='job_mappings')
     job = models.ForeignKey('jobs.Job', on_delete=models.CASCADE, related_name='candidate_mappings')
-    stage = models.CharField(max_length=20, choices=PIPELINE_STAGES, default='pending', db_index=True)
+
+    # Core pipeline stage
+    macro_stage = models.CharField(
+        max_length=15, choices=MACRO_STAGE_CHOICES, default='APPLIED', db_index=True
+    )
+
+    # Micro-status fields — only populated when relevant macro_stage is active
+    offer_status = models.CharField(
+        max_length=20, choices=OFFER_STATUS_CHOICES, null=True, blank=True
+    )
+    drop_reason = models.CharField(
+        max_length=20, choices=DROP_REASON_CHOICES, null=True, blank=True
+    )
+
+    # Interview tracking
+    current_interview_round = models.CharField(
+        max_length=10, choices=ROUND_CHOICES, null=True, blank=True
+    )
+    next_interview_date = models.DateTimeField(null=True, blank=True)
+
+    # Priority for sorting and display
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='MEDIUM')
+
     moved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True)
     stage_updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -93,19 +166,22 @@ class CandidateJobMapping(models.Model):
             models.UniqueConstraint(fields=['candidate', 'job'], name='unique_candidate_job'),
         ]
         indexes = [
-            # Composite index used by COUNT annotations that filter on (job_id, stage).
-            models.Index(fields=['job', 'stage'], name='cjm_job_stage_idx'),
+            # Composite index for pipeline column queries filtering on (job_id, macro_stage)
+            models.Index(fields=['job', 'macro_stage'], name='cjm_job_macro_stage_idx'),
         ]
         ordering = ['-created_at']
 
 
-class PipelineStageLog(models.Model):
+class PipelineStageHistory(models.Model):
+    """Append-only audit log of every macro-stage transition for a candidate-job mapping."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    mapping = models.ForeignKey(CandidateJobMapping, on_delete=models.CASCADE, related_name='stage_logs')
-    from_stage = models.CharField(max_length=30, blank=True)
-    to_stage = models.CharField(max_length=30)
-    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
-    notes = models.TextField(blank=True)
+    mapping = models.ForeignKey(
+        CandidateJobMapping, on_delete=models.CASCADE, related_name='stage_logs'
+    )
+    from_macro_stage = models.CharField(max_length=15, blank=True)
+    to_macro_stage = models.CharField(max_length=15)
+    moved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    remarks = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
