@@ -36,17 +36,19 @@ class JobListView(generics.ListAPIView):
             applies_count=Count('candidate_mappings', distinct=True),
             shortlists_count=Count(
                 'candidate_mappings',
-                filter=Q(candidate_mappings__stage__in=['shortlisted', 'interview', 'selected', 'offered', 'joined']),
+                filter=Q(candidate_mappings__macro_stage__in=[
+                    'SHORTLISTED', 'INTERVIEW', 'OFFERED', 'JOINED'
+                ]),
                 distinct=True,
             ),
             offers_count=Count(
                 'candidate_mappings',
-                filter=Q(candidate_mappings__stage__in=['offered', 'joined']),
+                filter=Q(candidate_mappings__macro_stage__in=['OFFERED', 'JOINED']),
                 distinct=True,
             ),
             joined_count=Count(
                 'candidate_mappings',
-                filter=Q(candidate_mappings__stage='joined'),
+                filter=Q(candidate_mappings__macro_stage='JOINED'),
                 distinct=True,
             ),
         )
@@ -119,27 +121,100 @@ class JobDeleteView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class JobPipelineView(generics.ListAPIView):
-    serializer_class = CandidateJobMappingSerializer
+class JobPipelineView(APIView):
+    """
+    GET /jobs/{pk}/pipeline/?stage=APPLIED&include_progressed=true
 
-    def get_queryset(self):
-        qs = CandidateJobMapping.objects.filter(
-            job_id=self.kwargs['pk']
-        ).select_related('candidate', 'job')
-        stage = self.request.query_params.get('stage')
-        if stage:
-            stages = [s.strip() for s in stage.split(',') if s.strip()]
-            qs = qs.filter(stage__in=stages)
-        return qs
+    Returns active candidates for the given stage first (sorted by priority DESC,
+    stage_updated_at DESC), followed by dimmed candidates who have progressed past
+    this stage (sorted by stage_updated_at DESC).
+
+    Each record includes:
+      - All CandidateJobMapping fields
+      - is_current_stage: bool
+      - can_move_next: bool
+      - latest_round: {round_name, round_status, round_result} (if in INTERVIEW)
+    """
+
+    def get(self, request, pk):
+        from apps.candidates.models import STAGE_ORDER, PipelineStageHistory
+        from apps.candidates.serializers import CandidateJobMappingSerializer
+
+        job = generics.get_object_or_404(Job, pk=pk)
+        stage_param = request.query_params.get('stage', '').strip()
+        include_progressed = request.query_params.get('include_progressed', 'false').lower() == 'true'
+
+        base_qs = CandidateJobMapping.objects.filter(job=job).select_related(
+            'candidate', 'job'
+        ).prefetch_related('interviews')
+
+        # Priority sort order helper
+        PRIORITY_ORDER = {'HIGH': 0, 'MEDIUM': 1, 'LOW': 2}
+
+        def sort_key_active(m):
+            return (PRIORITY_ORDER.get(m.priority, 1), -m.stage_updated_at.timestamp())
+
+        if stage_param:
+            active_qs = list(base_qs.filter(macro_stage=stage_param))
+            active_qs.sort(key=sort_key_active)
+        else:
+            active_qs = list(base_qs.order_by('-stage_updated_at'))
+
+        dimmed = []
+        if include_progressed and stage_param:
+            requested_order = STAGE_ORDER.get(stage_param, -1)
+            # Candidates who passed through this stage but are now at a higher stage
+            past_mapping_ids = set(
+                PipelineStageHistory.objects.filter(
+                    mapping__job=job,
+                    from_macro_stage=stage_param,
+                ).values_list('mapping_id', flat=True)
+            )
+            active_ids = {m.id for m in active_qs}
+            dimmed = list(
+                base_qs.filter(id__in=past_mapping_ids).exclude(
+                    macro_stage=stage_param
+                ).exclude(id__in=active_ids)
+            )
+            dimmed.sort(key=lambda m: -m.stage_updated_at.timestamp())
+
+        results = []
+        for mapping in active_qs:
+            data = CandidateJobMappingSerializer(mapping).data
+            data['is_current_stage'] = True
+            data['can_move_next'] = mapping.macro_stage not in ('JOINED', 'DROPPED')
+            data['latest_round'] = _get_latest_round(mapping)
+            results.append(data)
+
+        for mapping in dimmed:
+            data = CandidateJobMappingSerializer(mapping).data
+            data['is_current_stage'] = False
+            data['can_move_next'] = False
+            data['latest_round'] = _get_latest_round(mapping)
+            results.append(data)
+
+        return Response(results)
+
+
+def _get_latest_round(mapping):
+    interview = mapping.interviews.order_by('-created_at').first()
+    if not interview:
+        return None
+    return {
+        'round_name': interview.round_name,
+        'round_status': interview.round_status,
+        'round_result': interview.round_result,
+        'scheduled_at': interview.scheduled_at.isoformat() if interview.scheduled_at else None,
+    }
 
 
 class JobPipelineStatsView(APIView):
     def get(self, request, pk):
-        from apps.candidates.models import PIPELINE_STAGES
+        from apps.candidates.models import MACRO_STAGE_CHOICES
         job = generics.get_object_or_404(Job, pk=pk)
         stats = {}
-        for stage_key, stage_label in PIPELINE_STAGES:
-            stats[stage_key] = job.candidate_mappings.filter(stage=stage_key).count()
+        for stage_key, _label in MACRO_STAGE_CHOICES:
+            stats[stage_key.lower()] = job.candidate_mappings.filter(macro_stage=stage_key).count()
         stats['total'] = job.candidate_mappings.count()
         return Response(stats)
 

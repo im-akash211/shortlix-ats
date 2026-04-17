@@ -45,12 +45,16 @@ class InterviewListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Interview
-        fields = ['id', 'mapping', 'round_number', 'round_label', 'interviewer',
-                  'interviewer_name', 'scheduled_at', 'duration_minutes', 'mode',
-                  'meeting_link', 'status', 'created_by', 'created_by_name', 'created_at',
-                  'candidate_name', 'candidate_email', 'candidate_phone',
-                  'candidate_location', 'candidate_experience',
-                  'job_title', 'job_code', 'has_feedback']
+        fields = [
+            'id', 'mapping', 'round_number', 'round_label',
+            # Structured round fields
+            'round_name', 'round_status', 'round_result',
+            'interviewer', 'interviewer_name', 'scheduled_at', 'duration_minutes', 'mode',
+            'meeting_link', 'status', 'created_by', 'created_by_name', 'created_at',
+            'candidate_name', 'candidate_email', 'candidate_phone',
+            'candidate_location', 'candidate_experience',
+            'job_title', 'job_code', 'has_feedback',
+        ]
         read_only_fields = ['id', 'created_by', 'created_at']
 
     def get_has_feedback(self, obj):
@@ -60,9 +64,12 @@ class InterviewListSerializer(serializers.ModelSerializer):
 class InterviewCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Interview
-        fields = ['id', 'mapping', 'round_number', 'round_label', 'interviewer',
-                  'scheduled_at', 'duration_minutes', 'mode', 'meeting_link',
-                  'feedback_template', 'status']
+        fields = [
+            'id', 'mapping', 'round_number', 'round_label',
+            'round_name', 'round_status', 'round_result',
+            'interviewer', 'scheduled_at', 'duration_minutes', 'mode',
+            'meeting_link', 'feedback_template', 'status',
+        ]
         read_only_fields = ['id']
 
 

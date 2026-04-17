@@ -145,9 +145,17 @@ export const candidates = {
     request(`/candidates/${id}/notes/`, { method: 'POST', body: JSON.stringify({ content }) }),
   assignJob: (id, jobId) =>
     request(`/candidates/${id}/assign-job/`, { method: 'POST', body: JSON.stringify({ job_id: jobId }) }),
-  changeStage: (id, jobId, stage, notes = '') =>
+  changeStage: (id, jobId, payload) =>
     request(`/candidates/${id}/jobs/${jobId}/stage/`, {
-      method: 'PATCH', body: JSON.stringify({ stage, notes }),
+      method: 'PATCH', body: JSON.stringify(payload),
+    }),
+  nextRound: (id, jobId, data = {}) =>
+    request(`/candidates/${id}/jobs/${jobId}/interview/next-round/`, {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+  jumpToRound: (id, jobId, roundName) =>
+    request(`/candidates/${id}/jobs/${jobId}/interview/jump-round/`, {
+      method: 'POST', body: JSON.stringify({ round_name: roundName }),
     }),
   moveJob: (id, fromJobId, toJobId) =>
     request(`/candidates/${id}/move-job/`, {
@@ -167,6 +175,10 @@ export const interviews = {
   submitFeedback: (id, data) =>
     request(`/interviews/${id}/feedback/`, { method: 'POST', body: JSON.stringify(data) }),
   getFeedback: (id) => request(`/interviews/${id}/feedback/detail/`),
+  setRoundResult: (id, roundResult) =>
+    request(`/interviews/${id}/round-result/`, {
+      method: 'PATCH', body: JSON.stringify({ round_result: roundResult }),
+    }),
 };
 
 // ---- Resumes ---- //

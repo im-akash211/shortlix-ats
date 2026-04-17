@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from .models import Candidate, CandidateJobMapping, PipelineStageLog, CandidateNote, ResumeFile
+from .models import (
+    Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote, ResumeFile,
+)
 
 
 class CandidateNoteSerializer(serializers.ModelSerializer):
@@ -11,12 +13,15 @@ class CandidateNoteSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user', 'created_at']
 
 
-class PipelineStageLogSerializer(serializers.ModelSerializer):
-    changed_by_name = serializers.CharField(source='changed_by.full_name', read_only=True)
+class PipelineStageHistorySerializer(serializers.ModelSerializer):
+    moved_by_name = serializers.CharField(source='moved_by.full_name', read_only=True)
 
     class Meta:
-        model = PipelineStageLog
-        fields = ['id', 'from_stage', 'to_stage', 'changed_by', 'changed_by_name', 'notes', 'created_at']
+        model = PipelineStageHistory
+        fields = [
+            'id', 'from_macro_stage', 'to_macro_stage',
+            'moved_by', 'moved_by_name', 'remarks', 'created_at',
+        ]
         read_only_fields = ['id', 'created_at']
 
 
@@ -36,10 +41,20 @@ class CandidateJobMappingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CandidateJobMapping
-        fields = ['id', 'candidate', 'job', 'stage', 'moved_by', 'stage_updated_at', 'created_at',
-                  'candidate_name', 'candidate_email', 'candidate_phone', 'candidate_location',
-                  'candidate_experience', 'candidate_skills', 'candidate_designation',
-                  'job_title', 'job_code']
+        fields = [
+            'id', 'candidate', 'job',
+            # New macro stage fields
+            'macro_stage', 'offer_status', 'drop_reason',
+            'current_interview_round', 'next_interview_date', 'priority',
+            # Audit
+            'moved_by', 'stage_updated_at', 'created_at',
+            # Denormalised candidate fields
+            'candidate_name', 'candidate_email', 'candidate_phone',
+            'candidate_location', 'candidate_experience', 'candidate_skills',
+            'candidate_designation',
+            # Denormalised job fields
+            'job_title', 'job_code',
+        ]
         read_only_fields = ['id', 'moved_by', 'stage_updated_at', 'created_at']
 
 
@@ -54,8 +69,6 @@ class CandidateListSerializer(serializers.ModelSerializer):
                   'sub_source', 'created_at', 'current_job', 'current_stage']
 
     def get_current_job(self, obj):
-        # obj.job_mappings.all() reads from the prefetch cache set by prefetch_related('job_mappings__job')
-        # in CandidateListCreateView — no DB hit per candidate.
         mapping = next(iter(obj.job_mappings.all()), None)
         if mapping is None:
             return None
@@ -63,7 +76,7 @@ class CandidateListSerializer(serializers.ModelSerializer):
 
     def get_current_stage(self, obj):
         mapping = next(iter(obj.job_mappings.all()), None)
-        return mapping.stage if mapping else None
+        return mapping.macro_stage if mapping else None
 
 
 class ResumeFileSerializer(serializers.ModelSerializer):

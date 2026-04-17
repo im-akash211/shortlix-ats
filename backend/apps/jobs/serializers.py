@@ -75,10 +75,10 @@ class JobDetailSerializer(serializers.ModelSerializer):
         return data
 
     def get_pipeline_stats(self, obj):
-        from apps.candidates.models import PIPELINE_STAGES
+        from apps.candidates.models import MACRO_STAGE_CHOICES
         stats = {}
-        for stage_key, stage_label in PIPELINE_STAGES:
-            stats[stage_key] = obj.candidate_mappings.filter(stage=stage_key).count()
+        for stage_key, _label in MACRO_STAGE_CHOICES:
+            stats[stage_key.lower()] = obj.candidate_mappings.filter(macro_stage=stage_key).count()
         stats['total'] = obj.candidate_mappings.count()
         return stats
 

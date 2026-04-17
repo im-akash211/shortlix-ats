@@ -45,20 +45,36 @@ const SOURCE_LABELS = {
 };
 
 const STAGE_LABELS = {
-  pending: 'Pending', shortlisted: 'Shortlisted', interview: 'Interview',
-  on_hold: 'On Hold', selected: 'Selected', rejected: 'Rejected',
-  offered: 'Offered', joined: 'Joined',
+  APPLIED:     'Applied',
+  SHORTLISTED: 'Shortlisted',
+  INTERVIEW:   'Interview',
+  OFFERED:     'Offered',
+  JOINED:      'Joined',
+  DROPPED:     'Dropped',
 };
 
 const STAGE_COLORS = {
-  pending:     'bg-amber-100 text-amber-700',
-  shortlisted: 'bg-blue-100 text-blue-700',
-  interview:   'bg-purple-100 text-purple-700',
-  on_hold:     'bg-slate-100 text-slate-600',
-  selected:    'bg-emerald-100 text-emerald-700',
-  rejected:    'bg-rose-100 text-rose-700',
-  offered:     'bg-cyan-100 text-cyan-700',
-  joined:      'bg-green-100 text-green-700',
+  APPLIED:     'bg-amber-100 text-amber-700',
+  SHORTLISTED: 'bg-blue-100 text-blue-700',
+  INTERVIEW:   'bg-purple-100 text-purple-700',
+  OFFERED:     'bg-cyan-100 text-cyan-700',
+  JOINED:      'bg-green-100 text-green-700',
+  DROPPED:     'bg-rose-100 text-rose-700',
+};
+
+const STAGE_ORDER = { APPLIED: 0, SHORTLISTED: 1, INTERVIEW: 2, OFFERED: 3, JOINED: 4, DROPPED: 5 };
+
+const ROUND_LABELS = { R1: 'R1', R2: 'R2', CLIENT: 'Client', CDO: 'CDO', MGMT: 'Mgmt' };
+const ROUND_PROGRESSION = ['R1', 'R2', 'CLIENT', 'CDO', 'MGMT'];
+
+const DROP_REASON_LABELS = {
+  REJECTED: 'Rejected', CANDIDATE_DROP: 'Candidate Drop', NO_SHOW: 'No Show',
+};
+const OFFER_STATUS_LABELS = {
+  OFFER_SENT: 'Offer Sent', OFFER_ACCEPTED: 'Offer Accepted', OFFER_DECLINED: 'Offer Declined',
+};
+const PRIORITY_COLORS = {
+  HIGH: 'bg-red-100 text-red-700', MEDIUM: 'bg-amber-100 text-amber-700', LOW: 'bg-slate-100 text-slate-500',
 };
 
 function StatusBadge({ status }) {
@@ -117,16 +133,17 @@ function FilterAccordion({ title, options, selected, onToggle, defaultOpen = tru
   );
 }
 
-// ─── Stage map ────────────────────────────────────────────────────────────────
-
-// Each tab maps to the stage(s) shown in the candidate listing.
-// Applies = all (no filter); others use comma-separated multi-stage.
+// ─── Stage tab map ────────────────────────────────────────────────────────────
+// Each pipeline tab maps to a single macro stage key sent to the API.
 const STAGE_TAB_MAP = {
-  Applies:    null,
-  Shortlists: 'shortlisted,interview,selected',
-  Offers:     'offered',
-  Joined:     'joined',
+  Applied:     'APPLIED',
+  Shortlisted: 'SHORTLISTED',
+  Interview:   'INTERVIEW',
+  Offered:     'OFFERED',
+  Joined:      'JOINED',
+  Dropped:     'DROPPED',
 };
+const PIPELINE_TABS = ['Applied', 'Shortlisted', 'Interview', 'Offered', 'Joined', 'Dropped'];
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -194,7 +211,7 @@ export default function Jobs() {
   const [viewingJob, setViewingJob]         = useState(null);
   const [jobDetail, setJobDetail]           = useState(null);
   const [jobDetailLoading, setJobDetailLoading] = useState(false);
-  const [pipelineTab, setPipelineTab]       = useState('Applies');
+  const [pipelineTab, setPipelineTab]       = useState('Applied');
   const [pipeline, setPipeline]             = useState([]);
   const [pipelineStats, setPipelineStats]   = useState({});
   const [pipelineLoading, setPipelineLoading] = useState(false);
@@ -262,6 +279,15 @@ export default function Jobs() {
 
   // ── Shortlist action state ────────────────────────────────────────────────────
   const [shortlistingId, setShortlistingId] = useState(null);
+
+  // ── Interview round action state ─────────────────────────────────────────────
+  const [nextRoundLoading, setNextRoundLoading] = useState(null); // mapping id
+  const [jumpRoundLoading, setJumpRoundLoading] = useState(null); // mapping id
+
+  // ── Drop candidate modal state ───────────────────────────────────────────────
+  const [dropModalCandidate, setDropModalCandidate] = useState(null);
+  const [dropReason, setDropReason]               = useState('REJECTED');
+  const [dropLoading, setDropLoading]             = useState(false);
 
   // ── Candidate profile modal state ────────────────────────────────────────────
   const [candidateProfile, setCandidateProfile] = useState(null);
@@ -379,11 +405,11 @@ export default function Jobs() {
 
   // ── Open job detail ──────────────────────────────────────────────────────────
   // ── Open job detail ──────────────────────────────────────────────────────────
-  const openJobDetails = (job, tab = 'Applies', openPanel = false) => {
+  const openJobDetails = (job, tab = 'Applied', openPanel = false) => {
     // Set viewingJob immediately so the detail view renders at once (optimistic)
     setViewingJob(job);
     setPipelineTab(tab);
-    if (openPanel || tab !== 'Applies') {
+    if (openPanel || tab !== 'Applied') {
       navigate(ROUTES.JOBS.CANDIDATES(job.id));
     } else {
       navigate(ROUTES.JOBS.DETAIL(job.id));
@@ -399,14 +425,20 @@ export default function Jobs() {
   }, [viewingJob]);
 
   // ── Pipeline candidates — only load when the panel is open ──────────────────
+  const refreshPipeline = (jobId, tab) => {
+    const stage = STAGE_TAB_MAP[tab];
+    const params = { include_progressed: 'true' };
+    if (stage) params.stage = stage;
+    return jobsApi.pipeline(jobId, params)
+      .then((res) => setPipeline(Array.isArray(res) ? res : (res.results || [])))
+      .catch(console.error);
+  };
+
   useEffect(() => {
     if (!viewingJob || !isPipelinePanelOpen) return;
     setPipelineLoading(true);
-    const stage = STAGE_TAB_MAP[pipelineTab];
-    jobsApi.pipeline(viewingJob.id, stage ? { stage } : {})
-      .then((res) => setPipeline(res.results || res))
-      .catch(console.error)
-      .finally(() => setPipelineLoading(false));
+    refreshPipeline(viewingJob.id, pipelineTab).finally(() => setPipelineLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewingJob, pipelineTab, isPipelinePanelOpen]);
 
   // ── Edit handlers ────────────────────────────────────────────────────────────
@@ -551,7 +583,7 @@ export default function Jobs() {
       setAddProfileTargetJob(null);
       setAddForm({ full_name: '', email: '', phone: '', location: '', total_experience_years: '' });
       if (viewingJob && targetJob?.id === viewingJob.id) {
-        setPipelineTab('Applies');
+        setPipelineTab('Applied');
         setIsPipelinePanelOpen(true);
         // Refresh stats
         jobsApi.pipelineStats(viewingJob.id).then(setPipelineStats).catch(console.error);
@@ -598,173 +630,350 @@ export default function Jobs() {
     }
   };
 
-  // ── Shortlist candidate ──────────────────────────────────────────────────────
+  // ── Stage change helpers ─────────────────────────────────────────────────────
+  const doStageChange = async (c, payload) => {
+    await candidatesApi.changeStage(c.candidate, c.job, payload);
+    await Promise.all([
+      refreshPipeline(viewingJob.id, pipelineTab),
+      jobsApi.pipelineStats(viewingJob.id).then(setPipelineStats).catch(console.error),
+    ]);
+  };
+
   const handleShortlist = async (c) => {
     setShortlistingId(c.id);
     try {
-      await candidatesApi.changeStage(c.candidate, c.job, 'shortlisted');
-      // Refresh listing (candidate moves out of Applies, so re-fetch current tab)
-      const stage = STAGE_TAB_MAP[pipelineTab];
-      jobsApi.pipeline(viewingJob.id, stage ? { stage } : {})
-        .then((res) => setPipeline(res.results || res))
-        .catch(console.error);
-      jobsApi.pipelineStats(viewingJob.id).then(setPipelineStats).catch(console.error);
+      await doStageChange(c, { macro_stage: 'SHORTLISTED' });
     } catch (err) {
-      alert(err.data?.detail || 'Failed to shortlist candidate');
+      alert(err.data?.error || err.data?.detail || 'Failed to shortlist candidate');
     } finally {
       setShortlistingId(null);
+    }
+  };
+
+  const handleMoveToInterview = async (c) => {
+    setShortlistingId(c.id);
+    try {
+      await doStageChange(c, { macro_stage: 'INTERVIEW' });
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to move to interview');
+    } finally {
+      setShortlistingId(null);
+    }
+  };
+
+  const handleMakeOffer = async (c) => {
+    setShortlistingId(c.id);
+    try {
+      await doStageChange(c, { macro_stage: 'OFFERED', offer_status: 'OFFER_SENT' });
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to make offer');
+    } finally {
+      setShortlistingId(null);
+    }
+  };
+
+  const handleMarkJoined = async (c) => {
+    setShortlistingId(c.id);
+    try {
+      await doStageChange(c, { macro_stage: 'JOINED' });
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to mark as joined');
+    } finally {
+      setShortlistingId(null);
+    }
+  };
+
+  const handleDropConfirm = async () => {
+    if (!dropModalCandidate) return;
+    setDropLoading(true);
+    try {
+      await doStageChange(dropModalCandidate, { macro_stage: 'DROPPED', drop_reason: dropReason });
+      setDropModalCandidate(null);
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to drop candidate');
+    } finally {
+      setDropLoading(false);
+    }
+  };
+
+  const handleNextRound = async (c) => {
+    setNextRoundLoading(c.id);
+    try {
+      await candidatesApi.nextRound(c.candidate, c.job);
+      await refreshPipeline(viewingJob.id, pipelineTab);
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to advance round');
+    } finally {
+      setNextRoundLoading(null);
+    }
+  };
+
+  const handleJumpRound = async (c, roundName) => {
+    setJumpRoundLoading(c.id);
+    try {
+      await candidatesApi.jumpToRound(c.candidate, c.job, roundName);
+      await refreshPipeline(viewingJob.id, pipelineTab);
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to jump round');
+    } finally {
+      setJumpRoundLoading(null);
     }
   };
 
   // ── Pipeline stat helpers ────────────────────────────────────────────────────
   const getStatCount = (tab) => {
     if (!pipelineStats) return 0;
-    if (tab === 'Applies')    return pipelineStats.total || 0;
-    if (tab === 'Shortlists') return (pipelineStats.shortlisted || 0) + (pipelineStats.interview || 0) + (pipelineStats.selected || 0);
-    if (tab === 'Offers')     return pipelineStats.offered || 0;
-    if (tab === 'Joined')     return pipelineStats.joined || 0;
-    return 0;
+    const key = tab.toLowerCase();
+    return pipelineStats[key] || 0;
   };
 
   // ── Candidate card ───────────────────────────────────────────────────────────
   const renderCandidateCard = (c) => {
+    const isActive = c.is_current_stage !== false;
+    const macroStage = c.macro_stage;
     const isShareOpen = shareOpen === c.id;
     const filteredUsers = usersList.filter(u =>
       u.full_name.toLowerCase().includes(shareSearch.toLowerCase())
     );
+
+    // Build progress indicator: first + prev + current (max 3 stages)
+    const stageOrder = ['APPLIED', 'SHORTLISTED', 'INTERVIEW', 'OFFERED', 'JOINED'];
+    const progressStages = (() => {
+      if (macroStage === 'DROPPED') return [{ stage: 'DROPPED', isCurrent: true }];
+      const idx = stageOrder.indexOf(macroStage);
+      if (idx < 0) return [{ stage: macroStage, isCurrent: true }];
+      if (idx === 0) return [{ stage: stageOrder[0], isCurrent: true }];
+      if (idx === 1) return [
+        { stage: stageOrder[0], isCurrent: false },
+        { stage: stageOrder[1], isCurrent: true },
+      ];
+      return [
+        { stage: stageOrder[0], isCurrent: false },
+        { stage: stageOrder[idx - 1], isCurrent: false },
+        { stage: stageOrder[idx], isCurrent: true },
+      ];
+    })();
+
     return (
-    <div key={c.id} className="flex gap-4 border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-white">
-      <button
-        onClick={() => openCandidateProfile(c)}
-        className="w-11 h-11 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold shrink-0 hover:bg-blue-200 transition-colors"
-      >
-        {c.candidate_name ? c.candidate_name.slice(0, 2).toUpperCase() : '?'}
-      </button>
-      <div className="flex-1 flex flex-col gap-3 min-w-0">
-        <div className="flex justify-between items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <button onClick={() => openCandidateProfile(c)} className="text-sm font-bold text-slate-800 hover:text-blue-600 transition-colors text-left">{c.candidate_name}</button>
-            <p className="text-xs text-slate-500 mt-0.5">Stage: <span className="capitalize font-medium text-slate-700">{c.stage}</span></p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => openCandidateProfile(c)}
-              className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium transition-colors"
-            >
-              View Profile
-            </button>
-            {c.stage === 'pending' && (
+      <div key={c.id}>
+        {/* Card */}
+        <div className={`border rounded-xl p-4 ${isActive ? 'bg-white hover:shadow-md transition-shadow border-slate-200' : 'bg-slate-50 opacity-50 border-slate-100'}`}>
+
+          {/* TOP: avatar + name + round pill + stage badge + share */}
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2 min-w-0">
               <button
-                onClick={() => handleShortlist(c)}
-                disabled={shortlistingId === c.id}
-                className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded font-medium transition-colors"
+                onClick={() => isActive && openCandidateProfile(c)}
+                className="w-9 h-9 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0 hover:bg-blue-200 transition-colors"
               >
-                {shortlistingId === c.id ? 'Moving…' : 'Shortlist'}
+                {c.candidate_name ? c.candidate_name.slice(0, 2).toUpperCase() : '?'}
               </button>
-            )}
-            {c.stage === 'shortlisted' && (
-              <button
-                onClick={() => {
-                  setScheduleCandidate(c);
-                  setIsScheduleOpen(true);
-                  usersApi.list().then((res) => setUsersList(res.results || res)).catch(console.error);
-                }}
-                className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded font-medium transition-colors"
-              >
-                Schedule Interview
-              </button>
-            )}
-            {/* Share button + popover */}
-            <div className="relative" ref={isShareOpen ? shareRef : null}>
-              <button
-                onClick={() => { setShareOpen(isShareOpen ? null : c.id); setShareSearch(''); setShareSelected([]); }}
-                className="text-slate-400 hover:text-blue-600 transition-colors p-1"
-                title="Share"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-              </button>
-              {isShareOpen && (
-                <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-[300] flex flex-col overflow-hidden">
-                  <div className="p-2 border-b border-slate-100">
-                    <input
-                      autoFocus
-                      type="text"
-                      placeholder="Search users..."
-                      value={shareSearch}
-                      onChange={(e) => setShareSearch(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500"
-                    />
-                  </div>
-                  <div className="overflow-y-auto max-h-52">
-                    {usersLoading ? (
-                      <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
-                        <svg className="animate-spin w-4 h-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-                        <span className="text-xs">Loading users...</span>
+              <div className="min-w-0">
+                <button
+                  onClick={() => isActive && openCandidateProfile(c)}
+                  className="text-sm font-bold text-slate-800 hover:text-blue-600 transition-colors text-left leading-tight block truncate max-w-[160px]"
+                >
+                  {c.candidate_name}
+                </button>
+                {macroStage === 'INTERVIEW' && c.current_interview_round && (
+                  <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded mt-0.5 inline-block">
+                    {ROUND_LABELS[c.current_interview_round] || c.current_interview_round}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STAGE_COLORS[macroStage] || 'bg-slate-100 text-slate-600'}`}>
+                {STAGE_LABELS[macroStage] || macroStage}
+              </span>
+              {isActive && (
+                <div className="relative" ref={isShareOpen ? shareRef : null}>
+                  <button
+                    onClick={() => { setShareOpen(isShareOpen ? null : c.id); setShareSearch(''); setShareSelected([]); }}
+                    className="text-slate-400 hover:text-blue-600 transition-colors p-1"
+                    title="Share"
+                  >
+                    <Share2 className="w-3 h-3" />
+                  </button>
+                  {isShareOpen && (
+                    <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-[300] flex flex-col overflow-hidden">
+                      <div className="p-2 border-b border-slate-100">
+                        <input autoFocus type="text" placeholder="Search users..." value={shareSearch}
+                          onChange={(e) => setShareSearch(e.target.value)}
+                          className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-blue-500" />
                       </div>
-                    ) : filteredUsers.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-4">No users found</p>
-                    ) : filteredUsers.map((u) => (
-                      <label key={u.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={shareSelected.includes(u.id)}
-                          onChange={() => setShareSelected(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])}
-                          className="accent-blue-600"
-                        />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-800 truncate">{u.full_name}</p>
-                          <p className="text-xs text-slate-400 truncate capitalize">{u.role?.replace('_', ' ')}</p>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                  <div className="p-2 border-t border-slate-100">
-                    <button
-                      disabled={shareSelected.length === 0}
-                      onClick={async () => {
-                        const count = shareSelected.length;
-                        try {
-                          await candidateShareApi.share(c.candidate, shareSelected);
-                          setShareToast(`Profile shared with ${count} user${count > 1 ? 's' : ''} successfully`);
-                          setTimeout(() => setShareToast(null), 3000);
-                        } catch (err) {
-                          console.error('Share failed', err);
-                        }
-                        setShareOpen(null); setShareSearch(''); setShareSelected([]);
-                      }}
-                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium py-2 rounded-lg transition-colors"
-                    >
-                      Share{shareSelected.length > 0 ? ` (${shareSelected.length})` : ''}
-                    </button>
-                  </div>
+                      <div className="overflow-y-auto max-h-48">
+                        {usersLoading ? (
+                          <div className="flex items-center justify-center py-4 gap-2 text-slate-400">
+                            <svg className="animate-spin w-4 h-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                            <span className="text-xs">Loading...</span>
+                          </div>
+                        ) : filteredUsers.length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-3">No users found</p>
+                        ) : filteredUsers.map((u) => (
+                          <label key={u.id} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer">
+                            <input type="checkbox" checked={shareSelected.includes(u.id)}
+                              onChange={() => setShareSelected(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])}
+                              className="accent-blue-600" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-slate-800 truncate">{u.full_name}</p>
+                              <p className="text-[10px] text-slate-400 truncate capitalize">{u.role?.replace('_', ' ')}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="p-2 border-t border-slate-100">
+                        <button disabled={shareSelected.length === 0}
+                          onClick={async () => {
+                            const count = shareSelected.length;
+                            try {
+                              await candidateShareApi.share(c.candidate, shareSelected);
+                              setShareToast(`Profile shared with ${count} user${count > 1 ? 's' : ''} successfully`);
+                              setTimeout(() => setShareToast(null), 3000);
+                            } catch (err) { console.error('Share failed', err); }
+                            setShareOpen(null); setShareSearch(''); setShareSelected([]);
+                          }}
+                          className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium py-1.5 rounded-lg transition-colors">
+                          Share{shareSelected.length > 0 ? ` (${shareSelected.length})` : ''}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { icon: <Mail className="w-3 h-3" />, label: 'Email', value: c.candidate_email },
-            { icon: <span className="text-[10px]">☏</span>, label: 'Phone', value: c.candidate_phone || '—' },
-            { icon: <MapPin className="w-3 h-3" />, label: 'Location', value: c.candidate_location || '—' },
-            { icon: <Clock className="w-3 h-3" />, label: 'Exp', value: c.candidate_experience ? `${c.candidate_experience} yrs` : '—' },
-          ].map(({ icon, label, value }) => (
-            <div key={label} className="flex flex-col gap-0.5">
-              <span className="text-xs text-slate-500 flex items-center gap-1">{icon} {label}</span>
-              <span className="text-xs font-medium text-slate-800 truncate">{value}</span>
-            </div>
-          ))}
-        </div>
-        {c.candidate_skills?.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {c.candidate_skills.slice(0, 5).map((s, i) => (
-              <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{s}</span>
+
+          {/* Progress indicator: ○ first → ○ prev → ● current */}
+          <div className="flex items-center gap-1 mb-2.5">
+            {progressStages.map((ps, idx) => (
+              <React.Fragment key={ps.stage}>
+                {idx > 0 && <span className="text-[9px] text-slate-400">→</span>}
+                <span className={`text-[10px] flex items-center gap-0.5 ${ps.isCurrent ? 'text-blue-600 font-semibold' : 'text-slate-400'}`}>
+                  <span>{ps.isCurrent ? '●' : '○'}</span>
+                  <span>{STAGE_LABELS[ps.stage] || ps.stage}</span>
+                </span>
+              </React.Fragment>
             ))}
+          </div>
+
+          {/* MIDDLE: exp | skills (max 3) | location */}
+          <div className="flex items-center gap-2 flex-wrap mb-2.5">
+            {c.candidate_experience != null && (
+              <span className="text-xs text-slate-500 flex items-center gap-0.5">
+                <Briefcase className="w-3 h-3" /> {c.candidate_experience} yrs
+              </span>
+            )}
+            {c.candidate_skills?.length > 0 && (
+              <div className="flex gap-1 flex-wrap">
+                {c.candidate_skills.slice(0, 3).map((s, i) => (
+                  <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{s}</span>
+                ))}
+              </div>
+            )}
+            {c.candidate_location && (
+              <span className="text-xs text-slate-500 flex items-center gap-0.5 ml-auto">
+                <MapPin className="w-3 h-3" /> {c.candidate_location}
+              </span>
+            )}
+          </div>
+
+          {/* BOTTOM: stage metadata + priority + action buttons */}
+          <div className="flex flex-col gap-1">
+            {/* Row 1: stage-specific info */}
+            <div className="flex items-center gap-2 flex-wrap min-h-[16px]">
+              {macroStage === 'INTERVIEW' && c.latest_round && (
+                <span className="text-xs text-slate-500">
+                  {ROUND_LABELS[c.latest_round.round_name] || c.latest_round.round_name}
+                  {c.latest_round.round_status && <span className="text-slate-400"> · {c.latest_round.round_status}</span>}
+                </span>
+              )}
+              {macroStage === 'OFFERED' && c.offer_status && (
+                <span className="text-xs text-slate-500">{OFFER_STATUS_LABELS[c.offer_status] || c.offer_status}</span>
+              )}
+              {macroStage === 'DROPPED' && c.drop_reason && (
+                <span className="text-xs text-rose-600 font-medium">{DROP_REASON_LABELS[c.drop_reason] || c.drop_reason}</span>
+              )}
+              {['APPLIED', 'SHORTLISTED'].includes(macroStage) && c.stage_updated_at && (
+                <span className="text-xs text-slate-400">
+                  Updated {new Date(c.stage_updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                </span>
+              )}
+            </div>
+            {/* Row 2: priority badge + action buttons */}
+            {isActive && (
+              <div className="flex items-center justify-between gap-2 mt-0.5">
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${PRIORITY_COLORS[c.priority] || PRIORITY_COLORS.MEDIUM}`}>
+                  {c.priority || 'MEDIUM'}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {macroStage === 'APPLIED' && (
+                    <button onClick={() => handleShortlist(c)} disabled={shortlistingId === c.id}
+                      className="text-[10px] font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-2 py-1 rounded transition-colors">
+                      {shortlistingId === c.id ? '…' : 'Shortlist'}
+                    </button>
+                  )}
+                  {macroStage === 'SHORTLISTED' && (
+                    <button onClick={() => handleMoveToInterview(c)} disabled={shortlistingId === c.id}
+                      className="text-[10px] font-medium bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-2 py-1 rounded transition-colors">
+                      {shortlistingId === c.id ? '…' : '→ Interview'}
+                    </button>
+                  )}
+                  {macroStage === 'OFFERED' && (
+                    <button onClick={() => handleMarkJoined(c)} disabled={shortlistingId === c.id}
+                      className="text-[10px] font-medium bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-2 py-1 rounded transition-colors">
+                      {shortlistingId === c.id ? '…' : '✓ Joined'}
+                    </button>
+                  )}
+                  {!['JOINED', 'DROPPED'].includes(macroStage) && (
+                    <button onClick={() => { setDropModalCandidate(c); setDropReason('REJECTED'); }}
+                      className="text-[10px] font-medium bg-rose-50 hover:bg-rose-100 text-rose-600 px-2 py-1 rounded transition-colors border border-rose-200">
+                      Drop
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Interview action bar — only active INTERVIEW cards */}
+        {isActive && macroStage === 'INTERVIEW' && (
+          <div className="flex items-center gap-2 mt-1 px-3 py-2 bg-purple-50 border border-purple-100 rounded-lg">
+            <button
+              onClick={() => handleNextRound(c)}
+              disabled={nextRoundLoading === c.id || c.current_interview_round === 'MGMT' || !c.can_move_next}
+              className="text-xs font-medium bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white px-3 py-1.5 rounded transition-colors"
+            >
+              {nextRoundLoading === c.id ? 'Advancing…' : 'Next Round'}
+            </button>
+            <select
+              disabled={jumpRoundLoading === c.id}
+              onChange={(e) => { if (e.target.value) { handleJumpRound(c, e.target.value); e.target.value = ''; } }}
+              defaultValue=""
+              className="text-xs border border-purple-200 rounded px-2 py-1.5 bg-white outline-none focus:border-purple-400 disabled:opacity-40"
+            >
+              <option value="" disabled>Jump to round…</option>
+              {ROUND_PROGRESSION.map((r) => (
+                <option key={r} value={r} disabled={r === c.current_interview_round}>
+                  {ROUND_LABELS[r]}{r === c.current_interview_round ? ' (current)' : ''}
+                </option>
+              ))}
+            </select>
+            {c.can_move_next && (
+              <button
+                onClick={() => handleMakeOffer(c)}
+                disabled={shortlistingId === c.id}
+                className="text-xs font-medium ml-auto bg-cyan-600 hover:bg-cyan-700 disabled:opacity-40 text-white px-3 py-1.5 rounded transition-colors"
+              >
+                {shortlistingId === c.id ? '…' : 'Make Offer'}
+              </button>
+            )}
           </div>
         )}
       </div>
-    </div>
-  ); };
+    );
+  };
 
   // ────────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -839,8 +1048,8 @@ export default function Jobs() {
                         <p className="text-sm font-semibold text-slate-800 truncate">{m.job_title}</p>
                         <p className="text-xs text-slate-500">{m.job_code}</p>
                       </div>
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ml-3 ${STAGE_COLORS[m.stage] || 'bg-slate-100 text-slate-600'}`}>
-                        {STAGE_LABELS[m.stage] || m.stage}
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ml-3 ${STAGE_COLORS[m.macro_stage] || 'bg-slate-100 text-slate-600'}`}>
+                        {STAGE_LABELS[m.macro_stage] || m.macro_stage}
                       </span>
                     </div>
                   ))}
@@ -1061,35 +1270,27 @@ export default function Jobs() {
 
               {/* Pipeline overview tiles */}
               <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Pipeline Overview</p>
-                <div className="grid grid-cols-3 gap-2 mb-2">
-                  {[
-                    { label: 'Views',      value: jobDetail?.view_count || 0, tab: null },
-                    { label: 'Applies',    value: getStatCount('Applies'),    tab: 'Applies' },
-                    { label: 'Shortlists', value: getStatCount('Shortlists'), tab: 'Shortlists' },
-                  ].map(({ label, value, tab }) => (
-                    <button
-                      key={label}
-                      onClick={() => { if (tab) { setPipelineTab(tab); navigate(ROUTES.JOBS.CANDIDATES(viewingJob.id)); } }}
-                      disabled={!tab}
-                      className={`flex flex-col items-center p-2 rounded-lg transition-colors disabled:cursor-default ${tab ? 'hover:bg-blue-50 cursor-pointer' : ''}`}
-                    >
-                      <span className="text-2xl font-bold text-slate-700">{value}</span>
-                      <span className={`text-xs font-medium ${tab ? 'text-blue-600' : 'text-slate-500'}`}>{label}</span>
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pipeline Overview</p>
+                  <span className="text-xs text-slate-400 flex items-center gap-1">
+                    <Eye className="w-3 h-3" /> {jobDetail?.view_count || 0} views
+                  </span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: 'Offers', value: getStatCount('Offers'), tab: 'Offers' },
-                    { label: 'Joined', value: getStatCount('Joined'), tab: 'Joined' },
-                  ].map(({ label, value, tab }) => (
+                    { label: 'Applied',     tab: 'Applied' },
+                    { label: 'Shortlisted', tab: 'Shortlisted' },
+                    { label: 'Interview',   tab: 'Interview' },
+                    { label: 'Offered',     tab: 'Offered' },
+                    { label: 'Joined',      tab: 'Joined' },
+                    { label: 'Dropped',     tab: 'Dropped' },
+                  ].map(({ label, tab }) => (
                     <button
-                      key={label}
+                      key={tab}
                       onClick={() => { setPipelineTab(tab); navigate(ROUTES.JOBS.CANDIDATES(viewingJob.id)); }}
                       className="flex flex-col items-center p-2 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
                     >
-                      <span className="text-2xl font-bold text-slate-700">{value}</span>
+                      <span className="text-2xl font-bold text-slate-700">{getStatCount(tab)}</span>
                       <span className="text-xs font-medium text-blue-600">{label}</span>
                     </button>
                   ))}
@@ -1277,10 +1478,10 @@ export default function Jobs() {
                     {/* Stat tiles — clicking opens detail page + pipeline panel */}
                     <div className="flex gap-1 items-center shrink-0">
                       {[
-                        { label: 'Applies',    value: job.applies_count },
-                        { label: 'Shortlists', value: job.shortlists_count },
-                        { label: 'Offers',     value: job.offers_count },
-                        { label: 'Joined',     value: job.joined_count },
+                        { label: 'Applied',     value: job.applies_count },
+                        { label: 'Shortlisted', value: job.shortlists_count },
+                        { label: 'Offered',     value: job.offers_count },
+                        { label: 'Joined',      value: job.joined_count },
                       ].map((stat) => (
                         <button
                           key={stat.label}
@@ -1377,42 +1578,102 @@ export default function Jobs() {
               </div>
             </div>
 
-            {/* Stage tabs */}
-            <div className="flex border-b border-slate-200 shrink-0">
-              {['Applies', 'Shortlists', 'Offers', 'Joined'].map((tab) => (
+            {/* Stage tabs — 6 tabs, horizontally scrollable on narrow drawers */}
+            <div className="flex border-b border-slate-200 shrink-0 overflow-x-auto">
+              {PIPELINE_TABS.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setPipelineTab(tab)}
-                  className={`flex-1 py-3.5 text-sm font-medium border-b-2 transition-colors text-center ${
+                  className={`flex-1 min-w-[80px] py-3 text-sm font-medium border-b-2 transition-colors text-center ${
                     pipelineTab === tab
                       ? 'border-blue-600 text-blue-600 bg-blue-50/40'
                       : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                   }`}
                 >
                   <div className="flex flex-col items-center gap-0.5">
-                    <span className="text-lg font-bold">{getStatCount(tab)}</span>
-                    <span className="text-xs uppercase tracking-wider">{tab}</span>
+                    <span className="text-base font-bold">{getStatCount(tab)}</span>
+                    <span className="text-[10px] uppercase tracking-wider">{tab}</span>
                   </div>
                 </button>
               ))}
             </div>
 
-            {/* Candidate list */}
-            <div className="flex-1 overflow-y-auto p-5">
+            {/* Candidate list — active cards first, then dimmed (progressed past this stage) */}
+            <div className="flex-1 overflow-y-auto p-4">
               {pipelineLoading ? (
                 <PageLoader label="Loading candidates…" />
-              ) : pipeline.length > 0 ? (
-                <div className="flex flex-col gap-4">{pipeline.map(renderCandidateCard)}</div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                  <Users className="w-12 h-12 text-slate-300 mb-4" />
-                  <p className="text-base font-medium">No candidates in {pipelineTab}</p>
-                  <p className="text-sm text-slate-400 mt-1">Add profiles to get started.</p>
-                </div>
-              )}
+              ) : (() => {
+                const activeCandidates = pipeline.filter(c => c.is_current_stage !== false);
+                const dimmedCandidates = pipeline.filter(c => c.is_current_stage === false);
+                if (activeCandidates.length === 0 && dimmedCandidates.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                      <Users className="w-10 h-10 mb-2" />
+                      <p className="text-sm">No candidates in this stage</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="flex flex-col gap-3">
+                    {activeCandidates.map(renderCandidateCard)}
+                    {dimmedCandidates.length > 0 && (
+                      <>
+                        <div className="text-xs text-slate-400 text-center py-1 border-t border-dashed border-slate-200">
+                          progressed past this stage
+                        </div>
+                        {dimmedCandidates.map(renderCandidateCard)}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </>
+      )}
+
+      {/* ══════════════════ DROP CANDIDATE MODAL ══════════════════ */}
+      {dropModalCandidate && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[400]">
+          <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[92vw] p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-800">Drop Candidate</h3>
+              <button onClick={() => setDropModalCandidate(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-600">
+              Drop <strong>{dropModalCandidate.candidate_name}</strong> from this job?
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-slate-700">Reason</label>
+              <select
+                value={dropReason}
+                onChange={(e) => setDropReason(e.target.value)}
+                className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+              >
+                <option value="REJECTED">Rejected</option>
+                <option value="CANDIDATE_DROP">Candidate Drop</option>
+                <option value="NO_SHOW">No Show</option>
+              </select>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDropModalCandidate(null)}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDropConfirm}
+                disabled={dropLoading}
+                className="px-4 py-2 text-sm bg-rose-600 text-white rounded-lg hover:bg-rose-700 font-medium disabled:opacity-50 transition-colors"
+              >
+                {dropLoading ? 'Dropping…' : 'Confirm Drop'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ══════════════════ CLOSE JOB CONFIRMATION ══════════════════ */}

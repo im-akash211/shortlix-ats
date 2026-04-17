@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Candidate, ResumeFile, CandidateJobMapping,
-    PipelineStageLog, CandidateNote,
+    PipelineStageHistory, CandidateNote,
 )
 
 
@@ -35,11 +35,11 @@ class CandidateAdmin(admin.ModelAdmin):
 
 @admin.register(CandidateJobMapping)
 class CandidateJobMappingAdmin(admin.ModelAdmin):
-    list_display = ('candidate', 'job', 'stage', 'stage_updated_at')
-    list_filter = ('stage',)
+    list_display = ('candidate', 'job', 'macro_stage', 'current_interview_round', 'priority', 'stage_updated_at')
+    list_filter = ('macro_stage', 'priority')
 
 
-@admin.register(PipelineStageLog)
-class PipelineStageLogAdmin(admin.ModelAdmin):
-    list_display = ('mapping', 'from_stage', 'to_stage', 'changed_by', 'created_at')
+@admin.register(PipelineStageHistory)
+class PipelineStageHistoryAdmin(admin.ModelAdmin):
+    list_display = ('mapping', 'from_macro_stage', 'to_macro_stage', 'moved_by', 'created_at')
     readonly_fields = ('created_at',)

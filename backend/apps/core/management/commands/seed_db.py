@@ -435,7 +435,7 @@ class Command(BaseCommand):
         from apps.candidates.models import (
             Candidate,
             CandidateJobMapping,
-            PipelineStageLog,
+            PipelineStageHistory,
             CandidateNote,
         )
         from apps.interviews.models import Interview, InterviewFeedback
@@ -457,14 +457,12 @@ class Command(BaseCommand):
         ]
 
         stages = [
-            "pending",
-            "shortlisted",
-            "interview",
-            "selected",
-            "offered",
-            "joined",
-            "rejected",
-            "on_hold",
+            "APPLIED",
+            "SHORTLISTED",
+            "INTERVIEW",
+            "OFFERED",
+            "JOINED",
+            "DROPPED",
         ]
 
         total_candidates = 60
@@ -511,19 +509,28 @@ class Command(BaseCommand):
             job = random.choice(jobs)
             stage = random.choice(stages)
 
+            extra = {}
+            if stage == 'INTERVIEW':
+                extra['current_interview_round'] = 'R1'
+            elif stage == 'DROPPED':
+                extra['drop_reason'] = 'REJECTED'
+            elif stage == 'OFFERED':
+                extra['offer_status'] = 'OFFER_SENT'
+
             mapping = CandidateJobMapping.objects.create(
                 candidate=candidate,
                 job=job,
-                stage=stage,
+                macro_stage=stage,
                 moved_by=users["priya.sharma@ats.com"],
+                **extra,
             )
 
-            PipelineStageLog.objects.create(
+            PipelineStageHistory.objects.create(
                 mapping=mapping,
-                from_stage="pending",
-                to_stage=stage,
-                changed_by=users["priya.sharma@ats.com"],
-                notes=f"Moved to {stage}",
+                from_macro_stage="APPLIED",
+                to_macro_stage=stage,
+                moved_by=users["priya.sharma@ats.com"],
+                remarks=f"Moved to {stage}",
             )
 
             CandidateNote.objects.create(
