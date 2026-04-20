@@ -7,7 +7,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from .models import (
     Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote,
-    VALID_TRANSITIONS, ROUND_PROGRESSION, ROUND_CHOICES,
+    VALID_TRANSITIONS, ROUND_PROGRESSION, ROUND_CHOICES, SCREENING_STATUS_CHOICES,
 )
 from .serializers import (
     CandidateListSerializer, CandidateDetailSerializer, CandidateCreateSerializer,
@@ -381,3 +381,37 @@ class CandidateShareView(APIView):
                 logging.getLogger(__name__).error("Failed to send share email to %s: %s", recipient.email, e)
 
         return Response({'shared_with': len(notifications)}, status=status.HTTP_201_CREATED)
+
+
+class SetScreeningStatusView(APIView):
+    """
+    PATCH /candidates/{pk}/jobs/{job_id}/screening-status/
+
+    Body: { "screening_status": "SCREENED" | "MAYBE" | "REJECTED" | null }
+
+    Only allowed when macro_stage == "APPLIED". Returns 400 otherwise.
+    """
+
+    def patch(self, request, pk, job_id):
+        mapping = generics.get_object_or_404(
+            CandidateJobMapping, candidate_id=pk, job_id=job_id
+        )
+
+        if mapping.macro_stage != 'APPLIED':
+            return Response(
+                {'error': 'screening_status can only be set on Applied candidates'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        new_status = request.data.get('screening_status')
+        valid_values = [key for key, _ in SCREENING_STATUS_CHOICES] + [None]
+        if new_status not in valid_values:
+            return Response(
+                {'error': f'Invalid screening_status. Must be one of: SCREENED, MAYBE, REJECTED, or null'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        mapping.screening_status = new_status
+        mapping.save(update_fields=['screening_status'])
+
+        return Response(CandidateJobMappingSerializer(mapping).data)
