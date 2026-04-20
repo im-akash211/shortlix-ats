@@ -46,6 +46,7 @@ class CandidateJobMappingSerializer(serializers.ModelSerializer):
             # New macro stage fields
             'macro_stage', 'offer_status', 'drop_reason',
             'current_interview_round', 'next_interview_date', 'priority',
+            'screening_status',
             # Audit
             'moved_by', 'stage_updated_at', 'created_at',
             # Denormalised candidate fields
