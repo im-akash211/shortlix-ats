@@ -169,7 +169,6 @@ class CandidateJobMapping(models.Model):
         choices=SCREENING_STATUS_CHOICES,
         null=True,
         blank=True,
-        default=None,
     )
 
     moved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True)
