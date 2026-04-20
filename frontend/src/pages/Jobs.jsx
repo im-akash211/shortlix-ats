@@ -64,6 +64,18 @@ const STAGE_COLORS = {
 
 const STAGE_ORDER = { APPLIED: 0, SHORTLISTED: 1, INTERVIEW: 2, OFFERED: 3, JOINED: 4, DROPPED: 5 };
 
+const SCREENING_STATUS_LABELS = {
+  SCREENED: 'Screened',
+  MAYBE: 'Maybe',
+  REJECTED: 'Rejected',
+};
+
+const SCREENING_STATUS_COLORS = {
+  SCREENED: 'bg-green-100 text-green-700',
+  MAYBE: 'bg-amber-100 text-amber-700',
+  REJECTED: 'bg-rose-100 text-rose-700',
+};
+
 const ROUND_LABELS = { R1: 'R1', R2: 'R2', CLIENT: 'Client', CDO: 'CDO', MGMT: 'Mgmt' };
 const ROUND_PROGRESSION = ['R1', 'R2', 'CLIENT', 'CDO', 'MGMT'];
 
@@ -211,10 +223,13 @@ export default function Jobs() {
   const [viewingJob, setViewingJob]         = useState(null);
   const [jobDetail, setJobDetail]           = useState(null);
   const [jobDetailLoading, setJobDetailLoading] = useState(false);
-  const [pipelineTab, setPipelineTab]       = useState('Applied');
-  const [pipeline, setPipeline]             = useState([]);
-  const [pipelineStats, setPipelineStats]   = useState({});
-  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [pipelineTab, setPipelineTab]         = useState('Applied');
+  // allCandidates: ALL active mappings for the job (no stage filter) — single source of truth
+  const [allCandidates, setAllCandidates]     = useState([]);
+  const [allCandidatesLoading, setAllCandidatesLoading] = useState(false);
+  // dimmedCandidates: candidates who progressed PAST the currently-viewed stage
+  const [dimmedCandidates, setDimmedCandidates] = useState([]);
+  const [dimmedLoading, setDimmedLoading]     = useState(false);
   const [isPipelinePanelOpen, setIsPipelinePanelOpen] = useState(false);
 
   // Use a stable boolean primitive to avoid new-object-reference re-renders
@@ -276,6 +291,9 @@ export default function Jobs() {
   const [addForm, setAddForm] = useState({ full_name: '', email: '', phone: '', location: '', total_experience_years: '' });
   const [addLoading, setAddLoading] = useState(false);
   const [addProfileSuccess, setAddProfileSuccess] = useState('');
+
+  // ── Screening filter state ───────────────────────────────────────────────────
+  const [screeningFilter, setScreeningFilter] = useState('ALL');
 
   // ── Shortlist action state ────────────────────────────────────────────────────
   const [shortlistingId, setShortlistingId] = useState(null);
@@ -416,28 +434,39 @@ export default function Jobs() {
     }
   };
 
-  // ── Pipeline stats — always load when a job is opened (powers the tiles) ────
-  useEffect(() => {
-    if (!viewingJob) return;
-    jobsApi.pipelineStats(viewingJob.id)
-      .then(setPipelineStats)
+  // ── Unified pipeline helpers ─────────────────────────────────────────────────
+  // Fetches ALL active candidates across all stages (no stage filter).
+  // This is the single source of truth for counts and active card lists.
+  const refreshAllCandidates = (jobId) =>
+    jobsApi.pipeline(jobId, {})
+      .then((res) => setAllCandidates(Array.isArray(res) ? res : (res.results || [])))
       .catch(console.error);
-  }, [viewingJob]);
 
-  // ── Pipeline candidates — only load when the panel is open ──────────────────
-  const refreshPipeline = (jobId, tab) => {
+  // Fetches dimmed candidates (progressed past the viewed stage) for one stage.
+  const refreshDimmed = (jobId, tab) => {
     const stage = STAGE_TAB_MAP[tab];
-    const params = { include_progressed: 'true' };
-    if (stage) params.stage = stage;
-    return jobsApi.pipeline(jobId, params)
-      .then((res) => setPipeline(Array.isArray(res) ? res : (res.results || [])))
+    if (!stage) { setDimmedCandidates([]); return Promise.resolve(); }
+    return jobsApi.pipeline(jobId, { stage, include_progressed: 'true' })
+      .then((res) => {
+        const all = Array.isArray(res) ? res : (res.results || []);
+        setDimmedCandidates(all.filter(c => c.is_current_stage === false));
+      })
       .catch(console.error);
   };
 
+  // Load all active candidates as soon as a job is opened (powers overview tiles + tabs).
+  useEffect(() => {
+    if (!viewingJob) { setAllCandidates([]); return; }
+    setAllCandidatesLoading(true);
+    refreshAllCandidates(viewingJob.id).finally(() => setAllCandidatesLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewingJob]);
+
+  // Load dimmed candidates whenever the panel is open and the tab changes.
   useEffect(() => {
     if (!viewingJob || !isPipelinePanelOpen) return;
-    setPipelineLoading(true);
-    refreshPipeline(viewingJob.id, pipelineTab).finally(() => setPipelineLoading(false));
+    setDimmedLoading(true);
+    refreshDimmed(viewingJob.id, pipelineTab).finally(() => setDimmedLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewingJob, pipelineTab, isPipelinePanelOpen]);
 
@@ -585,8 +614,7 @@ export default function Jobs() {
       if (viewingJob && targetJob?.id === viewingJob.id) {
         setPipelineTab('Applied');
         setIsPipelinePanelOpen(true);
-        // Refresh stats
-        jobsApi.pipelineStats(viewingJob.id).then(setPipelineStats).catch(console.error);
+        refreshAllCandidates(viewingJob.id);
       }
       // Show success toast
       setAddProfileSuccess(`Profile added successfully${targetJob ? ` to ${targetJob.title}` : ''}.`);
@@ -633,10 +661,25 @@ export default function Jobs() {
   // ── Stage change helpers ─────────────────────────────────────────────────────
   const doStageChange = async (c, payload) => {
     await candidatesApi.changeStage(c.candidate, c.job, payload);
+    // Refresh both data sources together so counts and card lists stay in sync.
     await Promise.all([
-      refreshPipeline(viewingJob.id, pipelineTab),
-      jobsApi.pipelineStats(viewingJob.id).then(setPipelineStats).catch(console.error),
+      refreshAllCandidates(viewingJob.id),
+      refreshDimmed(viewingJob.id, pipelineTab),
     ]);
+    // Keep the job-list card stats fresh too.
+    queryClient.invalidateQueries({ queryKey: ['jobs', 'list'] });
+  };
+
+  const handleScreeningStatus = async (c, newStatus) => {
+    await candidatesApi.setScreeningStatus(c.candidate, c.job, newStatus);
+    setAllCandidates(prev =>
+      prev.map(m => m.id === c.id ? { ...m, screening_status: newStatus } : m)
+    );
+  };
+
+  const getMoveToOptions = (currentScreeningStatus) => {
+    const all = ['SCREENED', 'MAYBE', 'REJECTED'];
+    return all.filter(s => s !== currentScreeningStatus);
   };
 
   const handleShortlist = async (c) => {
@@ -700,7 +743,7 @@ export default function Jobs() {
     setNextRoundLoading(c.id);
     try {
       await candidatesApi.nextRound(c.candidate, c.job);
-      await refreshPipeline(viewingJob.id, pipelineTab);
+      await refreshAllCandidates(viewingJob.id);
     } catch (err) {
       alert(err.data?.error || err.data?.detail || 'Failed to advance round');
     } finally {
@@ -712,7 +755,7 @@ export default function Jobs() {
     setJumpRoundLoading(c.id);
     try {
       await candidatesApi.jumpToRound(c.candidate, c.job, roundName);
-      await refreshPipeline(viewingJob.id, pipelineTab);
+      await refreshAllCandidates(viewingJob.id);
     } catch (err) {
       alert(err.data?.error || err.data?.detail || 'Failed to jump round');
     } finally {
@@ -721,10 +764,11 @@ export default function Jobs() {
   };
 
   // ── Pipeline stat helpers ────────────────────────────────────────────────────
+  // Derived from allCandidates — the single source of truth.
   const getStatCount = (tab) => {
-    if (!pipelineStats) return 0;
-    const key = tab.toLowerCase();
-    return pipelineStats[key] || 0;
+    const stage = STAGE_TAB_MAP[tab];
+    if (!stage) return 0;
+    return allCandidates.filter(c => c.macro_stage === stage).length;
   };
 
   // ── Candidate card ───────────────────────────────────────────────────────────
@@ -786,6 +830,11 @@ export default function Jobs() {
               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STAGE_COLORS[macroStage] || 'bg-slate-100 text-slate-600'}`}>
                 {STAGE_LABELS[macroStage] || macroStage}
               </span>
+              {macroStage === 'APPLIED' && c.screening_status && (
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${SCREENING_STATUS_COLORS[c.screening_status]}`}>
+                  {SCREENING_STATUS_LABELS[c.screening_status]}
+                </span>
+              )}
               {isActive && (
                 <div className="relative" ref={isShareOpen ? shareRef : null}>
                   <button
@@ -908,10 +957,28 @@ export default function Jobs() {
                 </span>
                 <div className="flex items-center gap-1.5">
                   {macroStage === 'APPLIED' && (
-                    <button onClick={() => handleShortlist(c)} disabled={shortlistingId === c.id}
-                      className="text-[10px] font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-2 py-1 rounded transition-colors">
-                      {shortlistingId === c.id ? '…' : 'Shortlist'}
-                    </button>
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        onClick={() => doStageChange(c, { macro_stage: 'SHORTLISTED' })}
+                        className="flex-1 text-xs font-semibold bg-blue-600 text-white rounded px-3 py-1.5 hover:bg-blue-700 transition-colors"
+                      >
+                        Shortlist
+                      </button>
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) handleScreeningStatus(c, e.target.value);
+                        }}
+                        className="text-xs border border-slate-200 rounded px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+                      >
+                        <option value="" disabled>Move to</option>
+                        {getMoveToOptions(c.screening_status).map(opt => (
+                          <option key={opt} value={opt}>
+                            {SCREENING_STATUS_LABELS[opt]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   )}
                   {macroStage === 'SHORTLISTED' && (
                     <button onClick={() => handleMoveToInterview(c)} disabled={shortlistingId === c.id}
@@ -1554,7 +1621,7 @@ export default function Jobs() {
           />
 
           {/* Drawer */}
-          <div className="fixed right-0 top-0 h-full w-[640px] max-w-[92vw] bg-white shadow-2xl z-50 flex flex-col">
+          <div className="fixed right-0 top-0 h-full w-[60vw] min-w-[560px] max-w-[92vw] bg-white shadow-2xl z-50 flex flex-col">
 
             {/* Drawer header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
@@ -1583,7 +1650,7 @@ export default function Jobs() {
               {PIPELINE_TABS.map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setPipelineTab(tab)}
+                  onClick={() => { setPipelineTab(tab); setScreeningFilter('ALL'); }}
                   className={`flex-1 min-w-[80px] py-3 text-sm font-medium border-b-2 transition-colors text-center ${
                     pipelineTab === tab
                       ? 'border-blue-600 text-blue-600 bg-blue-50/40'
@@ -1598,14 +1665,36 @@ export default function Jobs() {
               ))}
             </div>
 
-            {/* Candidate list — active cards first, then dimmed (progressed past this stage) */}
+            {/* Screening filter bar — only shown on Applied tab */}
+            {pipelineTab === 'Applied' && (
+              <div className="px-4 py-2 border-b border-slate-100 shrink-0 flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-medium">Filter:</span>
+                <select
+                  value={screeningFilter}
+                  onChange={(e) => setScreeningFilter(e.target.value)}
+                  className="text-xs border border-slate-200 rounded px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                >
+                  <option value="ALL">All</option>
+                  <option value="SCREENED">Screened</option>
+                  <option value="MAYBE">Maybe</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              </div>
+            )}
+
+            {/* Candidate list — active cards first (from allCandidates), then dimmed */}
             <div className="flex-1 overflow-y-auto p-4">
-              {pipelineLoading ? (
+              {allCandidatesLoading ? (
                 <PageLoader label="Loading candidates…" />
               ) : (() => {
-                const activeCandidates = pipeline.filter(c => c.is_current_stage !== false);
-                const dimmedCandidates = pipeline.filter(c => c.is_current_stage === false);
-                if (activeCandidates.length === 0 && dimmedCandidates.length === 0) {
+                const currentStage = STAGE_TAB_MAP[pipelineTab];
+                // Active candidates: those currently in this stage — from the unified allCandidates store
+                const activeCandidates = allCandidates
+                  .filter(c => c.macro_stage === currentStage)
+                  .filter(c =>
+                    pipelineTab !== 'Applied' || screeningFilter === 'ALL' || c.screening_status === screeningFilter
+                  );
+                if (activeCandidates.length === 0 && dimmedCandidates.length === 0 && !dimmedLoading) {
                   return (
                     <div className="flex flex-col items-center justify-center py-16 text-slate-400">
                       <Users className="w-10 h-10 mb-2" />
@@ -1616,14 +1705,23 @@ export default function Jobs() {
                 return (
                   <div className="flex flex-col gap-3">
                     {activeCandidates.map(renderCandidateCard)}
-                    {dimmedCandidates.length > 0 && (
+                    {/* Dimmed section — candidates who progressed past this stage */}
+                    {dimmedLoading ? (
+                      <div className="flex items-center justify-center gap-2 py-4 text-slate-400 text-xs border-t border-dashed border-slate-200 mt-1">
+                        <svg className="animate-spin w-3.5 h-3.5 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+                        </svg>
+                        Loading history…
+                      </div>
+                    ) : dimmedCandidates.length > 0 ? (
                       <>
                         <div className="text-xs text-slate-400 text-center py-1 border-t border-dashed border-slate-200">
                           progressed past this stage
                         </div>
                         {dimmedCandidates.map(renderCandidateCard)}
                       </>
-                    )}
+                    ) : null}
                   </div>
                 );
               })()}
