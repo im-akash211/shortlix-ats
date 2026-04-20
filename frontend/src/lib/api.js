@@ -157,6 +157,11 @@ export const candidates = {
     request(`/candidates/${id}/jobs/${jobId}/interview/jump-round/`, {
       method: 'POST', body: JSON.stringify({ round_name: roundName }),
     }),
+  setScreeningStatus: (candidateId, jobId, screeningStatus) =>
+    request(`/candidates/${candidateId}/jobs/${jobId}/screening-status/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ screening_status: screeningStatus }),
+    }),
   moveJob: (id, fromJobId, toJobId) =>
     request(`/candidates/${id}/move-job/`, {
       method: 'POST', body: JSON.stringify({ from_job_id: fromJobId, to_job_id: toJobId }),
