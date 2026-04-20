@@ -34,6 +34,12 @@ PRIORITY_CHOICES = [
     ('HIGH', 'High'),
 ]
 
+SCREENING_STATUS_CHOICES = [
+    ('SCREENED', 'Screened'),
+    ('MAYBE', 'Maybe'),
+    ('REJECTED', 'Rejected'),
+]
+
 ROUND_CHOICES = [
     ('R1', 'Round 1'),
     ('R2', 'Round 2'),
@@ -156,6 +162,15 @@ class CandidateJobMapping(models.Model):
 
     # Priority for sorting and display
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='MEDIUM')
+
+    # Screening status for APPLIED stage classification
+    screening_status = models.CharField(
+        max_length=20,
+        choices=SCREENING_STATUS_CHOICES,
+        null=True,
+        blank=True,
+        default=None,
+    )
 
     moved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True)
     stage_updated_at = models.DateTimeField(auto_now=True)
