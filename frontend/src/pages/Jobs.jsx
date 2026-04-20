@@ -298,6 +298,9 @@ export default function Jobs() {
   // ── Shortlist action state ────────────────────────────────────────────────────
   const [shortlistingId, setShortlistingId] = useState(null);
 
+  // ── Screening status action state ─────────────────────────────────────────────
+  const [screeningStatusLoadingId, setScreeningStatusLoadingId] = useState(null);
+
   // ── Interview round action state ─────────────────────────────────────────────
   const [nextRoundLoading, setNextRoundLoading] = useState(null); // mapping id
   const [jumpRoundLoading, setJumpRoundLoading] = useState(null); // mapping id
@@ -427,6 +430,7 @@ export default function Jobs() {
     // Set viewingJob immediately so the detail view renders at once (optimistic)
     setViewingJob(job);
     setPipelineTab(tab);
+    setScreeningFilter('ALL');
     if (openPanel || tab !== 'Applied') {
       navigate(ROUTES.JOBS.CANDIDATES(job.id));
     } else {
@@ -671,10 +675,17 @@ export default function Jobs() {
   };
 
   const handleScreeningStatus = async (c, newStatus) => {
-    await candidatesApi.setScreeningStatus(c.candidate, c.job, newStatus);
-    setAllCandidates(prev =>
-      prev.map(m => m.id === c.id ? { ...m, screening_status: newStatus } : m)
-    );
+    setScreeningStatusLoadingId(c.id);
+    try {
+      await candidatesApi.setScreeningStatus(c.candidate, c.job, newStatus);
+      setAllCandidates(prev =>
+        prev.map(m => m.id === c.id ? { ...m, screening_status: newStatus } : m)
+      );
+    } catch (err) {
+      alert(err.data?.detail || err.data?.error || 'Failed to update screening status');
+    } finally {
+      setScreeningStatusLoadingId(null);
+    }
   };
 
   const getMoveToOptions = (currentScreeningStatus) => {
@@ -831,8 +842,8 @@ export default function Jobs() {
                 {STAGE_LABELS[macroStage] || macroStage}
               </span>
               {macroStage === 'APPLIED' && c.screening_status && (
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${SCREENING_STATUS_COLORS[c.screening_status]}`}>
-                  {SCREENING_STATUS_LABELS[c.screening_status]}
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${SCREENING_STATUS_COLORS[c.screening_status] || 'bg-slate-100 text-slate-600'}`}>
+                  {SCREENING_STATUS_LABELS[c.screening_status] || c.screening_status}
                 </span>
               )}
               {isActive && (
@@ -959,17 +970,18 @@ export default function Jobs() {
                   {macroStage === 'APPLIED' && (
                     <div className="flex items-center gap-2 mt-2">
                       <button
-                        onClick={() => doStageChange(c, { macro_stage: 'SHORTLISTED' })}
+                        onClick={() => handleShortlist(c)}
                         className="flex-1 text-xs font-semibold bg-blue-600 text-white rounded px-3 py-1.5 hover:bg-blue-700 transition-colors"
                       >
                         Shortlist
                       </button>
                       <select
                         value=""
+                        disabled={screeningStatusLoadingId === c.id}
                         onChange={(e) => {
                           if (e.target.value) handleScreeningStatus(c, e.target.value);
                         }}
-                        className="text-xs border border-slate-200 rounded px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+                        className="text-xs border border-slate-200 rounded px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer disabled:opacity-50"
                       >
                         <option value="" disabled>Move to</option>
                         {getMoveToOptions(c.screening_status).map(opt => (
@@ -1617,7 +1629,7 @@ export default function Jobs() {
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/20 z-40"
-            onClick={() => navigate(ROUTES.JOBS.DETAIL(viewingJob.id))}
+            onClick={() => { setScreeningFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
           />
 
           {/* Drawer */}
@@ -1637,7 +1649,7 @@ export default function Jobs() {
                   <UserPlus className="w-3.5 h-3.5" /> Add Profile
                 </button>
                 <button
-                  onClick={() => navigate(ROUTES.JOBS.DETAIL(viewingJob.id))}
+                  onClick={() => { setScreeningFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
                   className="text-slate-400 hover:text-slate-700 transition-colors p-1"
                 >
                   <X className="w-5 h-5" />
