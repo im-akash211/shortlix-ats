@@ -391,6 +391,7 @@ class SetScreeningStatusView(APIView):
 
     Only allowed when macro_stage == "APPLIED". Returns 400 otherwise.
     """
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk, job_id):
         mapping = generics.get_object_or_404(
@@ -403,15 +404,22 @@ class SetScreeningStatusView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        new_status = request.data.get('screening_status')
-        valid_values = [key for key, _ in SCREENING_STATUS_CHOICES] + [None]
+        if 'screening_status' not in request.data:
+            return Response(
+                {'error': 'screening_status is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        new_status = request.data['screening_status']
+
+        choice_keys = [key for key, _ in SCREENING_STATUS_CHOICES]
+        valid_values = choice_keys + [None]
         if new_status not in valid_values:
             return Response(
-                {'error': f'Invalid screening_status. Must be one of: SCREENED, MAYBE, REJECTED, or null'},
+                {'error': f'Invalid screening_status. Must be one of: {", ".join(choice_keys)}, or null'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         mapping.screening_status = new_status
         mapping.save(update_fields=['screening_status'])
 
-        return Response(CandidateJobMappingSerializer(mapping).data)
+        return Response(CandidateJobMappingSerializer(mapping, context={'request': request}).data)
