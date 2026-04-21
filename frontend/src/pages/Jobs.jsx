@@ -76,8 +76,8 @@ const SCREENING_STATUS_COLORS = {
   REJECTED: 'bg-rose-100 text-rose-700',
 };
 
-const ROUND_LABELS = { R1: 'R1', R2: 'R2', CLIENT: 'Client', CDO: 'CDO', MGMT: 'Mgmt' };
-const ROUND_PROGRESSION = ['R1', 'R2', 'CLIENT', 'CDO', 'MGMT'];
+const ROUND_LABELS = { R1: 'R1', R2: 'R2', R3: 'R3', CLIENT: 'Client', CDO: 'CDO', MGMT: 'Mgmt' };
+const ROUND_PROGRESSION = ['R1', 'R2', 'R3', 'CLIENT', 'CDO', 'MGMT'];
 
 const DROP_REASON_LABELS = {
   REJECTED: 'Rejected', CANDIDATE_DROP: 'Candidate Drop', NO_SHOW: 'No Show',
@@ -294,6 +294,11 @@ export default function Jobs() {
 
   // ── Screening filter state ───────────────────────────────────────────────────
   const [screeningFilter, setScreeningFilter] = useState('ALL');
+  const [interviewFilter, setInterviewFilter] = useState('ALL');
+  const [scheduleModalCandidate, setScheduleModalCandidate] = useState(null);
+  const [scheduleModalRound, setScheduleModalRound] = useState(null);
+  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
+  const [roundStatusLoadingId, setRoundStatusLoadingId] = useState(null);
 
   // ── Shortlist action state ────────────────────────────────────────────────────
   const [shortlistingId, setShortlistingId] = useState(null);
@@ -431,6 +436,7 @@ export default function Jobs() {
     setViewingJob(job);
     setPipelineTab(tab);
     setScreeningFilter('ALL');
+    setInterviewFilter('ALL');
     if (openPanel || tab !== 'Applied') {
       navigate(ROUTES.JOBS.CANDIDATES(job.id));
     } else {
@@ -774,6 +780,44 @@ export default function Jobs() {
     }
   };
 
+  const handleNewScheduleSubmit = async () => {
+    if (!scheduleForm.scheduled_at) {
+      alert('Date and time are required');
+      return;
+    }
+    setScheduleSubmitting(true);
+    try {
+      await interviewsApi.create({
+        mapping: scheduleModalCandidate.id,
+        round_name: scheduleModalRound,
+        round_status: 'SCHEDULED',
+        scheduled_at: scheduleForm.scheduled_at,
+        mode: scheduleForm.mode,
+        meeting_link: scheduleForm.meeting_link || '',
+      });
+      await refreshAllCandidates(viewingJob.id);
+      setScheduleModalCandidate(null);
+      setScheduleModalRound(null);
+      setScheduleForm({ round_number: 1, round_label: '', interviewer: '', scheduled_at: '', duration_minutes: 60, mode: 'virtual', meeting_link: '' });
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to schedule interview');
+    } finally {
+      setScheduleSubmitting(false);
+    }
+  };
+
+  const handleRoundStatus = async (interviewId, newStatus, candidateId) => {
+    setRoundStatusLoadingId(candidateId);
+    try {
+      await interviewsApi.setRoundStatus(interviewId, newStatus);
+      await refreshAllCandidates(viewingJob.id);
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to update round status');
+    } finally {
+      setRoundStatusLoadingId(null);
+    }
+  };
+
   // ── Pipeline stat helpers ────────────────────────────────────────────────────
   // Derived from allCandidates — the single source of truth.
   const getStatCount = (tab) => {
@@ -833,6 +877,11 @@ export default function Jobs() {
                 {macroStage === 'INTERVIEW' && c.current_interview_round && (
                   <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded mt-0.5 inline-block">
                     {ROUND_LABELS[c.current_interview_round] || c.current_interview_round}
+                  </span>
+                )}
+                {macroStage === 'INTERVIEW' && c.interview_status === 'REJECTED' && (
+                  <span className="text-[10px] font-semibold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
+                    Rejected
                   </span>
                 )}
               </div>
@@ -942,10 +991,23 @@ export default function Jobs() {
           <div className="flex flex-col gap-1">
             {/* Row 1: stage-specific info */}
             <div className="flex items-center gap-2 flex-wrap min-h-[16px]">
-              {macroStage === 'INTERVIEW' && c.latest_round && (
+              {macroStage === 'INTERVIEW' && c.interview_status === 'REJECTED' && c.latest_round && (
                 <span className="text-xs text-slate-500">
                   {ROUND_LABELS[c.latest_round.round_name] || c.latest_round.round_name}
-                  {c.latest_round.round_status && <span className="text-slate-400"> · {c.latest_round.round_status}</span>}
+                  {' · Rejected'}
+                  {c.latest_round.scheduled_at && (
+                    <span className="text-slate-400">
+                      {' · '}{new Date(c.latest_round.scheduled_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </span>
+              )}
+              {macroStage === 'INTERVIEW' && c.interview_status !== 'REJECTED' && c.latest_round && (
+                <span className="text-xs text-slate-500">
+                  {ROUND_LABELS[c.latest_round.round_name] || c.latest_round.round_name}
+                  {c.latest_round.round_status && (
+                    <span className="text-slate-400"> · {c.latest_round.round_status}</span>
+                  )}
                 </span>
               )}
               {macroStage === 'OFFERED' && c.offer_status && (
@@ -1018,35 +1080,107 @@ export default function Jobs() {
 
         {/* Interview action bar — only active INTERVIEW cards */}
         {isActive && macroStage === 'INTERVIEW' && (
-          <div className="flex items-center gap-2 mt-1 px-3 py-2 bg-purple-50 border border-purple-100 rounded-lg">
-            <button
-              onClick={() => handleNextRound(c)}
-              disabled={nextRoundLoading === c.id || c.current_interview_round === 'MGMT' || !c.can_move_next}
-              className="text-xs font-medium bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white px-3 py-1.5 rounded transition-colors"
-            >
-              {nextRoundLoading === c.id ? 'Advancing…' : 'Next Round'}
-            </button>
-            <select
-              disabled={jumpRoundLoading === c.id}
-              onChange={(e) => { if (e.target.value) { handleJumpRound(c, e.target.value); e.target.value = ''; } }}
-              defaultValue=""
-              className="text-xs border border-purple-200 rounded px-2 py-1.5 bg-white outline-none focus:border-purple-400 disabled:opacity-40"
-            >
-              <option value="" disabled>Jump to round…</option>
-              {ROUND_PROGRESSION.map((r) => (
-                <option key={r} value={r} disabled={r === c.current_interview_round}>
-                  {ROUND_LABELS[r]}{r === c.current_interview_round ? ' (current)' : ''}
-                </option>
-              ))}
-            </select>
-            {c.can_move_next && (
+          <div className="mt-2 px-3 py-2 bg-purple-50 border border-purple-100 rounded-lg">
+            {/* REJECTED: round selector + reschedule button */}
+            {c.interview_status === 'REJECTED' && (
+              <div className="flex items-center gap-2">
+                <select
+                  defaultValue={c.latest_round?.round_name || c.current_interview_round || 'R1'}
+                  id={`reschedule-round-${c.id}`}
+                  className="text-xs border border-slate-200 rounded px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                >
+                  {ROUND_PROGRESSION.map(r => (
+                    <option key={r} value={r}>{ROUND_LABELS[r]}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => {
+                    const sel = document.getElementById(`reschedule-round-${c.id}`);
+                    setScheduleModalCandidate(c);
+                    setScheduleModalRound(sel ? sel.value : (c.latest_round?.round_name || c.current_interview_round || 'R1'));
+                  }}
+                  className="flex-1 text-xs font-semibold bg-rose-600 text-white rounded px-3 py-1.5 hover:bg-rose-700 transition-colors"
+                >
+                  Reschedule Interview
+                </button>
+              </div>
+            )}
+
+            {/* No interview record yet — show Schedule button */}
+            {!c.interview_status && !c.latest_round && (
               <button
-                onClick={() => handleMakeOffer(c)}
-                disabled={shortlistingId === c.id}
-                className="text-xs font-medium ml-auto bg-cyan-600 hover:bg-cyan-700 disabled:opacity-40 text-white px-3 py-1.5 rounded transition-colors"
+                onClick={() => {
+                  setScheduleModalCandidate(c);
+                  setScheduleModalRound(c.current_interview_round || 'R1');
+                }}
+                className="w-full text-xs font-semibold bg-purple-600 text-white rounded px-3 py-1.5 hover:bg-purple-700 transition-colors"
               >
-                {shortlistingId === c.id ? '…' : 'Make Offer'}
+                Schedule {ROUND_LABELS[c.current_interview_round] || c.current_interview_round || 'R1'} Interview
               </button>
+            )}
+
+            {/* Round is SCHEDULED */}
+            {!c.interview_status && c.latest_round?.round_status === 'SCHEDULED' && (
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={roundStatusLoadingId === c.id}
+                  onClick={() => handleRoundStatus(c.latest_round?.id, 'COMPLETED', c.id)}
+                  className="flex-1 text-xs font-semibold bg-green-600 text-white rounded px-3 py-1.5 hover:bg-green-700 disabled:opacity-50 transition-colors"
+                >
+                  Mark as Completed
+                </button>
+                <button
+                  disabled={roundStatusLoadingId === c.id}
+                  onClick={() => handleRoundStatus(c.latest_round?.id, 'ON_HOLD', c.id)}
+                  className="text-xs border border-slate-300 text-slate-600 rounded px-3 py-1.5 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  On Hold
+                </button>
+              </div>
+            )}
+
+            {/* Round is ON_HOLD */}
+            {!c.interview_status && c.latest_round?.round_status === 'ON_HOLD' && (
+              <button
+                disabled={roundStatusLoadingId === c.id}
+                onClick={() => handleRoundStatus(c.latest_round?.id, 'SCHEDULED', c.id)}
+                className="w-full text-xs font-semibold bg-amber-600 text-white rounded px-3 py-1.5 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+              >
+                Resume
+              </button>
+            )}
+
+            {/* Round is COMPLETED */}
+            {!c.interview_status && c.latest_round?.round_status === 'COMPLETED' && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  disabled={nextRoundLoading === c.id}
+                  onClick={() => handleNextRound(c)}
+                  className="text-xs font-semibold bg-purple-600 text-white rounded px-3 py-1.5 hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                >
+                  {nextRoundLoading === c.id ? 'Advancing…' : 'Move to Next Round'}
+                </button>
+                <select
+                  disabled={jumpRoundLoading === c.id}
+                  onChange={(e) => { if (e.target.value) { handleJumpRound(c, e.target.value); e.target.value = ''; } }}
+                  defaultValue=""
+                  className="text-xs border border-purple-200 rounded px-2 py-1.5 bg-white outline-none focus:border-purple-400 disabled:opacity-40"
+                >
+                  <option value="" disabled>Jump to round…</option>
+                  {ROUND_PROGRESSION.map(r => (
+                    <option key={r} value={r} disabled={r === c.current_interview_round}>
+                      {ROUND_LABELS[r]}{r === c.current_interview_round ? ' (current)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => handleMakeOffer(c)}
+                  disabled={shortlistingId === c.id}
+                  className="text-xs font-semibold bg-cyan-600 text-white rounded px-3 py-1.5 hover:bg-cyan-700 disabled:opacity-40 transition-colors ml-auto"
+                >
+                  {shortlistingId === c.id ? '…' : 'Make Offer'}
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -1629,7 +1763,7 @@ export default function Jobs() {
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/20 z-40"
-            onClick={() => { setScreeningFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
+            onClick={() => { setScreeningFilter('ALL'); setInterviewFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
           />
 
           {/* Drawer */}
@@ -1649,7 +1783,7 @@ export default function Jobs() {
                   <UserPlus className="w-3.5 h-3.5" /> Add Profile
                 </button>
                 <button
-                  onClick={() => { setScreeningFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
+                  onClick={() => { setScreeningFilter('ALL'); setInterviewFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
                   className="text-slate-400 hover:text-slate-700 transition-colors p-1"
                 >
                   <X className="w-5 h-5" />
@@ -1662,7 +1796,7 @@ export default function Jobs() {
               {PIPELINE_TABS.map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => { setPipelineTab(tab); setScreeningFilter('ALL'); }}
+                  onClick={() => { setPipelineTab(tab); setScreeningFilter('ALL'); setInterviewFilter('ALL'); }}
                   className={`flex-1 min-w-[80px] py-3 text-sm font-medium border-b-2 transition-colors text-center ${
                     pipelineTab === tab
                       ? 'border-blue-600 text-blue-600 bg-blue-50/40'
@@ -1693,6 +1827,26 @@ export default function Jobs() {
                 </select>
               </div>
             )}
+            {pipelineTab === 'Interview' && (
+              <div className="px-4 py-2 border-b border-slate-100 shrink-0 flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-medium">Filter:</span>
+                <select
+                  value={interviewFilter}
+                  onChange={(e) => setInterviewFilter(e.target.value)}
+                  className="text-xs border border-slate-200 rounded px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                >
+                  <option value="ALL">All</option>
+                  <option value="R1">R1</option>
+                  <option value="R2">R2</option>
+                  <option value="R3">R3</option>
+                  <option value="CLIENT">Client</option>
+                  <option value="CDO">CDO</option>
+                  <option value="MGMT">MGMT</option>
+                  <option value="ON_HOLD">On Hold</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              </div>
+            )}
 
             {/* Candidate list — active cards first (from allCandidates), then dimmed */}
             <div className="flex-1 overflow-y-auto p-4">
@@ -1705,7 +1859,13 @@ export default function Jobs() {
                   .filter(c => c.macro_stage === currentStage)
                   .filter(c =>
                     pipelineTab !== 'Applied' || screeningFilter === 'ALL' || c.screening_status === screeningFilter
-                  );
+                  )
+                  .filter(c => {
+                    if (pipelineTab !== 'Interview' || interviewFilter === 'ALL') return true;
+                    if (interviewFilter === 'REJECTED') return c.interview_status === 'REJECTED';
+                    if (interviewFilter === 'ON_HOLD') return c.latest_round?.round_status === 'ON_HOLD';
+                    return c.current_interview_round === interviewFilter;
+                  });
                 if (activeCandidates.length === 0 && dimmedCandidates.length === 0 && !dimmedLoading) {
                   return (
                     <div className="flex flex-col items-center justify-center py-16 text-slate-400">
@@ -1780,6 +1940,65 @@ export default function Jobs() {
                 className="px-4 py-2 text-sm bg-rose-600 text-white rounded-lg hover:bg-rose-700 font-medium disabled:opacity-50 transition-colors"
               >
                 {dropLoading ? 'Dropping…' : 'Confirm Drop'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════ SCHEDULE INTERVIEW MODAL ══════════════════ */}
+      {scheduleModalCandidate && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[400]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-base font-semibold text-slate-800 mb-4">
+              Schedule {ROUND_LABELS[scheduleModalRound] || scheduleModalRound} Interview
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Date &amp; Time *</label>
+                <input
+                  type="datetime-local"
+                  value={scheduleForm.scheduled_at}
+                  onChange={(e) => setScheduleForm(f => ({ ...f, scheduled_at: e.target.value }))}
+                  className="w-full text-sm border border-slate-200 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Mode</label>
+                <select
+                  value={scheduleForm.mode}
+                  onChange={(e) => setScheduleForm(f => ({ ...f, mode: e.target.value }))}
+                  className="w-full text-sm border border-slate-200 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                >
+                  <option value="virtual">Virtual</option>
+                  <option value="phone">Phone</option>
+                  <option value="face_to_face">In-person</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Meeting Link</label>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={scheduleForm.meeting_link}
+                  onChange={(e) => setScheduleForm(f => ({ ...f, meeting_link: e.target.value }))}
+                  className="w-full text-sm border border-slate-200 rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => { setScheduleModalCandidate(null); setScheduleModalRound(null); }}
+                className="text-sm px-4 py-2 rounded border border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleNewScheduleSubmit}
+                disabled={scheduleSubmitting}
+                className="text-sm px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50"
+              >
+                {scheduleSubmitting ? 'Scheduling…' : 'Schedule'}
               </button>
             </div>
           </div>
