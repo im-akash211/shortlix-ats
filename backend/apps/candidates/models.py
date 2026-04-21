@@ -197,3 +197,19 @@ class CandidateNote(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class CandidateReminder(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='reminders')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='candidate_reminders'
+    )
+    remind_at = models.DateField()
+    note = models.TextField(blank=True)
+    is_done = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['remind_at']

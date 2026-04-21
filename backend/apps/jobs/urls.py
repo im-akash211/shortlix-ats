@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     JobListView, JobDetailView, JobDeleteView, JobPipelineView,
     JobPipelineStatsView, JobCollaboratorListCreateView, JobCollaboratorDeleteView,
-    JobHistoryListView,
+    JobHistoryListView, JobExcelReportView,
 )
 
 urlpatterns = [
@@ -14,4 +14,5 @@ urlpatterns = [
     path('<uuid:pk>/collaborators/<uuid:user_id>/', JobCollaboratorDeleteView.as_view(), name='job-collaborator-delete'),
     path('<uuid:pk>/history/', JobHistoryListView.as_view(), name='job-history'),
     path('<uuid:pk>/delete/', JobDeleteView.as_view(), name='job-delete'),
+    path('<uuid:pk>/report/excel/', JobExcelReportView.as_view(), name='job-report-excel'),
 ]
