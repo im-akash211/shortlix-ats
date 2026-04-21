@@ -201,6 +201,7 @@ def _get_latest_round(mapping):
     if not interview:
         return None
     return {
+        'id': str(interview.id),
         'round_name': interview.round_name,
         'round_status': interview.round_status,
         'round_result': interview.round_result,

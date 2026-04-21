@@ -1988,7 +1988,7 @@ export default function Jobs() {
             </div>
             <div className="flex justify-end gap-2 mt-6">
               <button
-                onClick={() => { setScheduleModalCandidate(null); setScheduleModalRound(null); }}
+                onClick={() => { setScheduleModalCandidate(null); setScheduleModalRound(null); setScheduleForm({ round_number: 1, round_label: '', interviewer: '', scheduled_at: '', duration_minutes: 60, mode: 'virtual', meeting_link: '' }); }}
                 className="text-sm px-4 py-2 rounded border border-slate-200 text-slate-600 hover:bg-slate-50"
               >
                 Cancel
