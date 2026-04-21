@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     InterviewListCreateView, InterviewDetailView, InterviewCancelView,
     InterviewFeedbackCreateView, InterviewFeedbackDetailView, InterviewSummaryView,
-    SetRoundResultView,
+    SetRoundResultView, SetRoundStatusView,
 )
 
 urlpatterns = [
@@ -13,4 +13,5 @@ urlpatterns = [
     path('<uuid:pk>/feedback/', InterviewFeedbackCreateView.as_view(), name='interview-feedback-create'),
     path('<uuid:pk>/feedback/detail/', InterviewFeedbackDetailView.as_view(), name='interview-feedback-detail'),
     path('<uuid:pk>/round-result/', SetRoundResultView.as_view(), name='interview-round-result'),
+    path('<uuid:pk>/round-status/', SetRoundStatusView.as_view(), name='interview-round-status'),
 ]
