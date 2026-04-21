@@ -80,6 +80,17 @@ export default function Login() {
         <p className="text-center text-xs text-slate-400 mt-6">
           Demo: <span className="font-mono text-slate-600">admin@ats.com</span> / <span className="font-mono text-slate-600">admin123</span>
         </p>
+
+        <div className="mt-5 pt-5 border-t border-slate-100">
+          <p className="text-center text-xs text-slate-400 mb-3">Are you an employee?</p>
+          <button
+            type="button"
+            onClick={() => navigate(ROUTES.EMPLOYEE_PORTAL)}
+            className="w-full flex items-center justify-center gap-2 border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50 py-2.5 rounded-lg text-sm font-medium transition-colors"
+          >
+            <span>👥</span> Employee Referral Portal
+          </button>
+        </div>
       </div>
     </div>
   );

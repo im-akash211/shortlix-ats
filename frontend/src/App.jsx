@@ -6,8 +6,9 @@ import AppLayout from './components/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import PageSkeleton from './components/PageSkeleton';
 
-// Eager load Login since it's the entrypoint for users
+// Eager load Login and EmployeePortal (public entrypoints)
 import Login from './pages/Login';
+import EmployeePortal from './pages/EmployeePortal';
 
 // Lazy load actual protected features
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -17,6 +18,7 @@ const Approvals = lazy(() => import('./pages/Approvals'));
 const Interviews = lazy(() => import('./pages/Interviews'));
 const Requisitions = lazy(() => import('./pages/Requisitions'));
 const Settings = lazy(() => import('./pages/Settings'));
+const CandidateJobProfile = lazy(() => import('./pages/CandidateJobProfile'));
 
 export default function App() {
   return (
@@ -24,6 +26,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path={ROUTES.LOGIN} element={<Login />} />
+          <Route path={ROUTES.EMPLOYEE_PORTAL} element={<EmployeePortal />} />
           
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
@@ -35,9 +38,21 @@ export default function App() {
                 </Suspense>
               } />
 
+              <Route path={ROUTES.JOBS.CANDIDATE_PROFILE_PATTERN} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <CandidateJobProfile />
+                </Suspense>
+              } />
+
               <Route path={`${ROUTES.JOBS.ROOT}/*`} element={
                 <Suspense fallback={<PageSkeleton />}>
                   <Jobs />
+                </Suspense>
+              } />
+
+              <Route path={ROUTES.CANDIDATES.PROFILE_PATTERN} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <CandidateJobProfile />
                 </Suspense>
               } />
 

@@ -263,14 +263,38 @@ export default function Candidates({ user: _userProp }) {
           setProfileDetail(detail);
           if (editMatch) {
             setEditForm({
-              full_name:              detail.full_name || '',
-              email:                  detail.email || '',
-              phone:                  detail.phone || '',
-              location:               detail.location || '',
-              total_experience_years: detail.total_experience_years ?? '',
-              designation:            detail.designation || '',
-              current_ctc_lakhs:      detail.current_ctc_lakhs ?? '',
-              notice_period_days:     detail.notice_period_days ?? '',
+              full_name:                   detail.full_name || '',
+              email:                       detail.email || '',
+              phone:                       detail.phone || '',
+              location:                    detail.location || '',
+              native_location:             detail.native_location || '',
+              designation:                 detail.designation || '',
+              current_employer:            detail.current_employer || '',
+              total_experience_years:      detail.total_experience_years ?? '',
+              tenth_board:                 detail.tenth_board || '',
+              tenth_percentage:            detail.tenth_percentage ?? '',
+              twelfth_board:               detail.twelfth_board || '',
+              twelfth_percentage:          detail.twelfth_percentage ?? '',
+              graduation_course:           detail.graduation_course || '',
+              graduation_college:          detail.graduation_college || '',
+              graduation_year:             detail.graduation_year ?? '',
+              graduation_percentage:       detail.graduation_percentage ?? '',
+              qualifying_exam:             detail.qualifying_exam || '',
+              qualifying_rank:             detail.qualifying_rank || '',
+              post_graduation_course:      detail.post_graduation_course || '',
+              post_graduation_college:     detail.post_graduation_college || '',
+              post_graduation_year:        detail.post_graduation_year ?? '',
+              post_graduation_percentage:  detail.post_graduation_percentage ?? '',
+              post_qualifying_exam:        detail.post_qualifying_exam || '',
+              post_qualifying_rank:        detail.post_qualifying_rank || '',
+              ctc_fixed_lakhs:             detail.ctc_fixed_lakhs ?? '',
+              ctc_variable_lakhs:          detail.ctc_variable_lakhs ?? '',
+              current_ctc_lakhs:           detail.current_ctc_lakhs ?? '',
+              expected_ctc_lakhs:          detail.expected_ctc_lakhs ?? '',
+              offers_in_hand:              detail.offers_in_hand || '',
+              notice_period_days:          detail.notice_period_days ?? '',
+              notice_period_status:        detail.notice_period_status || '',
+              reason_for_change:           detail.reason_for_change || '',
             });
           }
         })
@@ -371,8 +395,7 @@ export default function Candidates({ user: _userProp }) {
   };
 
   const openViewProfile = (candidate) => {
-    // URL-driven: navigate to /candidates/:id
-    navigate(ROUTES.CANDIDATES.DETAIL(candidate.id));
+    navigate(ROUTES.CANDIDATES.PROFILE(candidate.id));
   };
 
   const closeModal = () => {
@@ -426,21 +449,26 @@ export default function Candidates({ user: _userProp }) {
     if (!selectedCandidate) return;
     setEditLoading(true);
     try {
+      const toNum = (v) => (v !== '' && v != null ? Number(v) : null);
       const payload = {
         ...editForm,
-        total_experience_years: editForm.total_experience_years !== ''
-          ? Number(editForm.total_experience_years)
-          : null,
-        current_ctc_lakhs: editForm.current_ctc_lakhs !== ''
-          ? Number(editForm.current_ctc_lakhs)
-          : null,
-        notice_period_days: editForm.notice_period_days !== ''
-          ? Number(editForm.notice_period_days)
-          : null,
+        total_experience_years:     toNum(editForm.total_experience_years),
+        tenth_percentage:           toNum(editForm.tenth_percentage),
+        twelfth_percentage:         toNum(editForm.twelfth_percentage),
+        graduation_year:            toNum(editForm.graduation_year),
+        graduation_percentage:      toNum(editForm.graduation_percentage),
+        post_graduation_year:       toNum(editForm.post_graduation_year),
+        post_graduation_percentage: toNum(editForm.post_graduation_percentage),
+        ctc_fixed_lakhs:            toNum(editForm.ctc_fixed_lakhs),
+        ctc_variable_lakhs:         toNum(editForm.ctc_variable_lakhs),
+        current_ctc_lakhs:          toNum(editForm.current_ctc_lakhs),
+        expected_ctc_lakhs:         toNum(editForm.expected_ctc_lakhs),
+        notice_period_days:         toNum(editForm.notice_period_days),
       };
       await candidatesApi.update(selectedCandidate.id, payload);
       closeModal();
       queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['candidate', selectedCandidate.id] });
     } catch (err) {
       alert(err.data?.detail || JSON.stringify(err.data) || 'Failed to save changes');
     } finally {
@@ -844,18 +872,15 @@ export default function Candidates({ user: _userProp }) {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {data.map((c) => (
-                    <tr key={c.id} className="hover:bg-blue-50/50 transition-colors">
+                    <tr key={c.id} className="hover:bg-blue-50/50 transition-colors cursor-pointer" onClick={() => openViewProfile(c)}>
 
                       {/* Applicant cell */}
                       <td className="px-2 py-1.5 align-top">
                         <div className="flex items-start gap-2">
                           <div className="flex flex-col gap-0.5">
-                            <button
-                              onClick={() => openViewProfile(c)}
-                              className="font-semibold text-slate-800 text-xs hover:text-blue-600 text-left transition-colors"
-                            >
+                            <span className="font-semibold text-slate-800 text-xs">
                               {c.full_name?.toUpperCase()}
-                            </button>
+                            </span>
                             <div className="flex flex-col gap-0 text-slate-500 text-xs leading-[1.25]">
                               <span className="flex items-center gap-1"><Phone className="w-2.5 h-2.5 text-slate-400" /> {c.phone || '—'}</span>
                               <span className="flex items-center gap-1"><Mail className="w-2.5 h-2.5 text-slate-400" /> {c.email}</span>
@@ -864,12 +889,12 @@ export default function Candidates({ user: _userProp }) {
                             </div>
                             {/* Action icons */}
                             <div className="flex items-center gap-2 text-slate-400">
-                              <button onClick={() => openResume(c)} className="hover:text-blue-600 transition-colors" title="View Resume"><FileText className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => openModal('note', c)} className="hover:text-blue-600 transition-colors" title="Add Note"><MessageSquarePlus className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => openModal('edit', c)} className="hover:text-blue-600 transition-colors" title="Edit Profile"><Edit className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => openDeleteConfirm(c)} className="hover:text-rose-600 transition-colors" title="Delete Candidate"><Trash2 className="w-3.5 h-3.5" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); openResume(c); }} className="hover:text-blue-600 transition-colors" title="View Resume"><FileText className="w-3.5 h-3.5" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); openModal('note', c); }} className="hover:text-blue-600 transition-colors" title="Add Note"><MessageSquarePlus className="w-3.5 h-3.5" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); openModal('edit', c); }} className="hover:text-blue-600 transition-colors" title="Edit Profile"><Edit className="w-3.5 h-3.5" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); openDeleteConfirm(c); }} className="hover:text-rose-600 transition-colors" title="Delete Candidate"><Trash2 className="w-3.5 h-3.5" /></button>
                               {/* Share */}
-                              <button onClick={(e) => openShare(e, shareOpen === c.id ? null : c.id)} className="hover:text-blue-600 transition-colors" title="Share Profile"><Share2 className="w-3.5 h-3.5" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); openShare(e, shareOpen === c.id ? null : c.id); }} className="hover:text-blue-600 transition-colors" title="Share Profile"><Share2 className="w-3.5 h-3.5" /></button>
                             </div>
                           </div>
                         </div>
@@ -1262,90 +1287,232 @@ export default function Candidates({ user: _userProp }) {
       </Modal>
 
       {/* ══════════ EDIT PROFILE MODAL ══════════ */}
-      <Modal isOpen={activeModal === 'edit'} onClose={closeModal} title="Edit Profile" maxWidth="max-w-2xl">
+      <Modal isOpen={activeModal === 'edit'} onClose={closeModal} title="Edit Profile" maxWidth="max-w-3xl">
         {selectedCandidate && (
-          <div className="flex flex-col gap-6">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-700">Full Name *</label>
-                <input
-                  type="text"
-                  value={editForm.full_name}
-                  onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
-                  className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
-                />
+          <div className="flex flex-col gap-6 max-h-[75vh] overflow-y-auto pr-1">
+
+            {/* Basic Info */}
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Basic Information</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Full Name *</label>
+                  <input type="text" value={editForm.full_name}
+                    onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Email</label>
+                  <input type="email" value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Phone Number</label>
+                  <input type="text" value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Designation</label>
+                  <input type="text" value={editForm.designation}
+                    onChange={(e) => setEditForm({ ...editForm, designation: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Current Employer</label>
+                  <input type="text" value={editForm.current_employer}
+                    onChange={(e) => setEditForm({ ...editForm, current_employer: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Total Experience (years)</label>
+                  <input type="number" step="0.1" min="0" value={editForm.total_experience_years}
+                    onChange={(e) => setEditForm({ ...editForm, total_experience_years: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Current Location</label>
+                  <input type="text" value={editForm.location}
+                    onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Native Location</label>
+                  <input type="text" value={editForm.native_location}
+                    onChange={(e) => setEditForm({ ...editForm, native_location: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-700">Email</label>
-                <input
-                  type="email"
-                  value={editForm.email}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
-                />
+            </div>
+
+            {/* Education */}
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Education</p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">10th Board</label>
+                  <input type="text" value={editForm.tenth_board}
+                    onChange={(e) => setEditForm({ ...editForm, tenth_board: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">10th %</label>
+                  <input type="number" step="0.01" min="0" max="100" value={editForm.tenth_percentage}
+                    onChange={(e) => setEditForm({ ...editForm, tenth_percentage: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">12th Board</label>
+                  <input type="text" value={editForm.twelfth_board}
+                    onChange={(e) => setEditForm({ ...editForm, twelfth_board: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">12th %</label>
+                  <input type="number" step="0.01" min="0" max="100" value={editForm.twelfth_percentage}
+                    onChange={(e) => setEditForm({ ...editForm, twelfth_percentage: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Graduation Course</label>
+                  <input type="text" value={editForm.graduation_course}
+                    onChange={(e) => setEditForm({ ...editForm, graduation_course: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Graduation College</label>
+                  <input type="text" value={editForm.graduation_college}
+                    onChange={(e) => setEditForm({ ...editForm, graduation_college: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Graduation Year</label>
+                  <input type="number" min="1980" max="2100" value={editForm.graduation_year}
+                    onChange={(e) => setEditForm({ ...editForm, graduation_year: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Graduation %</label>
+                  <input type="number" step="0.01" min="0" max="100" value={editForm.graduation_percentage}
+                    onChange={(e) => setEditForm({ ...editForm, graduation_percentage: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Qualifying Exam (UG)</label>
+                  <input type="text" value={editForm.qualifying_exam}
+                    onChange={(e) => setEditForm({ ...editForm, qualifying_exam: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Qualifying Rank (UG)</label>
+                  <input type="text" value={editForm.qualifying_rank}
+                    onChange={(e) => setEditForm({ ...editForm, qualifying_rank: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Post Graduation Course</label>
+                  <input type="text" value={editForm.post_graduation_course}
+                    onChange={(e) => setEditForm({ ...editForm, post_graduation_course: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Post Graduation College</label>
+                  <input type="text" value={editForm.post_graduation_college}
+                    onChange={(e) => setEditForm({ ...editForm, post_graduation_college: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Post Graduation Year</label>
+                  <input type="number" min="1980" max="2100" value={editForm.post_graduation_year}
+                    onChange={(e) => setEditForm({ ...editForm, post_graduation_year: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Post Graduation %</label>
+                  <input type="number" step="0.01" min="0" max="100" value={editForm.post_graduation_percentage}
+                    onChange={(e) => setEditForm({ ...editForm, post_graduation_percentage: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Qualifying Exam (PG)</label>
+                  <input type="text" value={editForm.post_qualifying_exam}
+                    onChange={(e) => setEditForm({ ...editForm, post_qualifying_exam: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-slate-700">Qualifying Rank (PG)</label>
+                  <input type="text" value={editForm.post_qualifying_rank}
+                    onChange={(e) => setEditForm({ ...editForm, post_qualifying_rank: e.target.value })}
+                    className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-700">Phone Number</label>
-                <input
-                  type="text"
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-700">Current Location</label>
-                <input
-                  type="text"
-                  value={editForm.location}
-                  onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                  className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-700">Total Experience (years)</label>
-                <input
-                  type="number" step="0.1" min="0"
-                  value={editForm.total_experience_years}
-                  onChange={(e) => setEditForm({ ...editForm, total_experience_years: e.target.value })}
-                  className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
-                />
-              </div>
-              {(user?.role === 'admin' || user?.role === 'recruiter') && (
-                <>
+            </div>
+
+            {/* CTC & Employment */}
+            {(user?.role === 'admin' || user?.role === 'recruiter') && (
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">CTC &amp; Employment</p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-700">CTC Fixed (Lakhs)</label>
+                    <input type="number" min="0" step="0.1" value={editForm.ctc_fixed_lakhs}
+                      onChange={(e) => setEditForm({ ...editForm, ctc_fixed_lakhs: e.target.value })}
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-700">CTC Variable (Lakhs)</label>
+                    <input type="number" min="0" step="0.1" value={editForm.ctc_variable_lakhs}
+                      onChange={(e) => setEditForm({ ...editForm, ctc_variable_lakhs: e.target.value })}
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                  </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-medium text-slate-700">Current CTC (Lakhs)</label>
-                    <input
-                      type="number" min="0" step="0.1"
-                      value={editForm.current_ctc_lakhs}
+                    <input type="number" min="0" step="0.1" value={editForm.current_ctc_lakhs}
                       onChange={(e) => setEditForm({ ...editForm, current_ctc_lakhs: e.target.value })}
-                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
-                      placeholder="e.g. 12.5"
-                    />
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-700">Expected CTC (Lakhs)</label>
+                    <input type="number" min="0" step="0.1" value={editForm.expected_ctc_lakhs}
+                      onChange={(e) => setEditForm({ ...editForm, expected_ctc_lakhs: e.target.value })}
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-medium text-slate-700">Notice Period (days)</label>
-                    <input
-                      type="number" min="0" step="1"
-                      value={editForm.notice_period_days}
+                    <input type="number" min="0" step="1" value={editForm.notice_period_days}
                       onChange={(e) => setEditForm({ ...editForm, notice_period_days: e.target.value })}
-                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
-                      placeholder="e.g. 30"
-                    />
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500" />
                   </div>
-                </>
-              )}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-slate-700">Designation</label>
-                <input
-                  type="text"
-                  value={editForm.designation}
-                  onChange={(e) => setEditForm({ ...editForm, designation: e.target.value })}
-                  className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500"
-                />
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-700">Notice Period Status</label>
+                    <select value={editForm.notice_period_status}
+                      onChange={(e) => setEditForm({ ...editForm, notice_period_status: e.target.value })}
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500 bg-white">
+                      <option value="">— Select —</option>
+                      <option value="serving">Serving</option>
+                      <option value="lwd">LWD</option>
+                      <option value="notice">In Notice</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2 flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-700">Offers in Hand</label>
+                    <textarea rows={2} value={editForm.offers_in_hand}
+                      onChange={(e) => setEditForm({ ...editForm, offers_in_hand: e.target.value })}
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500 resize-none"
+                      placeholder="e.g. Offer from Accenture @ 18L" />
+                  </div>
+                  <div className="col-span-2 flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-slate-700">Reason for Change</label>
+                    <textarea rows={2} value={editForm.reason_for_change}
+                      onChange={(e) => setEditForm({ ...editForm, reason_for_change: e.target.value })}
+                      className="w-full border border-slate-300 rounded-md p-2 text-sm outline-none focus:border-blue-500 resize-none" />
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-3 pt-4 border-t border-slate-100">
+            )}
+
+            <div className="flex items-center gap-3 pt-4 border-t border-slate-100 sticky bottom-0 bg-white pb-1">
               <button
                 onClick={handleEditSave}
                 disabled={editLoading || !editForm.full_name}

@@ -2,8 +2,38 @@ from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.utils import timezone
 from .models import InAppNotification
 from .serializers import InAppNotificationSerializer
+
+
+def _fire_due_reminders(user):
+    """Create InAppNotifications for any due, unnotified reminders belonging to user."""
+    from apps.candidates.models import CandidateReminder
+    due = CandidateReminder.objects.filter(
+        created_by=user,
+        remind_at__lte=timezone.now(),
+        notified=False,
+        is_done=False,
+    ).select_related('candidate')
+    if not due.exists():
+        return
+    notifications = []
+    ids = []
+    for reminder in due:
+        msg = f'Reminder for {reminder.candidate.full_name}'
+        if reminder.note:
+            msg += f': {reminder.note}'
+        notifications.append(InAppNotification(
+            recipient=user,
+            sender=None,
+            notification_type='reminder',
+            message=msg,
+            candidate=reminder.candidate,
+        ))
+        ids.append(reminder.id)
+    InAppNotification.objects.bulk_create(notifications)
+    CandidateReminder.objects.filter(id__in=ids).update(notified=True)
 
 
 class NotificationListView(generics.ListAPIView):
@@ -11,6 +41,7 @@ class NotificationListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        _fire_due_reminders(self.request.user)
         return InAppNotification.objects.filter(
             recipient=self.request.user
         ).select_related('sender', 'candidate')
