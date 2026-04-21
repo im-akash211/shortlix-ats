@@ -144,6 +144,10 @@ export const candidates = {
   notes: (id) => request(`/candidates/${id}/notes/`),
   addNote: (id, content) =>
     request(`/candidates/${id}/notes/`, { method: 'POST', body: JSON.stringify({ content }) }),
+  editNote: (candidateId, noteId, content) =>
+    request(`/candidates/${candidateId}/notes/${noteId}/`, { method: 'PATCH', body: JSON.stringify({ content }) }),
+  deleteNote: (candidateId, noteId) =>
+    request(`/candidates/${candidateId}/notes/${noteId}/`, { method: 'DELETE' }),
   assignJob: (id, jobId) =>
     request(`/candidates/${id}/assign-job/`, { method: 'POST', body: JSON.stringify({ job_id: jobId }) }),
   changeStage: (id, jobId, payload) =>
@@ -245,6 +249,30 @@ export const notifications = {
   markAllRead: () => request('/notifications/mark-all-read/', { method: 'POST' }),
   delete: (id) => request(`/notifications/${id}/delete/`, { method: 'DELETE' }),
   deleteAll: () => request('/notifications/delete-all/', { method: 'DELETE' }),
+};
+
+// ---- Employee Portal (public — no auth) ---- //
+async function publicRequest(path) {
+  const res = await fetch(`${BASE}${path}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw Object.assign(new Error(err.detail || JSON.stringify(err)), { status: res.status, data: err });
+  }
+  return res.json();
+}
+
+async function publicUpload(path, formData) {
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', body: formData });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw Object.assign(new Error(err.detail || JSON.stringify(err)), { status: res.status, data: err });
+  }
+  return res.json();
+}
+
+export const employee = {
+  jobs: () => publicRequest('/employee/jobs/'),
+  refer: (formData) => publicUpload('/employee/refer/', formData),
 };
 
 // ---- Candidates Share ---- //

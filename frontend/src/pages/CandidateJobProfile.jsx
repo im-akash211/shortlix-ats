@@ -1,0 +1,717 @@
+import React, { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { useEditor, EditorContent } from '@tiptap/react';
+import { StarterKit } from '@tiptap/starter-kit';
+import { Underline } from '@tiptap/extension-underline';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
+import { TextAlign } from '@tiptap/extension-text-align';
+import { Highlight } from '@tiptap/extension-highlight';
+import { candidates as candidatesApi, interviews as interviewsApi, users as usersApi } from '../lib/api';
+import { useAuth } from '../lib/authContext';
+import { PageLoader } from '../components/LoadingDots';
+import NoteEditorModal, { stripHtml, Toolbar } from '../components/NoteEditorModal';
+import {
+  ArrowLeft, Mail, Phone, MapPin, Briefcase, Plus, Send,
+  FileText, ExternalLink, Download, User, Clock, Calendar, X, ChevronDown, ChevronUp,
+} from 'lucide-react';
+
+const STAGE_COLORS = {
+  APPLIED:     'bg-slate-100 text-slate-600 border-slate-200',
+  SHORTLISTED: 'bg-blue-50 text-blue-700 border-blue-200',
+  INTERVIEW:   'bg-violet-50 text-violet-700 border-violet-200',
+  OFFERED:     'bg-amber-50 text-amber-700 border-amber-200',
+  JOINED:      'bg-emerald-50 text-emerald-700 border-emerald-200',
+  DROPPED:     'bg-rose-50 text-rose-600 border-rose-200',
+};
+
+const SOURCE_LABELS = {
+  recruiter_upload: 'Recruiter Upload',
+  naukri: 'Naukri',
+  linkedin: 'LinkedIn',
+  referral: 'Referral',
+  manual: 'Manual',
+};
+
+const SCHEDULE_FORM_DEFAULT = {
+  round_number: 1, round_label: '', interviewer: '',
+  scheduled_at: '', duration_minutes: 60, mode: 'virtual', meeting_link: '',
+};
+
+function Avatar({ name, size = 'md' }) {
+  const initials = (name || '?').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  const sz = size === 'lg' ? 'w-14 h-14 text-lg' : 'w-8 h-8 text-xs';
+  return (
+    <div className={`${sz} rounded-full bg-blue-600 flex items-center justify-center font-bold text-white shrink-0`}>
+      {initials}
+    </div>
+  );
+}
+
+function InfoChip({ icon, label }) {
+  if (!label) return null;
+  return (
+    <span className="flex items-center gap-1.5 text-sm text-slate-600">
+      <span className="text-slate-400">{icon}</span>
+      {label}
+    </span>
+  );
+}
+
+function ProfileRow({ label, value }) {
+  const display = (value !== null && value !== undefined && value !== '') ? value : '—';
+  return (
+    <div className="flex gap-2 text-xs">
+      <span className="text-slate-400 shrink-0 w-44">{label}</span>
+      <span className={display === '—' ? 'text-slate-300' : 'text-slate-700 font-medium'}>{display}</span>
+    </div>
+  );
+}
+
+function SkillsRow({ skills }) {
+  const [expanded, setExpanded] = useState(false);
+  const VISIBLE = 6;
+  const hasMore = skills.length > VISIBLE;
+  const shown = expanded ? skills : skills.slice(0, VISIBLE);
+  return (
+    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+      {shown.map((s, i) => (
+        <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-medium border border-blue-100 whitespace-nowrap">
+          {s}
+        </span>
+      ))}
+      {hasMore && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="flex items-center gap-0.5 text-xs text-slate-400 hover:text-slate-600 transition-colors ml-1"
+        >
+          {expanded ? <><ChevronUp className="w-3.5 h-3.5" /> Less</> : <><ChevronDown className="w-3.5 h-3.5" /> +{skills.length - VISIBLE} more</>}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CandidateProfileCard({ candidate }) {
+  const c = candidate;
+
+  const pct = (v) => (v != null && v !== '') ? `${v}%` : null;
+  const lpa = (v) => (v != null && v !== '') ? `${v} LPA` : null;
+  const yrs = (v) => (v != null && v !== '') ? `${v} Years` : null;
+
+  const ctcLabel = (() => {
+    const fixed    = c.ctc_fixed_lakhs    != null ? `${c.ctc_fixed_lakhs}L Fixed`    : null;
+    const variable = c.ctc_variable_lakhs != null ? `${c.ctc_variable_lakhs}L Variable` : null;
+    if (fixed || variable) return [fixed, variable].filter(Boolean).join(' + ');
+    return lpa(c.current_ctc_lakhs);
+  })();
+
+  const noticePeriodLabel = (() => {
+    const statusMap = { serving: 'Serving', lwd: 'LWD', notice: 'In Notice' };
+    const parts = [];
+    if (c.notice_period_status) parts.push(statusMap[c.notice_period_status] || c.notice_period_status);
+    if (c.notice_period_days != null) parts.push(`${c.notice_period_days} days`);
+    return parts.join(' · ') || null;
+  })();
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-2">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+          <User className="w-3.5 h-3.5 text-blue-600" />
+        </div>
+        <span className="text-xs font-semibold text-slate-700">Profile Created</span>
+        <span className="text-xs text-slate-400 ml-auto">
+          {new Date(c.created_at).toLocaleString('en-GB', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+          })}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1.5 pl-1">
+        <ProfileRow label="10th Board"                    value={c.tenth_board} />
+        <ProfileRow label="10th Percentage"               value={pct(c.tenth_percentage)} />
+        <ProfileRow label="12th Board"                    value={c.twelfth_board} />
+        <ProfileRow label="12th Percentage"               value={pct(c.twelfth_percentage)} />
+        <ProfileRow label="Graduation Course"             value={c.graduation_course} />
+        <ProfileRow label="Graduation College"            value={c.graduation_college} />
+        <ProfileRow label="Graduation Year"               value={c.graduation_year} />
+        <ProfileRow label="Graduation Percentage"         value={pct(c.graduation_percentage)} />
+        <ProfileRow label="Qualifying Exam"               value={c.qualifying_exam} />
+        <ProfileRow label="Qualifying Rank / Marks"       value={c.qualifying_rank} />
+        <ProfileRow label="PG Course"                     value={c.post_graduation_course} />
+        <ProfileRow label="PG College"                    value={c.post_graduation_college} />
+        <ProfileRow label="PG Year"                       value={c.post_graduation_year} />
+        <ProfileRow label="PG Percentage"                 value={pct(c.post_graduation_percentage)} />
+        <ProfileRow label="PG Qualifying Exam"            value={c.post_qualifying_exam} />
+        <ProfileRow label="PG Qualifying Rank / Marks"    value={c.post_qualifying_rank} />
+        <ProfileRow label="Experience"                    value={yrs(c.total_experience_years)} />
+        <ProfileRow label="CTC in LPA (Fixed + Variable)" value={ctcLabel} />
+        <ProfileRow label="ECTC in LPA"                   value={lpa(c.expected_ctc_lakhs)} />
+        <ProfileRow label="Offers if Any"                 value={c.offers_in_hand} />
+        <ProfileRow label="Notice Period"                 value={noticePeriodLabel} />
+        <ProfileRow label="Reason for Change"             value={c.reason_for_change} />
+        <ProfileRow label="Current Location"              value={c.location} />
+        <ProfileRow label="Native"                        value={c.native_location} />
+        {/* Skills */}
+        <div className="flex gap-2 text-xs mt-0.5">
+          <span className="text-slate-400 shrink-0 w-44">Skills</span>
+          {c.skills?.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {c.skills.map((s, i) => (
+                <span key={i} className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-[11px] font-medium">{s}</span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-slate-300">—</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function CandidateJobProfile() {
+  const { jobId, candidateId } = useParams();
+  const fromCandidates = !jobId;
+  const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+
+  const [showNoteForm, setShowNoteForm] = useState(false);
+  const [addingNote, setAddingNote] = useState(false);
+  const [viewingNote, setViewingNote] = useState(null);
+  const [savingModalNote, setSavingModalNote] = useState(false);
+  const [deletingNoteId, setDeletingNoteId] = useState(null);
+  const [expandedHistoryId, setExpandedHistoryId] = useState(null);
+
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState(SCHEDULE_FORM_DEFAULT);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleToast, setScheduleToast] = useState(null);
+
+  const addNoteEditor = useEditor({
+    extensions: [
+      StarterKit,
+      Underline,
+      TextStyle,
+      Color,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      Highlight.configure({ multicolor: true }),
+    ],
+    content: '',
+    editorProps: {
+      attributes: {
+        class: 'outline-none min-h-[80px] prose prose-sm max-w-none px-3 py-2 focus:outline-none',
+      },
+    },
+  });
+
+  const { data: candidate, isLoading } = useQuery({
+    queryKey: ['candidate', candidateId],
+    queryFn: () => candidatesApi.detail(candidateId),
+  });
+
+  const { data: notesRaw, refetch: refetchNotes } = useQuery({
+    queryKey: ['candidate', candidateId, 'notes'],
+    queryFn: () => candidatesApi.notes(candidateId),
+    enabled: !!candidateId,
+  });
+
+  const { data: usersRaw } = useQuery({
+    queryKey: ['users', 'dropdown'],
+    queryFn: () => usersApi.dropdown(),
+    enabled: !fromCandidates && isScheduleOpen,
+  });
+  const usersList = Array.isArray(usersRaw) ? usersRaw : (usersRaw?.results || []);
+
+  const notes = Array.isArray(notesRaw) ? notesRaw : (notesRaw?.results || []);
+  const mapping = candidate?.job_mappings?.find(m => m.job === jobId);
+  const stage = mapping?.macro_stage || 'APPLIED';
+  const latestResume = candidate?.resume_files?.find(f => f.is_latest) || candidate?.resume_files?.[0];
+
+  const openResumeInNewTab = (file) => {
+    const url = file?.file_url;
+    if (!url) {
+      alert('Resume URL is not available. Please check if the file was uploaded correctly.');
+      return;
+    }
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!win) window.location.href = url;
+  };
+
+  const handleAddNote = async () => {
+    if (!addNoteEditor || addNoteEditor.isEmpty) return;
+    const html = addNoteEditor.getHTML();
+    setAddingNote(true);
+    try {
+      await candidatesApi.addNote(candidateId, html);
+      addNoteEditor.commands.clearContent();
+      setShowNoteForm(false);
+      refetchNotes();
+    } catch (err) {
+      alert('Failed to save note: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
+  const handleEditNote = async (noteId, htmlContent) => {
+    setSavingModalNote(true);
+    try {
+      await candidatesApi.editNote(candidateId, noteId, htmlContent);
+      setViewingNote(null);
+      refetchNotes();
+    } catch (err) {
+      alert('Failed to save edit: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setSavingModalNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (noteId) => {
+    setDeletingNoteId(noteId);
+    try {
+      await candidatesApi.deleteNote(candidateId, noteId);
+      setViewingNote(null);
+      refetchNotes();
+    } finally {
+      setDeletingNoteId(null);
+    }
+  };
+
+  const closeScheduleModal = () => {
+    setIsScheduleOpen(false);
+    setScheduleForm(SCHEDULE_FORM_DEFAULT);
+    setScheduleToast(null);
+  };
+
+  const handleScheduleSubmit = async () => {
+    if (!scheduleForm.interviewer || !scheduleForm.scheduled_at) return;
+    setScheduleLoading(true);
+    setScheduleToast(null);
+    try {
+      await interviewsApi.create({
+        mapping:          mapping.id,
+        round_number:     Number(scheduleForm.round_number),
+        round_label:      scheduleForm.round_label,
+        interviewer:      scheduleForm.interviewer,
+        scheduled_at:     new Date(scheduleForm.scheduled_at).toISOString(),
+        duration_minutes: Number(scheduleForm.duration_minutes),
+        mode:             scheduleForm.mode,
+        meeting_link:     scheduleForm.meeting_link,
+      });
+      setScheduleToast({ type: 'success', message: 'Interview scheduled successfully.' });
+      setTimeout(() => closeScheduleModal(), 1200);
+    } catch (err) {
+      setScheduleToast({ type: 'error', message: err.data?.detail || JSON.stringify(err.data) || 'Failed to schedule.' });
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
+  if (isLoading) return <PageLoader label="Loading candidate profile…" />;
+  if (!candidate) return (
+    <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+      Candidate not found.
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
+
+      {/* ── Slim top bar: breadcrumb + job-context actions ──────────────────── */}
+      <div className="bg-white border-b border-slate-200 px-6 py-2.5 shrink-0 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-xs text-slate-400">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1 hover:text-slate-700 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            {fromCandidates ? 'Candidates' : 'Jobs'}
+          </button>
+          {!fromCandidates && <><span>/</span><span className="text-slate-500">Pipeline</span></>}
+          <span>/</span>
+          <span className="text-slate-700 font-medium">{candidate.full_name}</span>
+        </div>
+        {!fromCandidates && (
+          <div className="flex items-center gap-3 shrink-0">
+            <span className={`text-xs font-semibold px-3 py-1.5 rounded-full border ${STAGE_COLORS[stage] || STAGE_COLORS.APPLIED}`}>
+              {stage.charAt(0) + stage.slice(1).toLowerCase()}
+            </span>
+            <button
+              onClick={() => setIsScheduleOpen(true)}
+              className="flex items-center gap-1.5 text-xs font-medium bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Calendar className="w-3.5 h-3.5" /> Schedule Interview
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Main 2-column area ──────────────────────────────────────────────── */}
+      <div className="flex-1 flex overflow-hidden">
+
+        {/* Left: candidate info + resume */}
+        <div className="flex-1 bg-white border-r border-slate-200 overflow-hidden flex flex-col">
+
+          {/* Candidate identity block */}
+          <div className="px-5 py-4 border-b border-slate-100 shrink-0">
+            <div className="flex items-center gap-3 mb-3">
+              <Avatar name={candidate.full_name} size="lg" />
+              <div>
+                <h1 className="text-lg font-bold text-slate-900">{candidate.full_name}</h1>
+                {candidate.designation && (
+                  <p className="text-sm text-slate-500 mt-0.5">
+                    {candidate.designation}
+                    {candidate.current_employer && (
+                      <span className="text-slate-400"> &bull; {candidate.current_employer}</span>
+                    )}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-4 flex-wrap">
+              <InfoChip icon={<Mail className="w-3.5 h-3.5" />} label={candidate.email} />
+              <InfoChip icon={<Phone className="w-3.5 h-3.5" />} label={candidate.phone} />
+              <InfoChip icon={<MapPin className="w-3.5 h-3.5" />} label={candidate.location} />
+              <InfoChip
+                icon={<Briefcase className="w-3.5 h-3.5" />}
+                label={candidate.total_experience_years ? `${candidate.total_experience_years} Years Exp.` : null}
+              />
+              {candidate.source && (
+                <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">
+                  {SOURCE_LABELS[candidate.source] || candidate.source}
+                </span>
+              )}
+            </div>
+            {candidate.skills?.length > 0 && (
+              <SkillsRow skills={candidate.skills} />
+            )}
+          </div>
+
+          {/* Resume viewer */}
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between shrink-0">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Resume</span>
+            {latestResume && (
+              <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => openResumeInNewTab(latestResume)}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Open in new tab
+              </button>
+              <a
+                href={latestResume.file_url}
+                download={latestResume.original_filename || 'resume'}
+                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                title="Download resume"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </a>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-hidden">
+            {latestResume ? (
+              latestResume.file_type === 'pdf' ? (
+                <iframe
+                  src={latestResume.file_url}
+                  className="w-full h-full"
+                  title="Candidate Resume"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-400">
+                  <FileText className="w-14 h-14 text-slate-200" />
+                  <p className="text-sm font-medium text-slate-500">
+                    {latestResume.original_filename || 'Resume'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => openResumeInNewTab(latestResume)}
+                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    <ExternalLink className="w-4 h-4" /> Download Resume
+                  </button>
+                </div>
+              )
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-300">
+                <FileText className="w-14 h-14" />
+                <p className="text-sm text-slate-400">No resume uploaded</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Activity Feed */}
+        <div className="w-[380px] shrink-0 flex flex-col bg-white overflow-hidden">
+          {/* Activity header */}
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between shrink-0">
+            <span className="text-sm font-semibold text-slate-800">Activity Feed</span>
+            <button
+              onClick={() => setShowNoteForm(v => !v)}
+              className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Note
+            </button>
+          </div>
+
+          {/* Add Note form — rich text editor */}
+          {showNoteForm && (
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 shrink-0">
+              <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                <Toolbar editor={addNoteEditor} />
+                <EditorContent editor={addNoteEditor} />
+              </div>
+              <div className="flex justify-end gap-2 mt-2">
+                <button
+                  onClick={() => { setShowNoteForm(false); addNoteEditor?.commands.clearContent(); }}
+                  className="text-xs text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddNote}
+                  disabled={addingNote || !addNoteEditor || addNoteEditor.isEmpty}
+                  className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  <Send className="w-3 h-3" />
+                  {addingNote ? 'Saving…' : 'Save Note'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Timeline */}
+          <div className="flex-1 overflow-auto px-4 py-3 flex flex-col gap-4">
+
+            {/* Notes — newest first, click to open modal */}
+            {[...notes].reverse().map(note => {
+              const plainText = stripHtml(note.content);
+              return (
+                <div key={note.id} className="flex gap-3">
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                      <User className="w-3.5 h-3.5 text-slate-500" />
+                    </div>
+                    <div className="w-px flex-1 bg-slate-100 min-h-[12px]" />
+                  </div>
+                  <div className="flex-1 min-w-0 pb-2">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="text-xs font-semibold text-slate-700">{note.user_name || 'Unknown'}</span>
+                      <span className="text-xs text-slate-400">
+                        {new Date(note.created_at).toLocaleString('en-GB', {
+                          day: 'numeric', month: 'short', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </span>
+                      {note.is_edited && (
+                        <span className="text-[10px] font-medium text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                          Edited
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setViewingNote(note)}
+                      className="text-left w-full"
+                    >
+                      <p
+                        className="text-sm text-slate-600 leading-relaxed line-clamp-2 break-words"
+                        style={{
+                          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 45%, transparent 100%)',
+                          maskImage: 'linear-gradient(to bottom, black 0%, black 45%, transparent 100%)',
+                        }}
+                      >
+                        {plainText || <span className="italic text-slate-400">Empty note</span>}
+                      </p>
+                    </button>
+
+                    {/* Edit history — admin only, inline in feed */}
+                    {currentUser?.role === 'admin' && note.is_edited && note.history?.length > 0 && (
+                      <div className="mt-1.5">
+                        <button
+                          onClick={() => setExpandedHistoryId(expandedHistoryId === note.id ? null : note.id)}
+                          className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                          {expandedHistoryId === note.id
+                            ? <><ChevronUp className="w-3 h-3" /> Hide history</>
+                            : <><ChevronDown className="w-3 h-3" /> View edit history ({note.history.length})</>}
+                        </button>
+                        {expandedHistoryId === note.id && (
+                          <div className="mt-1.5 flex flex-col gap-1.5 border-l-2 border-slate-100 pl-3">
+                            {note.history.map(h => (
+                              <div key={h.id} className="text-xs">
+                                <span className="text-slate-400">
+                                  {new Date(h.edited_at).toLocaleString('en-GB', {
+                                    day: 'numeric', month: 'short', year: 'numeric',
+                                    hour: '2-digit', minute: '2-digit',
+                                  })}
+                                </span>
+                                <div
+                                  className="prose prose-sm max-w-none text-slate-500 mt-0.5"
+                                  dangerouslySetInnerHTML={{ __html: h.content }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Profile Created card — always at the bottom (oldest event) */}
+            <CandidateProfileCard candidate={candidate} />
+
+            {notes.length === 0 && (
+              <div className="flex flex-col items-center gap-2 text-slate-300 py-4">
+                <Clock className="w-8 h-8" />
+                <p className="text-xs text-slate-400">No notes yet</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Note Editor Modal ────────────────────────────────────────────────── */}
+      {viewingNote && (
+        <NoteEditorModal
+          note={viewingNote}
+          currentUser={currentUser}
+          onClose={() => setViewingNote(null)}
+          onSave={(htmlContent) => handleEditNote(viewingNote.id, htmlContent)}
+          onDelete={() => handleDeleteNote(viewingNote.id)}
+          saving={savingModalNote}
+          deleting={deletingNoteId === viewingNote?.id}
+        />
+      )}
+
+      {/* ── Schedule Interview Modal ─────────────────────────────────────────── */}
+      {isScheduleOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-[580px] max-w-[92vw]">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
+              <h3 className="font-bold text-slate-800">Schedule Interview</h3>
+              <button onClick={closeScheduleModal} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              {scheduleToast && (
+                <div className={`text-sm px-4 py-3 rounded-lg font-medium ${scheduleToast.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                  {scheduleToast.message}
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Candidate</label>
+                <div className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-500 bg-slate-50">
+                  {candidate.full_name}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Round</label>
+                  <select
+                    value={scheduleForm.round_label}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, round_label: e.target.value, round_number: e.target.selectedIndex })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Select round…</option>
+                    <option value="Screening Round">Screening Round</option>
+                    <option value="Technical Round 1">Technical Round 1</option>
+                    <option value="Technical Round 2">Technical Round 2</option>
+                    <option value="Managerial Round">Managerial Round</option>
+                    <option value="HR Round">HR Round</option>
+                    <option value="Final Round">Final Round</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Interviewer *</label>
+                  <select
+                    value={scheduleForm.interviewer}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, interviewer: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="">Select interviewer…</option>
+                    {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Date *</label>
+                  <input
+                    type="date"
+                    value={scheduleForm.scheduled_at ? scheduleForm.scheduled_at.split('T')[0] : ''}
+                    onChange={(e) => {
+                      const time = scheduleForm.scheduled_at ? scheduleForm.scheduled_at.split('T')[1] : '00:00';
+                      setScheduleForm({ ...scheduleForm, scheduled_at: `${e.target.value}T${time}` });
+                    }}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Time *</label>
+                  <input
+                    type="time"
+                    value={scheduleForm.scheduled_at ? scheduleForm.scheduled_at.split('T')[1] : ''}
+                    onChange={(e) => {
+                      const date = scheduleForm.scheduled_at ? scheduleForm.scheduled_at.split('T')[0] : '';
+                      setScheduleForm({ ...scheduleForm, scheduled_at: `${date}T${e.target.value}` });
+                    }}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Duration (minutes)</label>
+                  <input
+                    type="number" min="15" step="15"
+                    value={scheduleForm.duration_minutes}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, duration_minutes: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-slate-700">Mode</label>
+                  <select
+                    value={scheduleForm.mode}
+                    onChange={(e) => setScheduleForm({ ...scheduleForm, mode: e.target.value })}
+                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                  >
+                    <option value="virtual">Virtual</option>
+                    <option value="phone">Phone</option>
+                    <option value="face_to_face">Face to Face</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-slate-700">Meeting Link <span className="text-slate-400 font-normal">(optional)</span></label>
+                <input
+                  type="text" placeholder="https://meet.google.com/..."
+                  value={scheduleForm.meeting_link}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, meeting_link: e.target.value })}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-5 pb-5">
+              <button onClick={closeScheduleModal} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleScheduleSubmit}
+                disabled={scheduleLoading || !scheduleForm.interviewer || !scheduleForm.scheduled_at}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                {scheduleLoading ? 'Scheduling…' : 'Schedule Interview'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

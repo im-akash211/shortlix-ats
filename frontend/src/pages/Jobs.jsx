@@ -152,7 +152,10 @@ function ReminderModal({ candidate, onClose, queryClient }) {
     if (!form.remind_at) return;
     setSaving(true);
     try {
-      const created = await candidatesApi.addReminder(candidateId, form);
+      // Convert local datetime-local value to full ISO string (with UTC offset) so
+      // Django's USE_TZ=True doesn't reject it as a naive datetime.
+      const payload = { ...form, remind_at: new Date(form.remind_at).toISOString() };
+      const created = await candidatesApi.addReminder(candidateId, payload);
       setReminders(prev => [...prev, created]);
       setForm({ remind_at: '', note: '' });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
@@ -173,9 +176,16 @@ function ReminderModal({ candidate, onClose, queryClient }) {
     queryClient.invalidateQueries({ queryKey: ['jobs'] });
   };
 
+  const now    = new Date();
   const active = reminders.filter(r => !r.is_done);
   const done   = reminders.filter(r => r.is_done);
-  const today  = new Date().toISOString().split('T')[0];
+  const minDt  = new Date().toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+
+  const fmtRemindAt = (isoStr) => {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -199,8 +209,8 @@ function ReminderModal({ candidate, onClose, queryClient }) {
           <div className="flex flex-col gap-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Set a new reminder</p>
             <input
-              type="date"
-              min={today}
+              type="datetime-local"
+              min={minDt}
               value={form.remind_at}
               onChange={e => setForm(f => ({ ...f, remind_at: e.target.value }))}
               className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
@@ -227,8 +237,10 @@ function ReminderModal({ candidate, onClose, queryClient }) {
           ) : active.length > 0 && (
             <div className="flex flex-col gap-2">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Upcoming</p>
-              {active.map(r => (
-                <div key={r.id} className={`flex items-start gap-3 p-3 rounded-lg border ${r.remind_at < today ? 'border-red-200 bg-red-50' : 'border-amber-100 bg-amber-50'}`}>
+              {active.map(r => {
+                const isOverdue = new Date(r.remind_at) < now;
+                return (
+                <div key={r.id} className={`flex items-start gap-3 p-3 rounded-lg border ${isOverdue ? 'border-red-200 bg-red-50' : 'border-amber-100 bg-amber-50'}`}>
                   <input
                     type="checkbox"
                     checked={false}
@@ -236,8 +248,8 @@ function ReminderModal({ candidate, onClose, queryClient }) {
                     className="mt-0.5 accent-amber-500 cursor-pointer"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-semibold ${r.remind_at < today ? 'text-red-600' : 'text-amber-700'}`}>
-                      {r.remind_at < today ? 'Overdue — ' : ''}{r.remind_at}
+                    <p className={`text-xs font-semibold ${isOverdue ? 'text-red-600' : 'text-amber-700'}`}>
+                      {isOverdue ? 'Overdue — ' : ''}{fmtRemindAt(r.remind_at)}
                     </p>
                     {r.note && <p className="text-xs text-slate-600 mt-0.5 break-words">{r.note}</p>}
                   </div>
@@ -245,7 +257,7 @@ function ReminderModal({ candidate, onClose, queryClient }) {
                     <Trash className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              ))}
+              );})}
             </div>
           )}
 
@@ -262,7 +274,7 @@ function ReminderModal({ candidate, onClose, queryClient }) {
                     className="mt-0.5 accent-slate-400 cursor-pointer"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-slate-400 line-through">{r.remind_at}</p>
+                    <p className="text-xs font-semibold text-slate-400 line-through">{fmtRemindAt(r.remind_at)}</p>
                     {r.note && <p className="text-xs text-slate-400 mt-0.5 line-through break-words">{r.note}</p>}
                   </div>
                   <button onClick={() => handleDelete(r)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0">
@@ -530,21 +542,8 @@ export default function Jobs() {
   const [dropReason, setDropReason]               = useState('REJECTED');
   const [dropLoading, setDropLoading]             = useState(false);
 
-  // ── Candidate profile modal state ────────────────────────────────────────────
-  const [candidateProfile, setCandidateProfile] = useState(null);
-  const [candidateProfileLoading, setCandidateProfileLoading] = useState(false);
-
-  const openCandidateProfile = async (c) => {
-    setCandidateProfile(null);
-    setCandidateProfileLoading(true);
-    try {
-      const detail = await candidatesApi.detail(c.candidate);
-      setCandidateProfile(detail);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setCandidateProfileLoading(false);
-    }
+  const openCandidateProfile = (c) => {
+    navigate(ROUTES.JOBS.CANDIDATE_PROFILE(viewingJob.id, c.candidate));
   };
 
   // ── Resume viewer state ──────────────────────────────────────────────────────
@@ -1007,24 +1006,21 @@ export default function Jobs() {
     return (
       <div key={c.id}>
         {/* Card */}
-        <div className={`border rounded-xl p-4 ${isActive ? 'bg-white hover:shadow-md transition-shadow border-slate-200' : 'bg-slate-50 opacity-50 border-slate-100'}`}>
+        <div
+          onClick={() => isActive && openCandidateProfile(c)}
+          className={`border rounded-xl p-4 ${isActive ? 'bg-white hover:shadow-md transition-shadow border-slate-200 cursor-pointer' : 'bg-slate-50 opacity-50 border-slate-100'}`}
+        >
 
           {/* TOP: avatar + name + round pill + stage badge + share */}
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 min-w-0">
-              <button
-                onClick={() => isActive && openCandidateProfile(c)}
-                className="w-9 h-9 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0 hover:bg-blue-200 transition-colors"
-              >
+              <div className="w-9 h-9 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold shrink-0">
                 {c.candidate_name ? c.candidate_name.slice(0, 2).toUpperCase() : '?'}
-              </button>
+              </div>
               <div className="min-w-0">
-                <button
-                  onClick={() => isActive && openCandidateProfile(c)}
-                  className="text-sm font-bold text-slate-800 hover:text-blue-600 transition-colors text-left leading-tight block truncate max-w-[160px]"
-                >
+                <span className="text-sm font-bold text-slate-800 leading-tight block truncate max-w-[160px]">
                   {c.candidate_name}
-                </button>
+                </span>
                 {macroStage === 'INTERVIEW' && c.current_interview_round && (
                   <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded mt-0.5 inline-block">
                     {ROUND_LABELS[c.current_interview_round] || c.current_interview_round}
@@ -1038,7 +1034,7 @@ export default function Jobs() {
               </span>
               {isActive && (
                 <button
-                  onClick={() => setReminderCandidate(c)}
+                  onClick={(e) => { e.stopPropagation(); setReminderCandidate(c); }}
                   className="relative text-slate-400 hover:text-amber-500 transition-colors p-1"
                   title="Set reminder"
                 >
@@ -1051,7 +1047,7 @@ export default function Jobs() {
               {isActive && (
                 <div className="relative" ref={isShareOpen ? shareRef : null}>
                   <button
-                    onClick={() => { setShareOpen(isShareOpen ? null : c.id); setShareSearch(''); setShareSelected([]); }}
+                    onClick={(e) => { e.stopPropagation(); setShareOpen(isShareOpen ? null : c.id); setShareSearch(''); setShareSelected([]); }}
                     className="text-slate-400 hover:text-blue-600 transition-colors p-1"
                     title="Share"
                   >
@@ -1170,25 +1166,25 @@ export default function Jobs() {
                 </span>
                 <div className="flex items-center gap-1.5">
                   {macroStage === 'APPLIED' && (
-                    <button onClick={() => handleShortlist(c)} disabled={shortlistingId === c.id}
+                    <button onClick={(e) => { e.stopPropagation(); handleShortlist(c); }} disabled={shortlistingId === c.id}
                       className="text-[10px] font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-2 py-1 rounded transition-colors">
                       {shortlistingId === c.id ? '…' : 'Shortlist'}
                     </button>
                   )}
                   {macroStage === 'SHORTLISTED' && (
-                    <button onClick={() => handleMoveToInterview(c)} disabled={shortlistingId === c.id}
+                    <button onClick={(e) => { e.stopPropagation(); handleMoveToInterview(c); }} disabled={shortlistingId === c.id}
                       className="text-[10px] font-medium bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-2 py-1 rounded transition-colors">
                       {shortlistingId === c.id ? '…' : '→ Interview'}
                     </button>
                   )}
                   {macroStage === 'OFFERED' && (
-                    <button onClick={() => handleMarkJoined(c)} disabled={shortlistingId === c.id}
+                    <button onClick={(e) => { e.stopPropagation(); handleMarkJoined(c); }} disabled={shortlistingId === c.id}
                       className="text-[10px] font-medium bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-2 py-1 rounded transition-colors">
                       {shortlistingId === c.id ? '…' : '✓ Joined'}
                     </button>
                   )}
                   {!['JOINED', 'DROPPED'].includes(macroStage) && (
-                    <button onClick={() => { setDropModalCandidate(c); setDropReason('REJECTED'); }}
+                    <button onClick={(e) => { e.stopPropagation(); setDropModalCandidate(c); setDropReason('REJECTED'); }}
                       className="text-[10px] font-medium bg-rose-50 hover:bg-rose-100 text-rose-600 px-2 py-1 rounded transition-colors border border-rose-200">
                       Drop
                     </button>
@@ -1242,105 +1238,6 @@ export default function Jobs() {
   // ────────────────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ══════════ CANDIDATE PROFILE MODAL ══════════ */}
-      <Modal isOpen={candidateProfile !== null || candidateProfileLoading} onClose={() => { setCandidateProfile(null); setCandidateProfileLoading(false); }} title="Candidate Profile" maxWidth="max-w-3xl">
-        {candidateProfileLoading ? (
-          <PageLoader label="Loading profile…" />
-        ) : candidateProfile ? (
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-2xl font-bold shrink-0">
-                {candidateProfile.full_name?.slice(0, 2).toUpperCase() || '?'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-xl font-bold text-slate-800 truncate">{candidateProfile.full_name}</h3>
-                {candidateProfile.designation && <p className="text-sm text-slate-600 mt-0.5">{candidateProfile.designation}</p>}
-                {candidateProfile.current_employer && <p className="text-xs text-slate-500 mt-0.5">{candidateProfile.current_employer}</p>}
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  {candidateProfile.source && (
-                    <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full">
-                      {SOURCE_LABELS[candidateProfile.source] || candidateProfile.source}
-                    </span>
-                  )}
-                  <span className="text-xs text-slate-400">
-                    Added {new Date(candidateProfile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={() => openResume(candidateProfile)}
-                className="shrink-0 flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-              >
-                <FileText className="w-3.5 h-3.5" /> Resume
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-xl p-4">
-              {[
-                { icon: <Mail className="w-4 h-4" />,     label: 'Email',      value: candidateProfile.email || '—' },
-                { icon: <Phone className="w-4 h-4" />,    label: 'Phone',      value: candidateProfile.phone || '—' },
-                { icon: <MapPin className="w-4 h-4" />,   label: 'Location',   value: candidateProfile.location || '—' },
-                { icon: <Briefcase className="w-4 h-4" />,label: 'Experience', value: candidateProfile.total_experience_years ? `${candidateProfile.total_experience_years} years` : '—' },
-              ].map(({ icon, label, value }) => (
-                <div key={label} className="flex items-start gap-2.5">
-                  <span className="text-slate-400 mt-0.5 shrink-0">{icon}</span>
-                  <div className="min-w-0">
-                    <p className="text-xs text-slate-500">{label}</p>
-                    <p className="text-sm font-medium text-slate-800 truncate">{value}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {candidateProfile.skills?.length > 0 && (
-              <div>
-                <p className="text-sm font-semibold text-slate-700 mb-2">Skills</p>
-                <div className="flex flex-wrap gap-2">
-                  {candidateProfile.skills.map((s, i) => (
-                    <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-medium">{s}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {candidateProfile.job_mappings?.length > 0 && (
-              <div>
-                <p className="text-sm font-semibold text-slate-700 mb-2">Job Applications ({candidateProfile.job_mappings.length})</p>
-                <div className="flex flex-col gap-2">
-                  {candidateProfile.job_mappings.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between border border-slate-200 rounded-lg px-4 py-2.5 bg-white">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-800 truncate">{m.job_title}</p>
-                        <p className="text-xs text-slate-500">{m.job_code}</p>
-                      </div>
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ml-3 ${STAGE_COLORS[m.macro_stage] || 'bg-slate-100 text-slate-600'}`}>
-                        {STAGE_LABELS[m.macro_stage] || m.macro_stage}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {candidateProfile.notes?.length > 0 && (
-              <div>
-                <p className="text-sm font-semibold text-slate-700 mb-2">Notes ({candidateProfile.notes.length})</p>
-                <div className="flex flex-col gap-2">
-                  {candidateProfile.notes.map((n) => (
-                    <div key={n.id} className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                      <p className="text-sm text-slate-700 leading-relaxed">{n.content}</p>
-                      <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
-                        <User className="w-3 h-3" />
-                        <span>{n.user_name}</span>
-                        <span>·</span>
-                        <Clock className="w-3 h-3" />
-                        <span>{new Date(n.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : null}
-      </Modal>
-
       {/* ══════════ RESUME VIEWER MODAL ══════════ */}
       <Modal isOpen={!!resumeModal} onClose={() => setResumeModal(null)} title={resumeModal ? `Resume — ${resumeModal.name}` : ''} maxWidth="max-w-4xl">
         {resumeModal && (

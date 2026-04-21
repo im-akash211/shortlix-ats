@@ -6,7 +6,7 @@ from django.db import transaction
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from .models import (
-    Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote,
+    Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote, CandidateNoteHistory,
     CandidateReminder, VALID_TRANSITIONS, ROUND_PROGRESSION, ROUND_CHOICES,
 )
 from .serializers import (
@@ -86,10 +86,32 @@ class CandidateNoteListCreateView(generics.ListCreateAPIView):
     serializer_class = CandidateNoteSerializer
 
     def get_queryset(self):
-        return CandidateNote.objects.filter(candidate_id=self.kwargs['pk']).select_related('user')
+        return CandidateNote.objects.filter(candidate_id=self.kwargs['pk']).select_related('user').prefetch_related('history')
 
     def perform_create(self, serializer):
         serializer.save(candidate_id=self.kwargs['pk'], user=self.request.user)
+
+
+class CandidateNoteDetailView(APIView):
+    def patch(self, request, pk, note_id):
+        note = generics.get_object_or_404(CandidateNote, pk=note_id, candidate_id=pk)
+        if note.user_id != request.user.id:
+            return Response({'detail': 'You can only edit your own notes.'}, status=status.HTTP_403_FORBIDDEN)
+        new_content = request.data.get('content', '').strip()
+        if not new_content:
+            return Response({'detail': 'Content cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+        CandidateNoteHistory.objects.create(note=note, content=note.content)
+        note.content = new_content
+        note.is_edited = True
+        note.save()
+        return Response(CandidateNoteSerializer(note).data)
+
+    def delete(self, request, pk, note_id):
+        if request.user.role not in ('admin', 'hiring_manager'):
+            return Response({'detail': 'Only admins and hiring managers can delete notes.'}, status=status.HTTP_403_FORBIDDEN)
+        note = generics.get_object_or_404(CandidateNote, pk=note_id, candidate_id=pk)
+        note.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CandidateAssignJobView(APIView):

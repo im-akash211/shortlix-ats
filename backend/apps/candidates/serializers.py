@@ -1,17 +1,25 @@
 from rest_framework import serializers
 from .models import (
-    Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote, ResumeFile,
-    CandidateReminder,
+    Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote, CandidateNoteHistory,
+    ResumeFile, CandidateReminder,
 )
+
+
+class CandidateNoteHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CandidateNoteHistory
+        fields = ['id', 'content', 'edited_at']
 
 
 class CandidateNoteSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.full_name', read_only=True)
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    history = CandidateNoteHistorySerializer(many=True, read_only=True)
 
     class Meta:
         model = CandidateNote
-        fields = ['id', 'candidate', 'user', 'user_name', 'content', 'created_at']
-        read_only_fields = ['id', 'user', 'created_at']
+        fields = ['id', 'candidate', 'user', 'user_id', 'user_name', 'content', 'is_edited', 'history', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'candidate', 'user', 'user_id', 'is_edited', 'history', 'created_at', 'updated_at']
 
 
 class PipelineStageHistorySerializer(serializers.ModelSerializer):
@@ -91,14 +99,13 @@ class ResumeFileSerializer(serializers.ModelSerializer):
         if not obj.file:
             return None
         try:
-            if not obj.file.storage.exists(obj.file.name):
-                return None
+            url = obj.file.url
         except Exception:
             return None
         request = self.context.get('request')
-        if request:
-            return request.build_absolute_uri(obj.file.url)
-        return obj.file.url
+        if request and url.startswith('/'):
+            return request.build_absolute_uri(url)
+        return url
 
 
 class CandidateDetailSerializer(serializers.ModelSerializer):
@@ -134,5 +141,5 @@ class CandidateCreateSerializer(serializers.ModelSerializer):
 class CandidateReminderSerializer(serializers.ModelSerializer):
     class Meta:
         model = CandidateReminder
-        fields = ['id', 'candidate', 'remind_at', 'note', 'is_done', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'candidate', 'created_at', 'updated_at']
+        fields = ['id', 'candidate', 'remind_at', 'note', 'is_done', 'notified', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'candidate', 'notified', 'created_at', 'updated_at']
