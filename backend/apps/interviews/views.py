@@ -37,7 +37,18 @@ class InterviewListCreateView(generics.ListCreateAPIView):
         return InterviewListSerializer
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        interview = serializer.save(created_by=self.request.user)
+        # If candidate was REJECTED in Interview stage, clear rejection on reschedule
+        mapping = interview.mapping
+        if (
+            mapping.macro_stage == 'INTERVIEW'
+            and mapping.interview_status == 'REJECTED'
+            and interview.round_name
+        ):
+            mapping.interview_status = None
+            mapping.current_interview_round = interview.round_name
+            mapping.moved_by = self.request.user
+            mapping.save(update_fields=['interview_status', 'current_interview_round', 'moved_by', 'stage_updated_at'])
 
 
 class InterviewDetailView(generics.RetrieveUpdateAPIView):
@@ -135,23 +146,36 @@ class SetRoundResultView(APIView):
             response_data = InterviewListSerializer(interview).data
 
             if round_result == 'FAIL':
-                from apps.candidates.models import PipelineStageHistory, VALID_TRANSITIONS
-                old_stage = mapping.macro_stage
-                if 'DROPPED' in VALID_TRANSITIONS.get(old_stage, []):
-                    mapping.macro_stage = 'DROPPED'
-                    mapping.drop_reason = 'REJECTED'
-                    mapping.moved_by = request.user
-                    mapping.save(update_fields=['macro_stage', 'drop_reason', 'moved_by', 'stage_updated_at'])
-                    PipelineStageHistory.objects.create(
-                        mapping=mapping,
-                        from_macro_stage=old_stage,
-                        to_macro_stage='DROPPED',
-                        moved_by=request.user,
-                        remarks=f'Auto-dropped: failed {interview.round_name or interview.round_label}',
-                    )
-                response_data['auto_dropped'] = True
+                mapping.interview_status = 'REJECTED'
+                mapping.save(update_fields=['interview_status'])
+                response_data['auto_rejected'] = True
 
-            elif round_result == 'PASS' and interview.round_name == 'MGMT':
+            elif round_result == 'PASS':
                 response_data['suggest_move_to_offered'] = True
 
         return Response(response_data)
+
+
+class SetRoundStatusView(APIView):
+    """
+    PATCH /interviews/{pk}/round-status/
+
+    Body: { "round_status": "SCHEDULED" | "ON_HOLD" | "COMPLETED" }
+
+    Updates Interview.round_status. No strict transition enforcement.
+    """
+    permission_classes = [IsAuthenticated]
+
+    VALID_STATUSES = {'SCHEDULED', 'ON_HOLD', 'COMPLETED'}
+
+    def patch(self, request, pk):
+        round_status = request.data.get('round_status')
+        if round_status not in self.VALID_STATUSES:
+            return Response(
+                {'error': f'round_status must be one of {sorted(self.VALID_STATUSES)}'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        interview = generics.get_object_or_404(Interview, pk=pk)
+        interview.round_status = round_status
+        interview.save(update_fields=['round_status'])
+        return Response(InterviewListSerializer(interview).data)
