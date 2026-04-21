@@ -118,8 +118,8 @@ class SetRoundResultView(APIView):
     Body: { "round_result": "PASS" | "FAIL" | "ON_HOLD" }
 
     - Sets round_result and marks round_status = COMPLETED.
-    - FAIL  → auto-moves candidate to DROPPED (drop_reason=REJECTED).
-    - PASS at MGMT → returns suggest_move_to_offered=true hint.
+    - FAIL  → sets mapping.interview_status = 'REJECTED'; returns auto_rejected=True.
+    - PASS  → returns suggest_move_to_offered=True (all rounds, not just MGMT).
     """
 
     VALID_RESULTS = {'PASS', 'FAIL', 'ON_HOLD'}
