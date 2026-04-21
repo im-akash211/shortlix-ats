@@ -184,6 +184,10 @@ export const interviews = {
     request(`/interviews/${id}/round-result/`, {
       method: 'PATCH', body: JSON.stringify({ round_result: roundResult }),
     }),
+  setRoundStatus: (id, roundStatus) =>
+    request(`/interviews/${id}/round-status/`, {
+      method: 'PATCH', body: JSON.stringify({ round_status: roundStatus }),
+    }),
 };
 
 // ---- Resumes ---- //
