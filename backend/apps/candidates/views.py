@@ -196,8 +196,9 @@ class NextRoundView(APIView):
     """
     POST /candidates/{pk}/jobs/{job_id}/interview/next-round/
 
-    Advances candidate to the next interview round in the default progression
-    (R1 → R2 → CLIENT → CDO → MGMT). Creates an Interview record.
+    Advances current_interview_round to the next in ROUND_PROGRESSION.
+    Does NOT create an Interview record — scheduling is a separate step.
+    Guard: the latest Interview for the current round must be COMPLETED.
     """
 
     def post(self, request, pk, job_id):
@@ -217,6 +218,15 @@ class NextRoundView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Guard: current round must be completed before advancing
+        from apps.interviews.models import Interview
+        latest = mapping.interviews.filter(round_name=current_round).order_by('-created_at').first()
+        if not latest or latest.round_status != 'COMPLETED':
+            return Response(
+                {'error': f'Round {current_round} must be completed before advancing to the next round'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         idx = ROUND_PROGRESSION.index(current_round)
         if idx >= len(ROUND_PROGRESSION) - 1:
             return Response(
@@ -225,44 +235,20 @@ class NextRoundView(APIView):
             )
 
         next_round = ROUND_PROGRESSION[idx + 1]
-        self._create_interview_and_advance(mapping, next_round, request)
-        return Response(CandidateJobMappingSerializer(mapping).data)
-
-    @staticmethod
-    def _create_interview_and_advance(mapping, round_name, request):
-        from apps.interviews.models import Interview
-        # Determine next round_number (one more than the highest existing)
-        last = mapping.interviews.order_by('-round_number').first()
-        next_num = (last.round_number + 1) if last else 1
-
-        Interview.objects.create(
-            mapping=mapping,
-            round_number=next_num,
-            round_label=dict(Interview.ROUND_NAME_CHOICES).get(round_name, round_name),
-            round_name=round_name,
-            round_status='SCHEDULED',
-            interviewer=request.user,
-            scheduled_at=request.data.get('scheduled_at', _default_scheduled_at()),
-            created_by=request.user,
-        )
-        mapping.current_interview_round = round_name
+        mapping.current_interview_round = next_round
         mapping.moved_by = request.user
         mapping.save(update_fields=['current_interview_round', 'moved_by', 'stage_updated_at'])
-
-
-def _default_scheduled_at():
-    from django.utils import timezone
-    from datetime import timedelta
-    return timezone.now() + timedelta(days=1)
+        return Response(CandidateJobMappingSerializer(mapping).data)
 
 
 class JumpToRoundView(APIView):
     """
     POST /candidates/{pk}/jobs/{job_id}/interview/jump-round/
 
-    Body: { "round_name": "CLIENT" }
+    Body: { "round_name": "R3" | "CLIENT" | ... }
 
-    Jumps to any round regardless of progression order.
+    Jumps to any round without completion guard (explicit skip intent).
+    Does NOT create an Interview record — scheduling is a separate step.
     """
 
     def post(self, request, pk, job_id):
@@ -291,7 +277,9 @@ class JumpToRoundView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        NextRoundView._create_interview_and_advance(mapping, round_name, request)
+        mapping.current_interview_round = round_name
+        mapping.moved_by = request.user
+        mapping.save(update_fields=['current_interview_round', 'moved_by', 'stage_updated_at'])
         return Response(CandidateJobMappingSerializer(mapping).data)
 
 
