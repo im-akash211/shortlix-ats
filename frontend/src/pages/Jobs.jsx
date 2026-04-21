@@ -6,7 +6,7 @@ import { PageLoader } from '../components/LoadingDots';
 import { ROUTES } from '../routes/constants';
 import {
   Search, MapPin, Clock, Eye, Mail, UserPlus, Users, ChevronDown, ChevronUp,
-  User, X, Filter, Phone, Briefcase, Building2, ChevronRight, Edit2, BookOpen, Trash2, FileText, Share2,
+  User, X, Filter, Phone, Briefcase, Building2, ChevronRight, Edit2, BookOpen, Trash2, FileText, Share2, Download, Bell, BellRing, Trash,
 } from 'lucide-react';
 import {
   jobs as jobsApi,
@@ -133,6 +133,241 @@ function FilterAccordion({ title, options, selected, onToggle, defaultOpen = tru
   );
 }
 
+function ReminderModal({ candidate, onClose, queryClient }) {
+  const candidateId = candidate?.candidate;
+  const [reminders, setReminders] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [form, setForm] = React.useState({ remind_at: '', note: '' });
+
+  React.useEffect(() => {
+    if (!candidateId) return;
+    candidatesApi.reminders(candidateId)
+      .then(data => setReminders(Array.isArray(data) ? data : (data.results || [])))
+      .catch(() => setReminders([]))
+      .finally(() => setLoading(false));
+  }, [candidateId]);
+
+  const handleAdd = async () => {
+    if (!form.remind_at) return;
+    setSaving(true);
+    try {
+      const created = await candidatesApi.addReminder(candidateId, form);
+      setReminders(prev => [...prev, created]);
+      setForm({ remind_at: '', note: '' });
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleDone = async (r) => {
+    const updated = await candidatesApi.updateReminder(candidateId, r.id, { is_done: !r.is_done });
+    setReminders(prev => prev.map(x => x.id === r.id ? updated : x));
+    queryClient.invalidateQueries({ queryKey: ['jobs'] });
+  };
+
+  const handleDelete = async (r) => {
+    await candidatesApi.deleteReminder(candidateId, r.id);
+    setReminders(prev => prev.filter(x => x.id !== r.id));
+    queryClient.invalidateQueries({ queryKey: ['jobs'] });
+  };
+
+  const active = reminders.filter(r => !r.is_done);
+  const done   = reminders.filter(r => r.is_done);
+  const today  = new Date().toISOString().split('T')[0];
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <BellRing className="w-5 h-5 text-amber-500" />
+            <div>
+              <h2 className="text-base font-semibold text-slate-800">Reminders</h2>
+              <p className="text-xs text-slate-400">{candidate?.candidate_name}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto max-h-[60vh] px-6 py-4 flex flex-col gap-5">
+          {/* Add new */}
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Set a new reminder</p>
+            <input
+              type="date"
+              min={today}
+              value={form.remind_at}
+              onChange={e => setForm(f => ({ ...f, remind_at: e.target.value }))}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            />
+            <textarea
+              rows={2}
+              placeholder="Note (optional) — e.g. Notice period ends, follow up before offer"
+              value={form.note}
+              onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+            />
+            <button
+              onClick={handleAdd}
+              disabled={!form.remind_at || saving}
+              className="bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            >
+              {saving ? 'Saving…' : 'Add Reminder'}
+            </button>
+          </div>
+
+          {/* Active reminders */}
+          {loading ? (
+            <p className="text-xs text-slate-400 text-center py-2">Loading…</p>
+          ) : active.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Upcoming</p>
+              {active.map(r => (
+                <div key={r.id} className={`flex items-start gap-3 p-3 rounded-lg border ${r.remind_at < today ? 'border-red-200 bg-red-50' : 'border-amber-100 bg-amber-50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={false}
+                    onChange={() => handleToggleDone(r)}
+                    className="mt-0.5 accent-amber-500 cursor-pointer"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-semibold ${r.remind_at < today ? 'text-red-600' : 'text-amber-700'}`}>
+                      {r.remind_at < today ? 'Overdue — ' : ''}{r.remind_at}
+                    </p>
+                    {r.note && <p className="text-xs text-slate-600 mt-0.5 break-words">{r.note}</p>}
+                  </div>
+                  <button onClick={() => handleDelete(r)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0">
+                    <Trash className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Done reminders */}
+          {done.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Done</p>
+              {done.map(r => (
+                <div key={r.id} className="flex items-start gap-3 p-3 rounded-lg border border-slate-100 bg-slate-50 opacity-60">
+                  <input
+                    type="checkbox"
+                    checked={true}
+                    onChange={() => handleToggleDone(r)}
+                    className="mt-0.5 accent-slate-400 cursor-pointer"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-400 line-through">{r.remind_at}</p>
+                    {r.note && <p className="text-xs text-slate-400 mt-0.5 line-through break-words">{r.note}</p>}
+                  </div>
+                  <button onClick={() => handleDelete(r)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0">
+                    <Trash className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!loading && reminders.length === 0 && (
+            <p className="text-xs text-slate-400 text-center py-2">No reminders yet. Add one above.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DateRangeFilter({ dateFrom, dateTo, onFromChange, onToChange }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const hasValue = dateFrom || dateTo;
+  return (
+    <div className="border-b border-slate-200 last:border-b-0">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors"
+      >
+        <span className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+          Created Date
+          {hasValue && <span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />}
+        </span>
+        {isOpen ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+      </button>
+      {isOpen && (
+        <div className="px-4 pb-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-500">From</label>
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => onFromChange(e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-500">To</label>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => onToChange(e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          {hasValue && (
+            <button
+              onClick={() => { onFromChange(''); onToChange(''); }}
+              className="text-xs text-blue-600 hover:underline text-left"
+            >
+              Clear dates
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SortFilter({ ordering, onChange }) {
+  const [isOpen, setIsOpen] = useState(true);
+  const options = [
+    { value: '-created_at', label: 'Newest First' },
+    { value: 'created_at',  label: 'Oldest First' },
+  ];
+  return (
+    <div className="border-b border-slate-200 last:border-b-0">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors"
+      >
+        <span className="font-semibold text-slate-800 text-sm">Sort By</span>
+        {isOpen ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+      </button>
+      {isOpen && (
+        <div className="px-4 pb-4 flex flex-col gap-2.5">
+          {options.map((opt) => (
+            <label key={opt.value} className="flex items-center gap-3 text-sm text-slate-600 cursor-pointer">
+              <input
+                type="radio"
+                name="jobs_sort"
+                className="accent-blue-600 cursor-pointer"
+                checked={ordering === opt.value}
+                onChange={() => onChange(opt.value)}
+              />
+              <span>{opt.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Stage tab map ────────────────────────────────────────────────────────────
 // Each pipeline tab maps to a single macro stage key sent to the API.
 const STAGE_TAB_MAP = {
@@ -156,10 +391,16 @@ export default function Jobs() {
   const activeTab = searchParams.get('tab') || 'All Jobs';
   const search = searchParams.get('search') || '';
   const statusFilter = searchParams.get('status') || 'all';
+  const dateFrom  = searchParams.get('date_from') || '';
+  const dateTo    = searchParams.get('date_to')   || '';
+  const ordering  = searchParams.get('ordering')  || '-created_at';
 
   const setActiveTab = (val) => setSearchParams(p => { p.set('tab', val); return p; });
   const setSearch = (val) => setSearchParams(p => { if (val) p.set('search', val); else p.delete('search'); return p; });
   const setStatusFilter = (val) => setSearchParams(p => { p.set('status', val); return p; });
+  const setDateFrom = (val) => setSearchParams(p => { if (val) p.set('date_from', val); else p.delete('date_from'); return p; });
+  const setDateTo   = (val) => setSearchParams(p => { if (val) p.set('date_to',   val); else p.delete('date_to');   return p; });
+  const setOrdering = (val) => setSearchParams(p => { p.set('ordering', val); return p; });
 
   const queryClient = useQueryClient();
 
@@ -338,6 +579,9 @@ export default function Jobs() {
   const [shareSearch, setShareSearch]       = useState('');
   const [shareSelected, setShareSelected]   = useState([]);
   const shareRef                            = useRef(null);
+
+  // ── Reminder state ────────────────────────────────────────────────────────────
+  const [reminderCandidate, setReminderCandidate] = useState(null); // mapping object
   useEffect(() => {
     if (!shareOpen) return;
     // load users if not already loaded
@@ -374,6 +618,8 @@ export default function Jobs() {
       prev.delete('department');
       prev.delete('hiring_manager');
       prev.delete('location');
+      prev.delete('date_from');
+      prev.delete('date_to');
       return prev;
     });
   };
@@ -381,10 +627,11 @@ export default function Jobs() {
   const activeFilterCount =
     filters.department.length +
     filters.hiring_manager.length +
-    filters.location.length;
+    filters.location.length +
+    (dateFrom || dateTo ? 1 : 0);
 
   // ── Phase B+C: jobs list — cached per filter combination; previous data shown while new results load ──
-  const jobsQueryKey = ['jobs', 'list', { tab: activeTab, status: statusFilter, search, dept: filters.department, hm: filters.hiring_manager, loc: filters.location }];
+  const jobsQueryKey = ['jobs', 'list', { tab: activeTab, status: statusFilter, search, dept: filters.department, hm: filters.hiring_manager, loc: filters.location, dateFrom, dateTo, ordering }];
   const { data: jobsQueryData, isLoading: loading } = useQuery({
     queryKey: jobsQueryKey,
     queryFn: () => {
@@ -395,6 +642,9 @@ export default function Jobs() {
       if (filters.department.length > 0)   params.department     = filters.department.join(',');
       if (filters.hiring_manager.length > 0) params.hiring_manager = filters.hiring_manager.join(',');
       if (filters.location.length > 0)     params.location       = filters.location.join(',');
+      if (dateFrom)                        params.date_from      = dateFrom;
+      if (dateTo)                          params.date_to        = dateTo;
+      params.ordering = ordering;
       return jobsApi.list(params);
     },
     placeholderData: (previousData) => previousData,
@@ -787,6 +1037,18 @@ export default function Jobs() {
                 {STAGE_LABELS[macroStage] || macroStage}
               </span>
               {isActive && (
+                <button
+                  onClick={() => setReminderCandidate(c)}
+                  className="relative text-slate-400 hover:text-amber-500 transition-colors p-1"
+                  title="Set reminder"
+                >
+                  <Bell className="w-3 h-3" />
+                  {c.has_active_reminder && (
+                    <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                  )}
+                </button>
+              )}
+              {isActive && (
                 <div className="relative" ref={isShareOpen ? shareRef : null}>
                   <button
                     onClick={() => { setShareOpen(isShareOpen ? null : c.id); setShareSearch(''); setShareSelected([]); }}
@@ -1125,7 +1387,7 @@ export default function Jobs() {
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
 
           {/* Header bar */}
-          <div className="flex items-center justify-between mb-4 shrink-0">
+          <div className="flex items-start justify-between mb-4 shrink-0 flex-wrap gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <button
                 onClick={() => navigate(ROUTES.JOBS.ROOT)}
@@ -1138,7 +1400,7 @@ export default function Jobs() {
               <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
               <span className="text-sm font-semibold text-slate-800 truncate">View Job</span>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={openEdit}
                 disabled={!jobDetail}
@@ -1159,6 +1421,24 @@ export default function Jobs() {
                 className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors shadow-sm"
               >
                 <Users className="w-3.5 h-3.5" /> Collaborators
+              </button>
+              <button
+                disabled={!viewingJob}
+                onClick={async () => {
+                  if (!viewingJob) return;
+                  const url = jobsApi.reportExcelUrl(viewingJob.id);
+                  const token = localStorage.getItem('access');
+                  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                  const blob = await res.blob();
+                  const link = document.createElement('a');
+                  link.href = URL.createObjectURL(blob);
+                  link.download = `${viewingJob.job_code}_${viewingJob.title}_Report.xlsx`;
+                  link.click();
+                  URL.revokeObjectURL(link.href);
+                }}
+                className="flex items-center gap-1.5 bg-white border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-50 disabled:opacity-40 transition-colors shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" /> Report
               </button>
               <button
                 onClick={() => setIsAddProfileOpen(true)}
@@ -1189,7 +1469,7 @@ export default function Jobs() {
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <h2 className="text-xl font-bold text-slate-800">
-                          #{jobDetail.job_code} | {jobDetail.title}
+                          {jobDetail.title}
                         </h2>
                         <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                           <span className="flex items-center gap-1 text-sm text-slate-500">
@@ -1538,6 +1818,13 @@ export default function Jobs() {
                   onToggle={(id) => toggleFilter('location', id)}
                   defaultOpen={false}
                 />
+                <DateRangeFilter
+                  dateFrom={dateFrom}
+                  dateTo={dateTo}
+                  onFromChange={setDateFrom}
+                  onToChange={setDateTo}
+                />
+                <SortFilter ordering={ordering} onChange={setOrdering} />
               </div>
             </div>
           </div>
@@ -2154,6 +2441,15 @@ export default function Jobs() {
           <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
           {addProfileSuccess}
         </div>
+      )}
+
+      {/* Reminder modal */}
+      {reminderCandidate && (
+        <ReminderModal
+          candidate={reminderCandidate}
+          onClose={() => setReminderCandidate(null)}
+          queryClient={queryClient}
+        />
       )}
     </>
   );

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote, ResumeFile,
+    CandidateReminder,
 )
 
 
@@ -128,3 +129,10 @@ class CandidateCreateSerializer(serializers.ModelSerializer):
         model = Candidate
         fields = '__all__'
         read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+
+
+class CandidateReminderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CandidateReminder
+        fields = ['id', 'candidate', 'remind_at', 'note', 'is_done', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'candidate', 'created_at', 'updated_at']

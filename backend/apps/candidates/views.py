@@ -7,11 +7,11 @@ from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 from .models import (
     Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote,
-    VALID_TRANSITIONS, ROUND_PROGRESSION, ROUND_CHOICES,
+    CandidateReminder, VALID_TRANSITIONS, ROUND_PROGRESSION, ROUND_CHOICES,
 )
 from .serializers import (
     CandidateListSerializer, CandidateDetailSerializer, CandidateCreateSerializer,
-    CandidateJobMappingSerializer, CandidateNoteSerializer
+    CandidateJobMappingSerializer, CandidateNoteSerializer, CandidateReminderSerializer,
 )
 from apps.accounts.models import User
 from apps.notifications.models import InAppNotification
@@ -381,3 +381,31 @@ class CandidateShareView(APIView):
                 logging.getLogger(__name__).error("Failed to send share email to %s: %s", recipient.email, e)
 
         return Response({'shared_with': len(notifications)}, status=status.HTTP_201_CREATED)
+
+
+class CandidateReminderListCreateView(generics.ListCreateAPIView):
+    serializer_class = CandidateReminderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return CandidateReminder.objects.filter(
+            candidate_id=self.kwargs['pk'],
+            created_by=self.request.user,
+        )
+
+    def perform_create(self, serializer):
+        candidate = generics.get_object_or_404(Candidate, pk=self.kwargs['pk'])
+        serializer.save(candidate=candidate, created_by=self.request.user)
+
+
+class CandidateReminderUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = CandidateReminderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return generics.get_object_or_404(
+            CandidateReminder,
+            pk=self.kwargs['reminder_id'],
+            candidate_id=self.kwargs['pk'],
+            created_by=self.request.user,
+        )

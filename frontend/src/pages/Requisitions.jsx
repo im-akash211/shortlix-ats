@@ -50,7 +50,8 @@ const INITIAL_FORM = {
   min_qualification: '',
   expected_start_date: '',
   tat_days: '',
-  budget: '',
+  budget_min: '',
+  budget_max: '',
   salary_min: '',
   salary_max: '',
   work_mode: '',
@@ -229,7 +230,8 @@ export default function Requisitions({ user }) {
           min_qualification:   detail.min_qualification || '',
           expected_start_date: detail.expected_start_date || '',
           tat_days:            detail.tat_days ?? '',
-          budget:              detail.budget ?? '',
+          budget_min:          detail.budget_min ?? '',
+          budget_max:          detail.budget_max ?? '',
           salary_min:          detail.salary_min ?? '',
           salary_max:          detail.salary_max ?? '',
           work_mode:           detail.work_mode || '',
@@ -299,14 +301,14 @@ export default function Requisitions({ user }) {
     if (!createForm.title) errs.title = 'Required';
     if (!createForm.department) errs.department = 'Required';
     if (!createForm.location) errs.location = 'Required';
-    if (!createForm.purpose) errs.purpose = 'Required';
-    if (createForm.purpose === 'client' && !createForm.client_name) errs.client_name = 'Required for client requisitions';
     if (!createForm.work_mode) errs.work_mode = 'Required';
+    const jdText = (createForm.job_description || '').replace(/<[^>]*>/g, '').trim();
+    if (!jdText) errs.job_description = 'Required';
+    if (createForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
+    if (!createForm.experience_max || Number(createForm.experience_max) <= 0) errs.experience = 'Experience max must be greater than 0';
+    else if (Number(createForm.experience_max) < Number(createForm.experience_min)) errs.experience = 'Max experience must be ≥ min';
     if (!createForm.salary_min) errs.salary_min = 'Required';
     if (!createForm.salary_max) errs.salary_max = 'Required';
-    if (!createForm.hiring_manager) errs.hiring_manager = 'Required';
-    if (!createForm.l1_approver) errs.l1_approver = 'Required';
-    if (createForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
     return errs;
   };
 
@@ -376,9 +378,12 @@ export default function Requisitions({ user }) {
     if (!editForm.title) errs.title = 'Required';
     if (!editForm.department) errs.department = 'Required';
     if (!editForm.location) errs.location = 'Required';
-    if (!editForm.hiring_manager) errs.hiring_manager = 'Required';
-    if (!editForm.l1_approver) errs.l1_approver = 'Required';
+    if (!editForm.work_mode) errs.work_mode = 'Required';
     if (editForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
+    if (!editForm.experience_max || Number(editForm.experience_max) <= 0) errs.experience = 'Experience max must be greater than 0';
+    else if (Number(editForm.experience_max) < Number(editForm.experience_min)) errs.experience = 'Max experience must be ≥ min';
+    if (!editForm.salary_min) errs.salary_min = 'Required';
+    if (!editForm.salary_max) errs.salary_max = 'Required';
     if (Object.keys(errs).length > 0) { setEditErrors(errs); return; }
     setEditLoading(true);
     try {
@@ -417,7 +422,6 @@ export default function Requisitions({ user }) {
 
   const _applyAiResult = (result) => {
     setField('job_description', result.job_description || '');
-    setField('roles_responsibilities', result.roles_and_responsibilities || '');
     if (result.required_skills?.length) setField('skills_required', result.required_skills);
     if (result.preferred_skills?.length) setField('skills_desirable', result.preferred_skills);
   };
@@ -607,16 +611,7 @@ export default function Requisitions({ user }) {
             <div className="max-w-5xl mx-auto bg-white border border-gray-200 rounded-xl shadow-sm p-8">
               <div className="grid grid-cols-2 gap-x-8 gap-y-6">
 
-                {/* Row 1: Department | Sub Vertical 2 */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel required>Department:</FieldLabel>
-                  <SelectField value={createForm.department} onChange={(e) => setField('department', e.target.value)} error={formErrors.department}>
-                    <option value="">Select an option</option>
-                    {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </SelectField>
-                  <FieldError msg={formErrors.department} />
-                </div>
-
+                {/* Row 1: Requisition Title | Department */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Requisition Title:</FieldLabel>
                   <TextField
@@ -628,9 +623,18 @@ export default function Requisitions({ user }) {
                   <FieldError msg={formErrors.title} />
                 </div>
 
-                {/* Row 2: Sub Vertical 1 | Requisition Title */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Sub Vertical 1:</FieldLabel>
+                  <FieldLabel required>Department:</FieldLabel>
+                  <SelectField value={createForm.department} onChange={(e) => setField('department', e.target.value)} error={formErrors.department}>
+                    <option value="">Select an option</option>
+                    {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </SelectField>
+                  <FieldError msg={formErrors.department} />
+                </div>
+
+                {/* Row 2: Sub Vertical | Qualifications */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Sub Vertical:</FieldLabel>
                   <SelectField
                     value={createForm.sub_vertical_1}
                     onChange={(e) => setField('sub_vertical_1', e.target.value)}
@@ -642,19 +646,16 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Sub Vertical 2:</FieldLabel>
-                  <SelectField
-                    value={createForm.sub_vertical_2}
-                    onChange={(e) => setField('sub_vertical_2', e.target.value)}
-                    disabled={!createForm.sub_vertical_1}
-                  >
-                    <option value="">Select an option</option>
-                    {subVerticals2.map((sv) => <option key={sv.id} value={sv.id}>{sv.name}</option>)}
-                  </SelectField>
+                  <FieldLabel>Qualifications:</FieldLabel>
+                  <TextField
+                    value={createForm.min_qualification}
+                    onChange={(e) => setField('min_qualification', e.target.value)}
+                    placeholder=""
+                  />
                 </div>
 
-                {/* Row 3: Requisition Description | Roles & Responsibilities */}
-                <div className="flex flex-col gap-1">
+                {/* Row 3: Requisition Description (full width) */}
+                <div className="col-span-2 flex flex-col gap-1">
                   <RichTextEditor
                     label="Requisition Description:"
                     required
@@ -664,18 +665,7 @@ export default function Requisitions({ user }) {
                     generating={aiGenerating}
                     aiGenerated={aiGenerated}
                   />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <RichTextEditor
-                    label="Roles & Responsibilities:"
-                    required
-                    value={createForm.roles_responsibilities}
-                    onChange={(val) => setField('roles_responsibilities', val)}
-                    onGenerate={handleRegenerateAll}
-                    generating={aiGenerating}
-                    aiGenerated={aiGenerated}
-                  />
+                  <FieldError msg={formErrors.job_description} />
                 </div>
 
                 {/* Row 4: Priority | Type of Employment */}
@@ -709,7 +699,7 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Purpose:</FieldLabel>
+                  <FieldLabel>Purpose:</FieldLabel>
                   <SelectField value={createForm.purpose} onChange={(e) => { setField('purpose', e.target.value); if (e.target.value !== 'client') setField('client_name', ''); }} error={formErrors.purpose}>
                     <option value="">--Select--</option>
                     <option value="internal">Internal</option>
@@ -772,11 +762,12 @@ export default function Requisitions({ user }) {
                     />
                     <span className="text-gray-500 text-sm shrink-0">Years</span>
                   </div>
+                  <FieldError msg={formErrors.experience} />
                 </div>
 
                 {/* Row 8: Designation | Open Positions */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Designation:</FieldLabel>
+                  <FieldLabel>Designation:</FieldLabel>
                   <TextField
                     value={createForm.designation}
                     onChange={(e) => setField('designation', e.target.value)}
@@ -785,7 +776,7 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Open Positions:</FieldLabel>
+                  <FieldLabel>Open Positions:</FieldLabel>
                   <TextField
                     type="number"
                     min="1"
@@ -806,15 +797,6 @@ export default function Requisitions({ user }) {
                   />
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Reference Number:</FieldLabel>
-                  <TextField
-                    value={createForm.reference_number}
-                    onChange={(e) => setField('reference_number', e.target.value)}
-                    placeholder="Reference Number"
-                  />
-                </div>
-
                 {/* TAT (Turn Around Time) */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel>TAT (Days):</FieldLabel>
@@ -830,14 +812,25 @@ export default function Requisitions({ user }) {
                 {/* Budget */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
-                  <TextField
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={createForm.budget}
-                    onChange={(e) => setField('budget', e.target.value)}
-                    placeholder="e.g. 12.50 (optional)"
-                  />
+                  <div className="flex gap-2 items-center">
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={createForm.budget_min}
+                      onChange={(e) => setField('budget_min', e.target.value)}
+                      placeholder="Min"
+                    />
+                    <span className="text-slate-400 shrink-0">–</span>
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={createForm.budget_max}
+                      onChange={(e) => setField('budget_max', e.target.value)}
+                      placeholder="Max"
+                    />
+                  </div>
                 </div>
 
                 {/* Work Mode */}
@@ -881,16 +874,7 @@ export default function Requisitions({ user }) {
                   )}
                 </div>
 
-                {/* Row 10: Tags | Mandatory Skills */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Tags:</FieldLabel>
-                  <TagInput
-                    value={createForm.tags}
-                    onChange={(val) => setField('tags', val)}
-                    placeholder="Tag your jobs with popular keywords"
-                  />
-                </div>
-
+                {/* Mandatory Skills */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Mandatory Skills:</FieldLabel>
                   <TagInput
@@ -902,7 +886,7 @@ export default function Requisitions({ user }) {
                   <FieldError msg={formErrors.skills_required} />
                 </div>
 
-                {/* Row 11: Desirable Skills | Skills To Be Evaluated On */}
+                {/* Desirable Skills */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Desirable Skills:</FieldLabel>
                   <TagInput
@@ -912,18 +896,9 @@ export default function Requisitions({ user }) {
                   />
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Skills To Be Evaluated On:</FieldLabel>
-                  <TagInput
-                    value={createForm.skills_to_evaluate}
-                    onChange={(val) => setField('skills_to_evaluate', val)}
-                    placeholder="Comma separated skills to evaluate candidates on."
-                  />
-                </div>
-
                 {/* Row 12: Hiring Manager | Project Name */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Hiring Manager:</FieldLabel>
+                  <FieldLabel>Hiring Manager:</FieldLabel>
                   <SelectField value={createForm.hiring_manager} onChange={(e) => setField('hiring_manager', e.target.value)} error={formErrors.hiring_manager}>
                     <option value="">Hiring Manager</option>
                     {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -932,7 +907,7 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Project Name:</FieldLabel>
+                  <FieldLabel>Project Name:</FieldLabel>
                   <TextField
                     value={createForm.project_name}
                     onChange={(e) => setField('project_name', e.target.value)}
@@ -940,26 +915,7 @@ export default function Requisitions({ user }) {
                   />
                 </div>
 
-                {/* Row 13: Qualifications | Level 1 Approval */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel required>Qualifications:</FieldLabel>
-                  <TextField
-                    value={createForm.min_qualification}
-                    onChange={(e) => setField('min_qualification', e.target.value)}
-                    placeholder=""
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <FieldLabel required>Level 1 Approval:</FieldLabel>
-                  <SelectField value={createForm.l1_approver} onChange={(e) => setField('l1_approver', e.target.value)} error={formErrors.l1_approver}>
-                    <option value="">--Select--</option>
-                    {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                  </SelectField>
-                  <FieldError msg={formErrors.l1_approver} />
-                </div>
-
-                {/* Row 14: Candidate Signals (full width) */}
+                {/* Candidate Signals (full width) */}
                 <div className="col-span-2 flex flex-col gap-2">
                   <div className="flex items-center gap-1.5">
                     <FieldLabel>Candidate Signals</FieldLabel>
@@ -1038,7 +994,7 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel>Sub Vertical 1:</FieldLabel>
+                  <FieldLabel>Sub Vertical:</FieldLabel>
                   <SelectField value={editForm.sub_vertical_1} onChange={(e) => { setEditField('sub_vertical_1', e.target.value); deptApi.subVerticals(editForm.department, e.target.value).then((r) => setEditSubVerticals2(r.results || r)).catch(console.error); setEditField('sub_vertical_2', ''); }} disabled={!editForm.department}>
                     <option value="">Select an option</option>
                     {editSubVerticals1.map((sv) => <option key={sv.id} value={sv.id}>{sv.name}</option>)}
@@ -1109,10 +1065,11 @@ export default function Requisitions({ user }) {
                     <input type="number" min="0" step="0.5" value={editForm.experience_max} onChange={(e) => setEditField('experience_max', e.target.value)} className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50" />
                     <span className="text-gray-500 text-sm shrink-0">Years</span>
                   </div>
+                  <FieldError msg={editErrors.experience} />
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Hiring Manager:</FieldLabel>
+                  <FieldLabel>Hiring Manager:</FieldLabel>
                   <SelectField value={editForm.hiring_manager} onChange={(e) => setEditField('hiring_manager', e.target.value)} error={editErrors.hiring_manager}>
                     <option value="">Hiring Manager</option>
                     {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -1121,7 +1078,7 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Level 1 Approval:</FieldLabel>
+                  <FieldLabel>Level 1 Approval:</FieldLabel>
                   <SelectField value={editForm.l1_approver} onChange={(e) => setEditField('l1_approver', e.target.value)} error={editErrors.l1_approver}>
                     <option value="">--Select--</option>
                     {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -1150,25 +1107,37 @@ export default function Requisitions({ user }) {
                 {/* Budget */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
-                  <TextField
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={editForm.budget}
-                    onChange={(e) => setEditField('budget', e.target.value)}
-                    placeholder="e.g. 12.50 (optional)"
-                  />
+                  <div className="flex gap-2 items-center">
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editForm.budget_min}
+                      onChange={(e) => setEditField('budget_min', e.target.value)}
+                      placeholder="Min"
+                    />
+                    <span className="text-slate-400 shrink-0">–</span>
+                    <TextField
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editForm.budget_max}
+                      onChange={(e) => setEditField('budget_max', e.target.value)}
+                      placeholder="Max"
+                    />
+                  </div>
                 </div>
 
                 {/* Work Mode */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Work Mode:</FieldLabel>
-                  <SelectField value={editForm.work_mode} onChange={(e) => setEditField('work_mode', e.target.value)}>
+                  <SelectField value={editForm.work_mode} onChange={(e) => setEditField('work_mode', e.target.value)} error={editErrors.work_mode}>
                     <option value="">--Select--</option>
                     <option value="hybrid">Hybrid</option>
                     <option value="remote">Remote</option>
                     <option value="office">Office</option>
                   </SelectField>
+                  <FieldError msg={editErrors.work_mode} />
                 </div>
 
                 {/* Salary Range */}
@@ -1182,6 +1151,7 @@ export default function Requisitions({ user }) {
                       value={editForm.salary_min}
                       onChange={(e) => setEditField('salary_min', e.target.value)}
                       placeholder="Min"
+                      error={editErrors.salary_min}
                     />
                     <span className="text-slate-400 shrink-0">–</span>
                     <TextField
@@ -1191,8 +1161,12 @@ export default function Requisitions({ user }) {
                       value={editForm.salary_max}
                       onChange={(e) => setEditField('salary_max', e.target.value)}
                       placeholder="Max"
+                      error={editErrors.salary_max}
                     />
                   </div>
+                  {(editErrors.salary_min || editErrors.salary_max) && (
+                    <FieldError msg={editErrors.salary_min || editErrors.salary_max} />
+                  )}
                 </div>
 
               </div>

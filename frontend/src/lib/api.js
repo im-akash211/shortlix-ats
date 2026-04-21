@@ -132,6 +132,7 @@ export const jobs = {
     request(`/jobs/${id}/collaborators/${userId}/`, { method: 'DELETE' }),
   delete: (id) => request(`/jobs/${id}/delete/`, { method: 'DELETE' }),
   history: (id) => request(`/jobs/${id}/history/`),
+  reportExcelUrl: (id) => `${(import.meta.env.VITE_API_URL || '') + '/api/v1'}/jobs/${id}/report/excel/`,
 };
 
 // ---- Candidates ---- //
@@ -162,6 +163,13 @@ export const candidates = {
       method: 'POST', body: JSON.stringify({ from_job_id: fromJobId, to_job_id: toJobId }),
     }),
   delete: (id) => request(`/candidates/${id}/delete/`, { method: 'DELETE' }),
+  reminders: (id) => request(`/candidates/${id}/reminders/`),
+  addReminder: (id, data) =>
+    request(`/candidates/${id}/reminders/`, { method: 'POST', body: JSON.stringify(data) }),
+  updateReminder: (id, reminderId, data) =>
+    request(`/candidates/${id}/reminders/${reminderId}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteReminder: (id, reminderId) =>
+    request(`/candidates/${id}/reminders/${reminderId}/`, { method: 'DELETE' }),
 };
 
 // ---- Interviews ---- //
