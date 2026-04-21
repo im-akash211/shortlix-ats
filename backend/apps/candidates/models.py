@@ -43,13 +43,14 @@ SCREENING_STATUS_CHOICES = [
 ROUND_CHOICES = [
     ('R1', 'Round 1'),
     ('R2', 'Round 2'),
+    ('R3', 'Round 3'),
     ('CLIENT', 'Client Round'),
     ('CDO', 'CDO Round'),
     ('MGMT', 'Management Round'),
 ]
 
 # Ordered progression for guided next-round flow
-ROUND_PROGRESSION = ['R1', 'R2', 'CLIENT', 'CDO', 'MGMT']
+ROUND_PROGRESSION = ['R1', 'R2', 'R3', 'CLIENT', 'CDO', 'MGMT']
 
 # Numeric order for comparing stages (used for dimmed-card queries)
 STAGE_ORDER = {
@@ -167,6 +168,14 @@ class CandidateJobMapping(models.Model):
     screening_status = models.CharField(
         max_length=20,
         choices=SCREENING_STATUS_CHOICES,
+        null=True,
+        blank=True,
+    )
+
+    # Interview rejection status — null means active, REJECTED means failed a round (stays in Interview tab)
+    interview_status = models.CharField(
+        max_length=20,
+        choices=[('REJECTED', 'Rejected')],
         null=True,
         blank=True,
     )
