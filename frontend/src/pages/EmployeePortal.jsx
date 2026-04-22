@@ -1,11 +1,14 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { employee as employeeApi } from '../lib/api';
+import { ROUTES } from '../routes/constants';
 import {
-  Briefcase, MapPin, Upload, X, CheckCircle, ChevronRight, LogOut, Users, Search,
+  Briefcase, MapPin, Upload, X, CheckCircle, ChevronRight, LogOut, Users, Search, ArrowLeft,
 } from 'lucide-react';
 
 export default function EmployeePortal() {
+  const navigate = useNavigate();
   const [empName, setEmpName] = useState('');
   const [empId, setEmpId] = useState('');
   const [entered, setEntered] = useState(false);
@@ -78,6 +81,13 @@ export default function EmployeePortal() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+          <button
+            type="button"
+            onClick={() => navigate(ROUTES.LOGIN)}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 mb-6 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to Login
+          </button>
           <div className="mb-8 text-center">
             <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-3">
               <Users className="w-6 h-6 text-white" />

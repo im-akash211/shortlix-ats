@@ -180,6 +180,7 @@ export default function CandidateJobProfile() {
 
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
+  const [addNoteEmpty, setAddNoteEmpty] = useState(true);
   const [viewingNote, setViewingNote] = useState(null);
   const [savingModalNote, setSavingModalNote] = useState(false);
   const [deletingNoteId, setDeletingNoteId] = useState(null);
@@ -200,6 +201,7 @@ export default function CandidateJobProfile() {
       Highlight.configure({ multicolor: true }),
     ],
     content: '',
+    onUpdate: ({ editor }) => setAddNoteEmpty(editor.isEmpty),
     editorProps: {
       attributes: {
         class: 'outline-none min-h-[80px] prose prose-sm max-w-none px-3 py-2 focus:outline-none',
@@ -241,12 +243,13 @@ export default function CandidateJobProfile() {
   };
 
   const handleAddNote = async () => {
-    if (!addNoteEditor || addNoteEditor.isEmpty) return;
+    if (!addNoteEditor || addNoteEmpty) return;
     const html = addNoteEditor.getHTML();
     setAddingNote(true);
     try {
       await candidatesApi.addNote(candidateId, html);
       addNoteEditor.commands.clearContent();
+      setAddNoteEmpty(true);
       setShowNoteForm(false);
       refetchNotes();
     } catch (err) {
@@ -468,14 +471,14 @@ export default function CandidateJobProfile() {
               </div>
               <div className="flex justify-end gap-2 mt-2">
                 <button
-                  onClick={() => { setShowNoteForm(false); addNoteEditor?.commands.clearContent(); }}
+                  onClick={() => { setShowNoteForm(false); addNoteEditor?.commands.clearContent(); setAddNoteEmpty(true); }}
                   className="text-xs text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAddNote}
-                  disabled={addingNote || !addNoteEditor || addNoteEditor.isEmpty}
+                  disabled={addingNote || !addNoteEditor || addNoteEmpty}
                   className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
                 >
                   <Send className="w-3 h-3" />
