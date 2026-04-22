@@ -85,8 +85,42 @@ class Candidate(models.Model):
     location = models.CharField(max_length=255, blank=True)
     total_experience_years = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     skills = ArrayField(models.CharField(max_length=100), default=list, blank=True)
+    # Education — 10th
+    tenth_board = models.CharField(max_length=255, blank=True)
+    tenth_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    # Education — 12th
+    twelfth_board = models.CharField(max_length=255, blank=True)
+    twelfth_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    # Education — Graduation
+    graduation_course = models.CharField(max_length=255, blank=True)
+    graduation_college = models.CharField(max_length=255, blank=True)
+    graduation_year = models.PositiveIntegerField(null=True, blank=True)
+    graduation_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    qualifying_exam = models.CharField(max_length=255, blank=True)
+    qualifying_rank = models.CharField(max_length=255, blank=True)
+    # Education — Post Graduation (optional)
+    post_graduation_course = models.CharField(max_length=255, blank=True)
+    post_graduation_college = models.CharField(max_length=255, blank=True)
+    post_graduation_year = models.PositiveIntegerField(null=True, blank=True)
+    post_graduation_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    post_qualifying_exam = models.CharField(max_length=255, blank=True)
+    post_qualifying_rank = models.CharField(max_length=255, blank=True)
+    # Compensation
+    ctc_fixed_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    ctc_variable_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     current_ctc_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    expected_ctc_lakhs = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    offers_in_hand = models.TextField(blank=True)
+    # Notice period
     notice_period_days = models.PositiveIntegerField(null=True, blank=True)
+    notice_period_status = models.CharField(
+        max_length=10,
+        choices=[('serving', 'Serving'), ('lwd', 'LWD'), ('notice', 'In Notice')],
+        blank=True,
+    )
+    # Other HR fields
+    reason_for_change = models.TextField(blank=True)
+    native_location = models.CharField(max_length=255, blank=True)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual', db_index=True)
     sub_source = models.CharField(max_length=255, blank=True)
     parsed_data = models.JSONField(blank=True, default=dict, help_text='Full structured extraction from Claude API')
@@ -193,7 +227,37 @@ class CandidateNote(models.Model):
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='notes')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     content = models.TextField()
+    is_edited = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
+
+
+class CandidateNoteHistory(models.Model):
+    """Stores each previous version of a note whenever it is edited."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    note = models.ForeignKey(CandidateNote, on_delete=models.CASCADE, related_name='history')
+    content = models.TextField()
+    edited_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-edited_at']
+
+
+class CandidateReminder(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='reminders')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='candidate_reminders'
+    )
+    remind_at = models.DateTimeField()
+    note = models.TextField(blank=True)
+    is_done = models.BooleanField(default=False)
+    notified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['remind_at']
