@@ -24,7 +24,6 @@ import ScheduleModal from './components/ScheduleModal';
 import NewScheduleModal from './components/NewScheduleModal';
 import DropModal from './components/DropModal';
 import ResumeModal from './components/ResumeModal';
-import CandidateProfileModal from './components/CandidateProfileModal';
 
 export default function JobsPage() {
   const navigate = useNavigate();
@@ -187,21 +186,9 @@ export default function JobsPage() {
     }
   };
 
-  // ── Candidate profile state ────────────────────────────────────────────────
-  const [candidateProfile, setCandidateProfile] = useState(null);
-  const [candidateProfileLoading, setCandidateProfileLoading] = useState(false);
-
-  const openCandidateProfile = async (c) => {
-    setCandidateProfile(null);
-    setCandidateProfileLoading(true);
-    try {
-      const detail = await candidatesApi.detail(c.candidate);
-      setCandidateProfile(detail);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setCandidateProfileLoading(false);
-    }
+  // ── Candidate profile ──────────────────────────────────────────────────────
+  const openCandidateProfile = (c) => {
+    navigate(ROUTES.JOBS.CANDIDATE_PROFILE(viewingJob.id, c.candidate));
   };
 
   // ── Resume viewer state ────────────────────────────────────────────────────
@@ -298,16 +285,7 @@ export default function JobsPage() {
 
   return (
     <>
-      {/* Candidate Profile Modal */}
-      <CandidateProfileModal
-        candidateProfile={candidateProfile}
-        candidateProfileLoading={candidateProfileLoading}
-        setCandidateProfile={setCandidateProfile}
-        setCandidateProfileLoading={setCandidateProfileLoading}
-        openResume={openResume}
-      />
-
-      {/* Resume Viewer Modal */}
+{/* Resume Viewer Modal */}
       <ResumeModal resumeModal={resumeModal} setResumeModal={setResumeModal} />
 
       {/* ══════════════════ JOB DETAIL VIEW ══════════════════ */}

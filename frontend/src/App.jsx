@@ -14,12 +14,11 @@ import EmployeePortal from './pages/EmployeePortal';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Jobs = lazy(() => import('./pages/Jobs'));
 const Candidates = lazy(() => import('./pages/Candidates'));
-const CandidateJobProfile = lazy(() => import('./pages/CandidateJobProfile'));
+const CandidateProfile = lazy(() => import('./pages/CandidateProfile'));
 const Approvals = lazy(() => import('./pages/Approvals'));
 const Interviews = lazy(() => import('./pages/Interviews'));
 const Requisitions = lazy(() => import('./pages/Requisitions'));
 const Settings = lazy(() => import('./pages/Settings'));
-const CandidateJobProfile = lazy(() => import('./pages/CandidateJobProfile'));
 
 export default function App() {
   return (
@@ -41,7 +40,7 @@ export default function App() {
 
               <Route path={ROUTES.JOBS.CANDIDATE_PROFILE_PATTERN} element={
                 <Suspense fallback={<PageSkeleton />}>
-                  <CandidateJobProfile />
+                  <CandidateProfile />
                 </Suspense>
               } />
 
@@ -53,7 +52,7 @@ export default function App() {
 
               <Route path={ROUTES.CANDIDATES.PROFILE_PATTERN} element={
                 <Suspense fallback={<PageSkeleton />}>
-                  <CandidateJobProfile />
+                  <CandidateProfile />
                 </Suspense>
               } />
 
