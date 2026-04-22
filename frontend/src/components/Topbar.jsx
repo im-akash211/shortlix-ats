@@ -74,7 +74,7 @@ export default function Topbar({ user, onLogout }) {
     if (!n.is_read) await markRead(n.id);
     if (n.candidate_id) {
       setNotifOpen(false);
-      navigate(ROUTES.CANDIDATES.DETAIL(n.candidate_id));
+      navigate(ROUTES.CANDIDATES.PROFILE(n.candidate_id));
     }
   };
 
