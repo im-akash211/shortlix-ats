@@ -70,7 +70,7 @@ VALID_TRANSITIONS = {
     'INTERVIEW':   ['INTERVIEW', 'OFFERED', 'DROPPED'],
     'OFFERED':     ['JOINED', 'DROPPED'],
     'JOINED':      [],
-    'DROPPED':     [],
+    'DROPPED':     ['SHORTLISTED'],
 }
 
 
@@ -209,6 +209,19 @@ class PipelineStageHistory(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+
+
+class CandidateJobComment(models.Model):
+    id      = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    mapping = models.ForeignKey(
+        CandidateJobMapping, on_delete=models.CASCADE, related_name='comments'
+    )
+    user    = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
 
 
 class CandidateNote(models.Model):

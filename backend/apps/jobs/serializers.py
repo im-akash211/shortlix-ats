@@ -37,6 +37,7 @@ class JobListSerializer(serializers.ModelSerializer):
     # These fields are populated by annotations in JobListView.get_queryset() — no per-row DB queries.
     applies_count = serializers.IntegerField(read_only=True)
     shortlists_count = serializers.IntegerField(read_only=True)
+    interviews_count = serializers.IntegerField(read_only=True)
     offers_count = serializers.IntegerField(read_only=True)
     joined_count = serializers.IntegerField(read_only=True)
 
@@ -45,7 +46,7 @@ class JobListSerializer(serializers.ModelSerializer):
         fields = ['id', 'job_code', 'title', 'department', 'department_name',
                   'hiring_manager', 'hiring_manager_name', 'location', 'status',
                   'experience_min', 'experience_max', 'created_at', 'purpose', 'purpose_code',
-                  'applies_count', 'shortlists_count', 'offers_count', 'joined_count']
+                  'applies_count', 'shortlists_count', 'interviews_count', 'offers_count', 'joined_count']
 
 
 class JobDetailSerializer(serializers.ModelSerializer):

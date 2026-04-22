@@ -47,7 +47,7 @@ export default function Settings() {
         .then(([uRes, dRes]) => {
           setUsersList(uRes.results || uRes);
           setDepartments(dRes.results || dRes);
-        })
+        })  
         .catch(console.error)
         .finally(() => setUsersLoading(false));
     }

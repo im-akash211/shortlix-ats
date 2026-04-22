@@ -36,8 +36,23 @@ class InterviewListCreateView(generics.ListCreateAPIView):
             return InterviewCreateSerializer
         return InterviewListSerializer
 
+    _ROUND_LABELS = {
+        'R1': 'Round 1', 'R2': 'Round 2', 'R3': 'Round 3',
+        'CLIENT': 'Client Round', 'CDO': 'CDO Round', 'MGMT': 'Management Round',
+    }
+
     def perform_create(self, serializer):
-        interview = serializer.save(created_by=self.request.user)
+        mapping = serializer.validated_data['mapping']
+        round_name = serializer.validated_data.get('round_name')
+        # Auto-increment round_number so there's no uniqueness conflict when
+        # a candidate is rescheduled after rejection in the same round.
+        round_number = mapping.interviews.count() + 1
+        round_label = self._ROUND_LABELS.get(round_name, round_name or 'Round')
+        interview = serializer.save(
+            created_by=self.request.user,
+            round_number=round_number,
+            round_label=round_label,
+        )
         # If candidate was REJECTED in Interview stage, clear rejection on reschedule
         mapping = interview.mapping
         if (

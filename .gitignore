@@ -88,3 +88,6 @@ yarn-error.log*
 *.tmp
 *.swp
 .cache/
+
+docs/superpowers/
+.code-review-graph/

@@ -41,6 +41,13 @@ class JobListView(generics.ListAPIView):
                 ]),
                 distinct=True,
             ),
+            interviews_count=Count(
+                'candidate_mappings',
+                filter=Q(candidate_mappings__macro_stage__in=[
+                    'INTERVIEW', 'OFFERED', 'JOINED'
+                ]),
+                distinct=True,
+            ),
             offers_count=Count(
                 'candidate_mappings',
                 filter=Q(candidate_mappings__macro_stage__in=['OFFERED', 'JOINED']),

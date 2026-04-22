@@ -1,7 +1,17 @@
 from rest_framework import serializers
 from .models import (
     Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote, ResumeFile,
+    CandidateJobComment,
 )
+
+
+class CandidateJobCommentSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.full_name', read_only=True)
+
+    class Meta:
+        model  = CandidateJobComment
+        fields = ['id', 'mapping', 'user', 'user_name', 'content', 'created_at']
+        read_only_fields = ['id', 'user', 'created_at']
 
 
 class CandidateNoteSerializer(serializers.ModelSerializer):

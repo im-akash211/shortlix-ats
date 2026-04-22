@@ -31,6 +31,8 @@ export const ROUTES = {
     DETAIL_PATTERN: '/candidates/:candidateId',
     EDIT: (id) => `/candidates/${id}/edit`,
     EDIT_PATTERN: '/candidates/:candidateId/edit',
+    PROFILE: (id) => `/candidates/${id}/profile`,
+    PROFILE_PATTERN: '/candidates/:candidateId/profile',
   },
 
   // Approvals & Misc

@@ -13,6 +13,7 @@ import Login from './pages/Login';
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Jobs = lazy(() => import('./pages/Jobs'));
 const Candidates = lazy(() => import('./pages/Candidates'));
+const CandidateJobProfile = lazy(() => import('./pages/CandidateJobProfile'));
 const Approvals = lazy(() => import('./pages/Approvals'));
 const Interviews = lazy(() => import('./pages/Interviews'));
 const Requisitions = lazy(() => import('./pages/Requisitions'));
@@ -38,6 +39,12 @@ export default function App() {
               <Route path={`${ROUTES.JOBS.ROOT}/*`} element={
                 <Suspense fallback={<PageSkeleton />}>
                   <Jobs />
+                </Suspense>
+              } />
+
+              <Route path={ROUTES.CANDIDATES.PROFILE_PATTERN} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <CandidateJobProfile />
                 </Suspense>
               } />
 
