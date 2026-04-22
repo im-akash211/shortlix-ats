@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 class GeneratedRequisitionContent(BaseModel):
     job_description: str
-    roles_and_responsibilities: str
     required_skills: List[str] = Field(default_factory=list)
     preferred_skills: List[str] = Field(default_factory=list)
 
@@ -32,13 +31,6 @@ _GEMINI_SCHEMA = {
                 "Include: role summary, why join, and key qualifications / expectations."
             ),
         },
-        "roles_and_responsibilities": {
-            "type": "string",
-            "description": (
-                "HTML-formatted day-to-day duties using <p>, <ul>, <li> tags. "
-                "List 6-8 specific, actionable responsibilities for this role."
-            ),
-        },
         "required_skills": {
             "type": "array",
             "items": {"type": "string"},
@@ -52,7 +44,6 @@ _GEMINI_SCHEMA = {
     },
     "required": [
         "job_description",
-        "roles_and_responsibilities",
         "required_skills",
         "preferred_skills",
     ],
@@ -77,8 +68,8 @@ def generate_requisition_content(
     experience_max: Optional[Union[Decimal, float, int]] = 0,
 ) -> dict:
     """
-    Generate job description, roles & responsibilities, required skills, and
-    preferred skills in a SINGLE Gemini API call, considering experience range.
+    Generate job description, required skills, and preferred skills in a
+    SINGLE Gemini API call, considering experience range.
     """
     keys = getattr(settings, "GEMINI_API_KEYS", [])
     if not keys:
@@ -140,15 +131,13 @@ def generate_requisition_content(
 
         ### OUTPUT REQUIREMENTS:
         Generate a valid JSON object with these keys:
-        1. `job_description`: (HTML string) A 3-4 sentence high-impact summary.
-        2. `roles_and_responsibilities`: (HTML string) 6-8 bullet points using active verbs (Own, Drive, Build, Mentor).
-        3. `required_skills`: (List) 5-7 core technical/hard skills aligned with {sub_vertical_1}.
-        4. `preferred_skills`: (List) 3-5 "Nice to have" skills (e.g., Cloud Certifications, specific AI frameworks, or soft skills like "Product Thinking").
+        1. `job_description`: (HTML string) A compelling 3-4 paragraph summary including role overview, key responsibilities (6-8 bullets using active verbs: Own, Drive, Build, Mentor), and qualifications.
+        2. `required_skills`: (List) 5-7 core technical/hard skills aligned with {sub_vertical_1}.
+        3. `preferred_skills`: (List) 3-5 "Nice to have" skills (e.g., Cloud Certifications, specific AI frameworks, or soft skills like "Product Thinking").
 
         ### JSON STRUCTURE:
         {{
             "job_description": "string",
-            "roles_and_responsibilities": "string",
             "required_skills": [],
             "preferred_skills": []
         }}

@@ -51,22 +51,8 @@ function GroupCheckbox({ label, keys, values, onChange }) {
 export default function CandidateSignals({ values, onChange }) {
   return (
     <div className="border border-dashed border-gray-300 rounded-xl p-4 flex flex-col gap-4">
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-2 gap-6">
         <GroupCheckbox label="Educational Signals" keys={EDUCATIONAL} values={values} onChange={onChange} />
-        <div className="flex flex-col gap-2">
-          <span className="font-semibold text-sm text-gray-700">Diversity Signal</span>
-          <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
-            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!!values.female_diversity}
-                onChange={(e) => onChange('female_diversity', e.target.checked)}
-                className="w-4 h-4 accent-blue-600"
-              />
-              Female Diversity
-            </label>
-          </div>
-        </div>
         <GroupCheckbox label="Company Signals" keys={COMPANY} values={values} onChange={onChange} />
       </div>
     </div>
