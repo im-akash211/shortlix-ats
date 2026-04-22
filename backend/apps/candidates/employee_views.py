@@ -160,11 +160,20 @@ class EmployeeReferralView(APIView):
                 defaults={'macro_stage': 'APPLIED'},
             )
 
-        # Notify all recruiters, hiring managers and admins
-        recipients = User.objects.filter(
-            role__in=['recruiter', 'hiring_manager', 'admin'],
-            is_active=True,
+        # Notify admins + the recruiter(s) attached to this specific job
+        admin_ids = set(
+            User.objects.filter(role='admin', is_active=True).values_list('id', flat=True)
         )
+        job_recruiter_ids = set()
+        if job.created_by and job.created_by.role == 'recruiter' and job.created_by.is_active:
+            job_recruiter_ids.add(job.created_by.id)
+        collaborator_ids = set(
+            job.collaborators.filter(user__role='recruiter', user__is_active=True)
+            .values_list('user_id', flat=True)
+        )
+        job_recruiter_ids.update(collaborator_ids)
+        recipient_ids = admin_ids | job_recruiter_ids
+        recipients = User.objects.filter(id__in=recipient_ids)
         msg = (
             f'{candidate.full_name} has been referred for "{job.title}" '
             f'by {employee_name} (Employee ID: {employee_id})'
