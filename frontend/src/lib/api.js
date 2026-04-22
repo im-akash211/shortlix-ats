@@ -132,6 +132,7 @@ export const jobs = {
     request(`/jobs/${id}/collaborators/${userId}/`, { method: 'DELETE' }),
   delete: (id) => request(`/jobs/${id}/delete/`, { method: 'DELETE' }),
   history: (id) => request(`/jobs/${id}/history/`),
+  reportExcelUrl: (id) => `${BASE}/jobs/${id}/report/excel/`,
 };
 
 // ---- Candidates ---- //
@@ -167,6 +168,13 @@ export const candidates = {
       method: 'POST', body: JSON.stringify({ from_job_id: fromJobId, to_job_id: toJobId }),
     }),
   delete: (id) => request(`/candidates/${id}/delete/`, { method: 'DELETE' }),
+  getComments: (candidateId, jobId) =>
+    request(`/candidates/${candidateId}/jobs/${jobId}/comments/`),
+  addComment: (candidateId, jobId, content) =>
+    request(`/candidates/${candidateId}/jobs/${jobId}/comments/`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
 };
 
 // ---- Interviews ---- //

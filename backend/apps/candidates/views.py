@@ -8,10 +8,11 @@ from django.conf import settings
 from .models import (
     Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote,
     VALID_TRANSITIONS, ROUND_PROGRESSION, ROUND_CHOICES, SCREENING_STATUS_CHOICES,
+    CandidateJobComment,
 )
 from .serializers import (
     CandidateListSerializer, CandidateDetailSerializer, CandidateCreateSerializer,
-    CandidateJobMappingSerializer, CandidateNoteSerializer
+    CandidateJobMappingSerializer, CandidateNoteSerializer, CandidateJobCommentSerializer
 )
 from apps.accounts.models import User
 from apps.notifications.models import InAppNotification
@@ -92,6 +93,25 @@ class CandidateNoteListCreateView(generics.ListCreateAPIView):
         serializer.save(candidate_id=self.kwargs['pk'], user=self.request.user)
 
 
+class CandidateJobCommentListCreateView(generics.ListCreateAPIView):
+    serializer_class = CandidateJobCommentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return CandidateJobComment.objects.filter(
+            mapping__candidate_id=self.kwargs['pk'],
+            mapping__job_id=self.kwargs['job_id'],
+        ).select_related('user')
+
+    def perform_create(self, serializer):
+        mapping = generics.get_object_or_404(
+            CandidateJobMapping,
+            candidate_id=self.kwargs['pk'],
+            job_id=self.kwargs['job_id'],
+        )
+        serializer.save(mapping=mapping, user=self.request.user)
+
+
 class CandidateAssignJobView(APIView):
     def post(self, request, pk):
         job_id = request.data.get('job_id')
@@ -128,7 +148,19 @@ class CandidateChangeStageView(APIView):
     def patch(self, request, pk, job_id):
         new_stage = request.data.get('macro_stage')
         if not new_stage:
-            return Response({'error': 'macro_stage is required'}, status=status.HTTP_400_BAD_REQUEST)
+            # Handle updates to auxiliary fields if macro_stage is not provided
+            if 'priority' in request.data or 'next_interview_date' in request.data:
+                with transaction.atomic():
+                    mapping = CandidateJobMapping.objects.select_for_update().get(
+                        candidate_id=pk, job_id=job_id
+                    )
+                    if 'priority' in request.data:
+                        mapping.priority = request.data['priority']
+                    if 'next_interview_date' in request.data:
+                        mapping.next_interview_date = request.data['next_interview_date'] or None
+                    mapping.save()
+                return Response(CandidateJobMappingSerializer(mapping).data)
+            return Response({'error': 'No updates provided'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             mapping = CandidateJobMapping.objects.select_for_update().get(

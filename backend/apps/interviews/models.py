@@ -31,6 +31,7 @@ class Interview(models.Model):
     ROUND_NAME_CHOICES = [
         ('R1', 'Round 1'),
         ('R2', 'Round 2'),
+        ('R3', 'Round 3'),
         ('CLIENT', 'Client Round'),
         ('CDO', 'CDO Round'),
         ('MGMT', 'Management Round'),
@@ -83,9 +84,6 @@ class Interview(models.Model):
 
     class Meta:
         ordering = ['-scheduled_at']
-        constraints = [
-            models.UniqueConstraint(fields=['mapping', 'round_number'], name='unique_interview_round'),
-        ]
 
     def __str__(self):
         return f"Interview {self.round_label} - {self.mapping.candidate.full_name}"
