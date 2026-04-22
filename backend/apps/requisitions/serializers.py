@@ -84,6 +84,44 @@ class RequisitionCreateSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by', 'status', 'purpose_code']
 
+    def validate(self, data):
+        import re
+        errors = {}
+
+        if not (data.get('title') or '').strip():
+            errors['title'] = 'Job title is required.'
+        if not data.get('department'):
+            errors['department'] = 'Department is required.'
+        if not (data.get('location') or '').strip():
+            errors['location'] = 'Location is required.'
+        if not (data.get('work_mode') or '').strip():
+            errors['work_mode'] = 'Work mode is required.'
+
+        jd_html = data.get('job_description') or ''
+        jd_text = re.sub(r'<[^>]+>', '', jd_html).strip()
+        if not jd_text:
+            errors['job_description'] = 'Job description is required.'
+
+        skills = data.get('skills_required') or []
+        if len(skills) < 3:
+            errors['skills_required'] = 'Please add at least 3 mandatory skills.'
+
+        exp_max = data.get('experience_max', 0)
+        exp_min = data.get('experience_min', 0)
+        if not exp_max or float(exp_max) <= 0:
+            errors['experience_max'] = 'Experience max must be greater than 0.'
+        elif float(exp_max) < float(exp_min):
+            errors['experience_max'] = 'Max experience must be ≥ min.'
+
+        if not data.get('salary_min'):
+            errors['salary_min'] = 'Salary min is required.'
+        if not data.get('salary_max'):
+            errors['salary_max'] = 'Salary max is required.'
+
+        if errors:
+            raise serializers.ValidationError(errors)
+        return data
+
     def create(self, validated_data):
         purpose = validated_data.get('purpose', 'internal')
         validated_data['purpose_code'] = _generate_purpose_code(purpose)
