@@ -62,3 +62,19 @@ export const STAGE_TAB_MAP = {
 };
 
 export const PIPELINE_TABS = ['Applied', 'Shortlisted', 'Interview', 'Offered'];
+
+export const SHORTLIST_REASONS = [
+  'Strong relevant experience',
+  'Good skill match',
+  'Positive interview feedback',
+  'Cultural fit',
+  'Meets key job requirements',
+];
+
+export const APPLIED_REJECT_REASONS = [
+  'Lack of required experience',
+  'Skill mismatch',
+  'Not a cultural fit',
+  'Salary expectations too high',
+  'Incomplete profile / missing information',
+];

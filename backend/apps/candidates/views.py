@@ -20,7 +20,7 @@ from apps.notifications.models import InAppNotification
 
 
 class CandidateListCreateView(generics.ListCreateAPIView):
-    search_fields = ['full_name', 'email', 'phone', 'skills']
+    search_fields = ['full_name', 'email', 'phone', 'skills', 'tags']
     ordering_fields = ['full_name', 'created_at', 'total_experience_years']
 
     def get_queryset(self):
@@ -34,6 +34,7 @@ class CandidateListCreateView(generics.ListCreateAPIView):
         exp_max    = params.get('exp_max', '')
         date_from  = params.get('date_from', '')
         date_to    = params.get('date_to', '')
+        tags_str   = params.get('tags', '')
 
         if source_str:
             qs = qs.filter(source__in=[s for s in source_str.split(',') if s])
@@ -43,6 +44,9 @@ class CandidateListCreateView(generics.ListCreateAPIView):
             ).distinct()
         if job_id:
             qs = qs.filter(job_mappings__job_id=job_id).distinct()
+        if tags_str:
+            # Overlap search: matches if any of the requested tags are present in the candidate's tags array
+            qs = qs.filter(tags__overlap=[t for t in tags_str.split(',') if t])
         if exp_min:
             try:
                 qs = qs.filter(total_experience_years__gte=float(exp_min))
@@ -172,7 +176,7 @@ class CandidateChangeStageView(APIView):
         new_stage = request.data.get('macro_stage')
         if not new_stage:
             # Handle updates to auxiliary fields if macro_stage is not provided
-            if 'priority' in request.data or 'next_interview_date' in request.data:
+            if 'priority' in request.data or 'next_interview_date' in request.data or 'interview_status' in request.data:
                 with transaction.atomic():
                     mapping = CandidateJobMapping.objects.select_for_update().get(
                         candidate_id=pk, job_id=job_id
@@ -181,6 +185,9 @@ class CandidateChangeStageView(APIView):
                         mapping.priority = request.data['priority']
                     if 'next_interview_date' in request.data:
                         mapping.next_interview_date = request.data['next_interview_date'] or None
+                    if 'interview_status' in request.data:
+                        val = request.data['interview_status']
+                        mapping.interview_status = 'REJECTED' if val == 'REJECTED' else None
                     mapping.save()
                 return Response(CandidateJobMappingSerializer(mapping).data)
             return Response({'error': 'No updates provided'}, status=status.HTTP_400_BAD_REQUEST)
@@ -231,6 +238,8 @@ class CandidateChangeStageView(APIView):
                 mapping.priority = request.data['priority']
             if 'next_interview_date' in request.data:
                 mapping.next_interview_date = request.data['next_interview_date'] or None
+            if 'action_reason' in request.data:
+                mapping.action_reason = request.data['action_reason'] or ''
 
             mapping.macro_stage = new_stage
             mapping.moved_by = request.user

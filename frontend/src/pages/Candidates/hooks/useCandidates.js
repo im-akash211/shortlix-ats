@@ -12,9 +12,11 @@ export function useCandidates() {
   // URL-backed filters — join arrays to stable string primitives for useCallback deps.
   const urlSources  = searchParams.getAll('source');
   const urlStages   = searchParams.getAll('stage');
+  const urlTags     = searchParams.getAll('tags');
   const urlJob      = searchParams.get('job') || '';
   const sourcesKey  = urlSources.join(',');
   const stagesKey   = urlStages.join(',');
+  const tagsKey     = urlTags.join(',');
 
   // URL-backed exp/date filters
   const expMin   = searchParams.get('exp_min')   || '';
@@ -33,11 +35,12 @@ export function useCandidates() {
   const activeFilterCount =
     urlSources.length +
     urlStages.length +
+    urlTags.length +
     (urlJob ? 1 : 0) +
     (expMin ? 1 : 0) + (expMax ? 1 : 0) +
     (dateFrom ? 1 : 0) + (dateTo ? 1 : 0);
 
-  const candidatesQueryKey = ['candidates', 'list', { search, sources: sourcesKey, stages: stagesKey, job: urlJob, exp_min: expMin, exp_max: expMax, date_from: dateFrom, date_to: dateTo, sort: sortKey }];
+  const candidatesQueryKey = ['candidates', 'list', { search, sources: sourcesKey, stages: stagesKey, tags: tagsKey, job: urlJob, exp_min: expMin, exp_max: expMax, date_from: dateFrom, date_to: dateTo, sort: sortKey }];
   const { data: candidatesQueryData, isLoading: loading } = useQuery({
     queryKey: candidatesQueryKey,
     queryFn: () => {
@@ -45,6 +48,7 @@ export function useCandidates() {
       if (search)     params.search    = search;
       if (sourcesKey) params.source    = sourcesKey;
       if (stagesKey)  params.stage     = stagesKey;
+      if (tagsKey)    params.tags      = tagsKey;
       if (urlJob)     params.job       = urlJob;
       if (expMin)     params.exp_min   = expMin;
       if (expMax)     params.exp_max   = expMax;
@@ -81,7 +85,7 @@ export function useCandidates() {
 
   const clearAllFilters = () => {
     setSearchParams(prev => {
-      ['source', 'stage', 'job', 'exp_min', 'exp_max', 'date_from', 'date_to'].forEach(k => prev.delete(k));
+      ['source', 'stage', 'job', 'exp_min', 'exp_max', 'date_from', 'date_to', 'tags'].forEach(k => prev.delete(k));
       return prev;
     }, { replace: true });
   };
@@ -95,9 +99,11 @@ export function useCandidates() {
     search,
     urlSources,
     urlStages,
+    urlTags,
     urlJob,
     sourcesKey,
     stagesKey,
+    tagsKey,
     expMin,
     expMax,
     dateFrom,

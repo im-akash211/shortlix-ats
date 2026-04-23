@@ -19,14 +19,17 @@ export default function PipelineView({
   shareOpen, setShareOpen, shareSearch, setShareSearch, shareSelected, setShareSelected, shareRef,
   usersList, usersLoading, handleShare,
   openCandidateProfile,
-  handleShortlist, shortlistingId,
+  handleShortlist, handleAppliedReject, shortlistingId,
   handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,
   handleMoveToInterview,
   handleMakeOffer,
   handleMarkJoined,
   handleRestoreToShortlist, restoringId,
+  handleInterviewReject,
+  handleClearInterviewReject,
   setDropModalCandidate, setDropReason,
   handleNextRound, nextRoundLoading,
+  handleJumpRound, jumpRoundLoading,
   handleRoundStatus, roundStatusLoadingId,
   setScheduleModalCandidate, setScheduleModalRound,
   commentsByCard, commentsOpenId, commentsLoadingId, commentInput, setCommentInput,
@@ -38,14 +41,17 @@ export default function PipelineView({
     usersList, usersLoading, handleShare,
     onSetReminder,
     openCandidateProfile,
-    handleShortlist, shortlistingId,
+    handleShortlist, handleAppliedReject, shortlistingId,
     handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,
     handleMoveToInterview,
     handleMakeOffer,
     handleMarkJoined,
     handleRestoreToShortlist, restoringId,
+    handleInterviewReject,
+    handleClearInterviewReject,
     setDropModalCandidate, setDropReason,
     handleNextRound, nextRoundLoading,
+    handleJumpRound, jumpRoundLoading,
     handleRoundStatus, roundStatusLoadingId,
     setScheduleModalCandidate, setScheduleModalRound,
     commentsByCard, commentsOpenId, commentsLoadingId, commentInput, setCommentInput,
@@ -106,7 +112,6 @@ export default function PipelineView({
             <option value="CDO">CDO</option>
             <option value="MGMT">MGMT</option>
             <option value="ON_HOLD">On Hold</option>
-            <option value="REJECTED">Rejected</option>
           </select>
         </div>
       )}
@@ -171,18 +176,29 @@ export default function PipelineView({
           /* Applied / Shortlisted / Interview tabs */
           (() => {
             const currentStage = STAGE_TAB_MAP[pipelineTab];
-            const activeCandidates = allCandidates
-              .filter(c => c.macro_stage === currentStage)
+            const stagePool = allCandidates.filter(c => c.macro_stage === currentStage);
+
+            // Interview tab: split active vs rejected into dedicated sections
+            const isInterview = pipelineTab === 'Interview';
+            const rejectedCandidates = isInterview
+              ? stagePool.filter(c => c.interview_status === 'REJECTED')
+              : [];
+
+            const activeCandidates = stagePool
+              .filter(c => !isInterview || c.interview_status !== 'REJECTED')
               .filter(c =>
                 pipelineTab !== 'Applied' || screeningFilter === 'ALL' || c.screening_status === screeningFilter
               )
               .filter(c => {
-                if (pipelineTab !== 'Interview' || interviewFilter === 'ALL') return true;
-                if (interviewFilter === 'REJECTED') return c.interview_status === 'REJECTED';
+                if (!isInterview || interviewFilter === 'ALL') return true;
                 if (interviewFilter === 'ON_HOLD') return c.latest_round?.round_status === 'ON_HOLD';
                 return c.current_interview_round === interviewFilter;
               });
-            if (activeCandidates.length === 0 && dimmedCandidates.length === 0 && !dimmedLoading) {
+
+            const isEmpty = activeCandidates.length === 0 && rejectedCandidates.length === 0
+              && dimmedCandidates.length === 0 && !dimmedLoading;
+
+            if (isEmpty) {
               return (
                 <div className="flex flex-col items-center justify-center py-16 text-slate-400">
                   <Users className="w-10 h-10 mb-2" />
@@ -193,6 +209,23 @@ export default function PipelineView({
             return (
               <div className="flex flex-col gap-3">
                 {activeCandidates.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+
+                {/* ── Rejected section (Interview tab only) ─────────────────── */}
+                {isInterview && rejectedCandidates.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 py-2 mt-1">
+                      <div className="flex-1 border-t border-dashed border-rose-200" />
+                      <span className="text-xs font-semibold text-rose-400 shrink-0 flex items-center gap-1.5">
+                        <span className="inline-block w-2 h-2 rounded-full bg-rose-400" />
+                        Rejected ({rejectedCandidates.length})
+                      </span>
+                      <div className="flex-1 border-t border-dashed border-rose-200" />
+                    </div>
+                    {rejectedCandidates.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+                  </>
+                )}
+
+                {/* ── Progressed / dimmed section ───────────────────────────── */}
                 {dimmedLoading ? (
                   <div className="flex items-center justify-center gap-2 py-4 text-slate-400 text-xs border-t border-dashed border-slate-200 mt-1">
                     <svg className="animate-spin w-3.5 h-3.5 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

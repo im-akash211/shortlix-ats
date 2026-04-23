@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
 import { Underline } from '@tiptap/extension-underline';
@@ -15,7 +15,7 @@ import NoteEditorModal, { stripHtml, Toolbar } from '../components/NoteEditorMod
 import SkillTagInput from './Candidates/components/SkillTagInput';
 import {
   ArrowLeft, Mail, Phone, MapPin, Briefcase, Plus, Send,
-  FileText, ExternalLink, Download, User, Clock, Calendar, X, ChevronDown, ChevronUp, Pencil, Check, Trash2, Sparkles, Loader,
+  FileText, ExternalLink, Download, User, Clock, Calendar, X, ChevronDown, ChevronUp, Pencil, Check, Trash2, Tag, Sparkles, Loader,
 } from 'lucide-react';
 
 const STAGE_COLORS = {
@@ -88,6 +88,116 @@ function SkillsRow({ skills }) {
           className="flex items-center gap-0.5 text-xs text-slate-400 hover:text-slate-600 transition-colors ml-1"
         >
           {expanded ? <><ChevronUp className="w-3.5 h-3.5" /> Less</> : <><ChevronDown className="w-3.5 h-3.5" /> +{skills.length - VISIBLE} more</>}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TagsSection({ candidateId, initialTags = [], queryClient }) {
+  const [tags, setTags] = useState(initialTags);
+  const [inputVisible, setInputVisible] = useState(false);
+  const [inputVal, setInputVal] = useState('');
+  const [saving, setSaving] = useState(false);
+  const inputRef = React.useRef(null);
+
+  // Sync only when the serialised tag list actually changes, not on every render
+  const initialTagsKey = initialTags.join('\x00');
+  React.useEffect(() => {
+    setTags(initialTags);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTagsKey]);
+
+  React.useEffect(() => {
+    if (inputVisible) inputRef.current?.focus();
+  }, [inputVisible]);
+
+  const saveTags = async (next) => {
+    setSaving(true);
+    const prev = tags;
+    setTags(next); // Optimistic update
+    try {
+      await candidatesApi.update(candidateId, { tags: next });
+      // Keep the React Query cache in sync so other entry points see the same data
+      queryClient.setQueryData(['candidate', candidateId], (old) =>
+        old ? { ...old, tags: next } : old
+      );
+    } catch {
+      setTags(prev); // Revert on failure
+      alert("Failed to save tags");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addTag = () => {
+    const val = inputVal.trim();
+    if (!val) { setInputVisible(false); return; }
+    const lower = val.toLowerCase();
+    if (tags.some(t => t.toLowerCase() === lower)) {
+      setInputVal('');
+      setInputVisible(false);
+      return;
+    }
+    const next = [...tags, val];
+    setInputVal('');
+    setInputVisible(false);
+    saveTags(next);
+  };
+
+  const removeTag = (idx) => {
+    saveTags(tags.filter((_, i) => i !== idx));
+  };
+
+  const TAG_COLORS = [
+    'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
+    'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100',
+    'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
+    'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100',
+    'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100',
+  ];
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+      {tags.map((tag, i) => (
+        <span
+          key={i}
+          className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border shadow-sm transition-all animate-in fade-in zoom-in duration-200 ${TAG_COLORS[i % TAG_COLORS.length]}`}
+        >
+          <Tag className="w-2.5 h-2.5 shrink-0" />
+          {tag}
+          <button
+            onClick={() => removeTag(i)}
+            disabled={saving}
+            className="ml-0.5 opacity-40 hover:opacity-100 transition-opacity disabled:cursor-not-allowed hover:scale-110"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </span>
+      ))}
+
+      {inputVisible ? (
+        <div className="relative animate-in fade-in slide-in-from-right-2 duration-200">
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputVal}
+            onChange={e => setInputVal(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+              if (e.key === 'Escape') { setInputVisible(false); setInputVal(''); }
+            }}
+            onBlur={addTag}
+            placeholder="New tag…"
+            className="text-[11px] border border-blue-300 rounded-full px-3 py-1 outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent w-32 bg-white text-slate-700 shadow-sm"
+          />
+        </div>
+      ) : (
+        <button
+          onClick={() => setInputVisible(true)}
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-blue-600 border border-dashed border-slate-300 hover:border-blue-400 px-3 py-1 rounded-full transition-all hover:bg-blue-50/50 active:scale-95"
+        >
+          <Plus className="w-3 h-3" /> Add Tag
         </button>
       )}
     </div>
@@ -312,10 +422,13 @@ function CandidateProfileCard({ candidate, canEdit, onSave }) {
 }
 
 export default function CandidateJobProfile() {
-  const { jobId, candidateId } = useParams();
+  const { candidateId } = useParams();
+  const [searchParams] = useSearchParams();
+  const jobId = searchParams.get('jobId') || null;
   const fromCandidates = !jobId;
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const queryClient = useQueryClient();
 
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
@@ -517,13 +630,12 @@ export default function CandidateJobProfile() {
         <div className="flex-1 bg-white border-r border-slate-200 overflow-auto flex flex-col">
 
           {/* Candidate identity block */}
-          <div className="px-5 py-4 border-b border-slate-100">
-            <div className="flex items-center gap-3 mb-3">
+          <div className="px-5 py-4 border-b border-slate-100 shrink-0">
+            <div className="flex items-start gap-3 mb-3">
               <Avatar name={candidate.full_name} size="lg" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h1 className="text-lg font-bold text-slate-900">{candidate.full_name}</h1>
-                  {/* AI Match Badge */}
                   {aiMatchLoading ? (
                     <span className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full">
                       <Loader className="w-3 h-3 animate-spin" /> Computing AI match…
@@ -557,6 +669,9 @@ export default function CandidateJobProfile() {
                     <span className="font-medium text-slate-500">{aiMatch.job_title}</span> — {aiMatch.reason}
                   </p>
                 )}
+              </div>
+              <div className="shrink-0 pt-0.5">
+                <TagsSection candidateId={candidateId} initialTags={candidate.tags || []} queryClient={queryClient} />
               </div>
             </div>
             <div className="flex items-center gap-4 flex-wrap">

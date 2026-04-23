@@ -1,9 +1,10 @@
-import React from 'react';
-import { Share2, MessageCircle, Send, ChevronDown, ChevronUp, Bell } from 'lucide-react';
+import React, { useState } from 'react';
+import { Share2, MessageCircle, Send, ChevronDown, ChevronUp, Bell, AlertTriangle } from 'lucide-react';
 import {
   SCREENING_STATUS_COLORS, SCREENING_STATUS_LABELS,
   ROUND_LABELS, ROUND_PROGRESSION,
   OFFER_STATUS_LABELS, DROP_REASON_LABELS,
+  SHORTLIST_REASONS, APPLIED_REJECT_REASONS,
 } from '../constants';
 
 export default function CandidateCard({
@@ -15,20 +16,26 @@ export default function CandidateCard({
   onSetReminder,
   // pipeline action handlers
   openCandidateProfile,
-  handleShortlist, shortlistingId,
+  handleShortlist, handleAppliedReject, shortlistingId,
   handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,
   handleMoveToInterview,
   handleMakeOffer,
   handleMarkJoined,
   handleRestoreToShortlist, restoringId,
+  handleInterviewReject,
+  handleClearInterviewReject,
   setDropModalCandidate, setDropReason,
   handleNextRound, nextRoundLoading,
+  handleJumpRound, jumpRoundLoading,
   handleRoundStatus, roundStatusLoadingId,
   setScheduleModalCandidate, setScheduleModalRound,
   // comments
   commentsByCard, commentsOpenId, commentsLoadingId, commentInput, setCommentInput,
   commentSubmittingId, handleToggleComments, handleAddComment, handlePriorityChange,
 }) {
+  const [rejectConfirm, setRejectConfirm] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null); // { type: 'shortlist'|'reject', reason: '' }
+  const [jumpTarget, setJumpTarget] = useState(null);
   const isActive = c.is_current_stage !== false;
   const macroStage = c.macro_stage;
   const isShareOpen = shareOpen === c.id;
@@ -188,12 +195,25 @@ export default function CandidateCard({
           </div>
         </div>
 
-        {/* ROW 2: Skills */}
-        {c.candidate_skills?.length > 0 && (
-          <div className="flex gap-1 flex-wrap mb-2.5">
-            {c.candidate_skills.slice(0, 4).map((s, i) => (
-              <span key={i} className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{s}</span>
-            ))}
+        {/* ROW 2: Skills & Tags */}
+        {(c.candidate_skills?.length > 0 || c.candidate_tags?.length > 0) && (
+          <div className="flex flex-col gap-1.5 mb-2.5">
+            {c.candidate_skills?.length > 0 && (
+              <div className="flex gap-1 flex-wrap">
+                {c.candidate_skills.slice(0, 4).map((s, i) => (
+                  <span key={i} className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{s}</span>
+                ))}
+              </div>
+            )}
+            {c.candidate_tags?.length > 0 && (
+              <div className="flex gap-1 flex-wrap">
+                {c.candidate_tags.map((tag, i) => (
+                  <span key={i} className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 font-medium">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -208,27 +228,86 @@ export default function CandidateCard({
           {c.stage_updated_at && (
             <span>Updated {new Date(c.stage_updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
           )}
+          {c.action_reason && (macroStage === 'SHORTLISTED' || macroStage === 'DROPPED') && (
+            <span className={`flex items-center gap-1 font-medium px-2 py-0.5 rounded-full text-[10px] ${
+              macroStage === 'SHORTLISTED'
+                ? 'bg-blue-50 text-blue-600 border border-blue-100'
+                : 'bg-rose-50 text-rose-600 border border-rose-100'
+            }`}>
+              {macroStage === 'SHORTLISTED' ? '✓' : '✕'} {c.action_reason}
+            </span>
+          )}
         </div>
 
         {/* ROW 4: Actions */}
         {isActive && (
           <div className="flex items-center gap-2 pt-2.5 border-t border-slate-100">
             {macroStage === 'APPLIED' && (
-              <>
-                <button type="button" onClick={(e) => { e.stopPropagation(); handleShortlist(c); }} disabled={shortlistingId === c.id}
-                  className="text-xs font-semibold bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                  {shortlistingId === c.id ? '...' : 'Shortlist'}
-                </button>
-                <select value="" disabled={screeningStatusLoadingId === c.id}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => { e.stopPropagation(); if (e.target.value) handleScreeningStatus(c, e.target.value); }}
-                  className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-600 focus:outline-none cursor-pointer disabled:opacity-50 min-w-[90px] transition-colors">
-                  <option value="" disabled>Move to...</option>
-                  {getMoveToOptions(c.screening_status).map(opt => (
-                    <option key={opt} value={opt}>{SCREENING_STATUS_LABELS[opt]}</option>
-                  ))}
-                </select>
-              </>
+              pendingAction ? (
+                /* ── Reason picker ── */
+                <div className="flex-1 flex flex-col gap-2 animate-in fade-in duration-150" onClick={e => e.stopPropagation()}>
+                  <p className="text-[11px] font-semibold text-slate-600">
+                    {pendingAction.type === 'shortlist' ? 'Why are you shortlisting?' : 'Why are you rejecting?'}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(pendingAction.type === 'shortlist' ? SHORTLIST_REASONS : APPLIED_REJECT_REASONS).map(r => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setPendingAction(p => ({ ...p, reason: r }))}
+                        className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                          pendingAction.reason === r
+                            ? pendingAction.type === 'shortlist'
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-rose-600 text-white border-rose-600'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                        }`}>
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <button
+                      type="button"
+                      disabled={!pendingAction.reason || shortlistingId === c.id}
+                      onClick={() => {
+                        const { type, reason } = pendingAction;
+                        setPendingAction(null);
+                        if (type === 'shortlist') handleShortlist(c, reason);
+                        else handleAppliedReject(c, reason);
+                      }}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40 transition-colors text-white ${
+                        pendingAction.type === 'shortlist' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-rose-600 hover:bg-rose-700'
+                      }`}>
+                      {shortlistingId === c.id ? '...' : pendingAction.type === 'shortlist' ? 'Confirm Shortlist' : 'Confirm Reject'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingAction(null)}
+                      className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1.5 rounded hover:bg-slate-100 transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <button type="button"
+                    onClick={(e) => { e.stopPropagation(); setPendingAction({ type: 'shortlist', reason: '' }); }}
+                    disabled={shortlistingId === c.id}
+                    className="text-xs font-semibold bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    {shortlistingId === c.id ? '...' : 'Shortlist'}
+                  </button>
+                  <select value="" disabled={screeningStatusLoadingId === c.id}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => { e.stopPropagation(); if (e.target.value) handleScreeningStatus(c, e.target.value); }}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-600 focus:outline-none cursor-pointer disabled:opacity-50 min-w-[90px] transition-colors">
+                    <option value="" disabled>Move to...</option>
+                    {getMoveToOptions(c.screening_status).map(opt => (
+                      <option key={opt} value={opt}>{SCREENING_STATUS_LABELS[opt]}</option>
+                    ))}
+                  </select>
+                </>
+              )
             )}
             {macroStage === 'SHORTLISTED' && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleMoveToInterview(c); }} disabled={shortlistingId === c.id}
@@ -259,17 +338,26 @@ export default function CandidateCard({
                     const isPast = idx < currentIndex;
                     const isCurrent = idx === currentIndex;
                     const displayStatus = (isCurrent && c.latest_round && c.latest_round.round_name === r) ? c.latest_round.round_status : null;
-                    const isCompleted = isPast || displayStatus === 'COMPLETED';
-                    const badgeClasses = isCompleted
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                      : isCurrent
-                        ? (displayStatus === 'ON_HOLD' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-purple-50 border-purple-200 text-purple-700')
-                        : 'bg-slate-50 border-slate-200 text-slate-500';
+                    const isRejectedRound = isCurrent && c.interview_status === 'REJECTED';
+                    const isCompletedHere = isCurrent && displayStatus === 'COMPLETED' && !isRejectedRound;
+
+                    const badgeClasses = isRejectedRound
+                      ? 'bg-rose-50 border-rose-200 text-rose-600'
+                      : isPast
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        : isCompletedHere
+                          ? 'bg-teal-50 border-teal-200 text-teal-700'
+                          : isCurrent
+                            ? (displayStatus === 'ON_HOLD' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-purple-50 border-purple-200 text-purple-700')
+                            : 'bg-slate-50 border-slate-200 text-slate-500';
 
                     return (
                       <React.Fragment key={r}>
                         <span className={`px-2 py-1 rounded border flex items-center gap-1 ${badgeClasses}`}>
-                          {ROUND_LABELS[r] || r} {isCompleted && <span className="font-bold">✓</span>}
+                          {ROUND_LABELS[r] || r}
+                          {isPast && <span className="font-bold">✓</span>}
+                          {isCompletedHere && <span className="font-semibold text-[9px]">Done</span>}
+                          {isRejectedRound && <span className="font-bold">✕</span>}
                         </span>
                         {idx < roundsToShow.length - 1 && <span className="text-slate-300">→</span>}
                       </React.Fragment>
@@ -288,7 +376,13 @@ export default function CandidateCard({
 
                 if (c.interview_status === 'REJECTED') {
                   return (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button type="button"
+                        disabled={roundStatusLoadingId === c.id}
+                        onClick={(e) => { e.stopPropagation(); handleClearInterviewReject(c); }}
+                        className="text-xs font-semibold bg-slate-100 text-slate-700 rounded-lg px-3 py-1.5 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 transition-colors">
+                        {roundStatusLoadingId === c.id ? '...' : 'Restore to Active'}
+                      </button>
                       <select defaultValue={currentRound}
                         id={`reschedule-round-${c.id}`}
                         className="text-[10px] border border-slate-200 rounded px-1.5 py-1 bg-white text-slate-700 outline-none">
@@ -300,7 +394,7 @@ export default function CandidateCard({
                         setScheduleModalCandidate(c);
                         setScheduleModalRound(sel ? sel.value : currentRound);
                       }}
-                        className="text-xs font-semibold bg-rose-600 text-white rounded-lg px-3 py-1.5 hover:bg-rose-700 transition-colors">
+                        className="text-xs font-semibold bg-purple-600 text-white rounded-lg px-3 py-1.5 hover:bg-purple-700 transition-colors">
                         Reschedule
                       </button>
                     </div>
@@ -340,14 +434,33 @@ export default function CandidateCard({
                   );
                 }
                 if (roundStatus === 'COMPLETED') {
-                  const isLastRound = ROUND_PROGRESSION.indexOf(currentRound) >= ROUND_PROGRESSION.length - 1;
+                  const currentIdx = ROUND_PROGRESSION.indexOf(currentRound);
+                  const remainingRounds = ROUND_PROGRESSION.slice(currentIdx + 1);
+                  const defaultTarget = remainingRounds[0];
+                  const isMoving = nextRoundLoading === c.id || jumpRoundLoading === c.id;
                   return (
-                    <div className="flex items-center gap-2">
-                      {!isLastRound && (
-                        <button type="button" disabled={nextRoundLoading === c.id} onClick={(e) => { e.stopPropagation(); handleNextRound(c); }}
-                          className="text-xs font-semibold bg-purple-600 text-white rounded-lg px-3 py-1.5 hover:bg-purple-700 disabled:opacity-50 transition-colors">
-                          {nextRoundLoading === c.id ? '...' : 'Move to Next Round'}
-                        </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {remainingRounds.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={jumpTarget || defaultTarget}
+                            onChange={(e) => { e.stopPropagation(); setJumpTarget(e.target.value); }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs border border-purple-200 rounded px-2 py-1 bg-white text-purple-700 outline-none cursor-pointer"
+                          >
+                            {remainingRounds.map((r, i) => (
+                              <option key={r} value={r}>{ROUND_LABELS[r] || r}{i === 0 ? ' (Next)' : ''}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            disabled={isMoving}
+                            onClick={(e) => { e.stopPropagation(); handleJumpRound(c, jumpTarget || defaultTarget); }}
+                            className="text-xs font-semibold bg-purple-600 text-white rounded-lg px-3 py-1.5 hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                          >
+                            {isMoving ? '...' : 'Move to Round'}
+                          </button>
+                        </div>
                       )}
                       <button type="button" onClick={(e) => { e.stopPropagation(); handleMakeOffer(c); }} disabled={shortlistingId === c.id}
                         className="text-xs font-semibold bg-cyan-600 text-white rounded-lg px-3 py-1.5 hover:bg-cyan-700 disabled:opacity-40 transition-colors">
@@ -358,11 +471,39 @@ export default function CandidateCard({
                 }
                 return null;
               })()}
-              {/* Primary Termination Action (Reject/Drop) */}
-              {!['JOINED', 'DROPPED'].includes(macroStage) && c.interview_status !== 'REJECTED' && (
-                <button onClick={() => { setDropModalCandidate(c); setDropReason('REJECTED'); }}
+              {/* Reject — Interview stage only, inline confirmation */}
+              {macroStage === 'INTERVIEW' && c.interview_status !== 'REJECTED' && (
+                rejectConfirm ? (
+                  <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5 animate-in fade-in duration-150">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    <span className="text-[11px] text-rose-700 font-medium whitespace-nowrap">Reject this candidate?</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setRejectConfirm(false); handleInterviewReject(c); }}
+                      disabled={roundStatusLoadingId === c.id}
+                      className="text-[11px] font-bold bg-rose-600 text-white px-2 py-0.5 rounded hover:bg-rose-700 disabled:opacity-50 transition-colors">
+                      Yes, Reject
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setRejectConfirm(false); }}
+                      className="text-[11px] text-slate-500 hover:text-slate-700 px-1.5 py-0.5 rounded hover:bg-slate-100 transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setRejectConfirm(true); }}
+                    disabled={roundStatusLoadingId === c.id}
+                    className="text-xs text-rose-500 hover:text-rose-700 px-2.5 py-1.5 border border-rose-100 hover:border-rose-200 rounded-lg disabled:opacity-50 transition-colors">
+                    Reject
+                  </button>
+                )
+              )}
+              {/* Reject button — Applied/Shortlisted: opens reason picker; hidden when picker already open */}
+              {!['INTERVIEW', 'JOINED', 'DROPPED'].includes(macroStage) && !pendingAction && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setPendingAction({ type: 'reject', reason: '' }); }}
                   className="text-xs text-rose-500 hover:text-rose-700 px-2.5 py-1.5 border border-rose-100 hover:border-rose-200 rounded-lg transition-colors">
-                  {macroStage === 'INTERVIEW' ? 'Reject' : 'Drop'}
+                  Reject
                 </button>
               )}
             </div>

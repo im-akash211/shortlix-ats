@@ -38,12 +38,6 @@ export default function App() {
                 </Suspense>
               } />
 
-              <Route path={ROUTES.JOBS.CANDIDATE_PROFILE_PATTERN} element={
-                <Suspense fallback={<PageSkeleton />}>
-                  <CandidateProfile />
-                </Suspense>
-              } />
-
               <Route path={`${ROUTES.JOBS.ROOT}/*`} element={
                 <Suspense fallback={<PageSkeleton />}>
                   <Jobs />

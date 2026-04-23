@@ -7,6 +7,7 @@ export default function CandidateFilters({
   activeFilterCount,
   urlSources,
   urlStages,
+  urlTags,
   urlJob,
   expMin,
   expMax,
@@ -103,7 +104,6 @@ export default function CandidateFilters({
             />
           </div>
         </FilterSection>
-
         {/* Date Added */}
         <FilterSection title="Date Added" defaultOpen={false}>
           <div className="flex flex-col gap-2.5">
@@ -124,6 +124,52 @@ export default function CandidateFilters({
                 onChange={(e) => setExpFilter('date_to', e.target.value)}
                 className="border border-slate-300 rounded p-1.5 text-sm outline-none focus:border-blue-500"
               />
+            </div>
+          </div>
+        </FilterSection>
+
+        {/* Tags */}
+        <FilterSection title="Tags" defaultOpen={false}>
+          <div className="flex flex-col gap-2">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const input = e.target.elements.tagInput;
+                if (input.value.trim()) {
+                  toggleArrayFilter('tags', input.value.trim());
+                  input.value = '';
+                }
+              }}
+              className="flex gap-1"
+            >
+              <input
+                name="tagInput"
+                type="text"
+                placeholder="Add tag filter…"
+                className="flex-1 border border-slate-300 rounded p-1.5 text-xs outline-none focus:border-blue-500"
+              />
+              <button
+                type="submit"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 rounded border border-slate-300 transition-colors"
+              >
+                +
+              </button>
+            </form>
+            <div className="flex flex-wrap gap-1.5">
+              {(urlTags || []).map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200"
+                >
+                  {tag}
+                  <button
+                    onClick={() => toggleArrayFilter('tags', tag)}
+                    className="hover:text-blue-900"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
             </div>
           </div>
         </FilterSection>

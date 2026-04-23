@@ -53,6 +53,7 @@ class CandidateJobMappingSerializer(serializers.ModelSerializer):
         max_digits=4, decimal_places=1
     )
     candidate_skills = serializers.ListField(source='candidate.skills', read_only=True)
+    candidate_tags = serializers.ListField(source='candidate.tags', read_only=True)
     candidate_designation = serializers.CharField(source='candidate.designation', read_only=True)
     job_title = serializers.CharField(source='job.title', read_only=True)
     job_code = serializers.CharField(source='job.job_code', read_only=True)
@@ -66,11 +67,12 @@ class CandidateJobMappingSerializer(serializers.ModelSerializer):
             'current_interview_round', 'next_interview_date', 'priority',
             'screening_status',
             'interview_status',
+            'action_reason',
             # Audit
             'moved_by', 'stage_updated_at', 'created_at',
             # Denormalised candidate fields
             'candidate_name', 'candidate_email', 'candidate_phone',
-            'candidate_location', 'candidate_experience', 'candidate_skills',
+            'candidate_location', 'candidate_experience', 'candidate_skills', 'candidate_tags',
             'candidate_designation',
             # Denormalised job fields
             'job_title', 'job_code',
@@ -87,7 +89,7 @@ class CandidateListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Candidate
         fields = ['id', 'full_name', 'email', 'phone', 'location', 'designation',
-                  'current_employer', 'total_experience_years', 'skills', 'source',
+                  'current_employer', 'total_experience_years', 'skills', 'tags', 'source',
                   'sub_source', 'created_at', 'current_job', 'current_stage']
 
     def get_current_job(self, obj):
