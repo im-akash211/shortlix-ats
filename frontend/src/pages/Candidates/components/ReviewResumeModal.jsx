@@ -40,6 +40,9 @@ export default function ReviewResumeModal({
   handleConvert,
   handleResolveDuplicate,
   queryClient,
+  // Optional: when uploading from a job context
+  targetJob = null,
+  onApplyToJob = null,
 }) {
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
@@ -78,16 +81,26 @@ export default function ReviewResumeModal({
             <CheckCircle className="w-9 h-9 text-emerald-600" />
           </div>
           <div>
-            <p className="text-lg font-semibold text-slate-800">Candidate Added to Talent Pool!</p>
+            <p className="text-lg font-semibold text-slate-800">
+              {targetJob ? 'Candidate Added & Applied!' : 'Candidate Added to Talent Pool!'}
+            </p>
             <p className="text-sm text-slate-500 mt-1">
-              <span className="font-medium text-slate-700">{convertSuccess.full_name}</span> is now in the talent pool.
+              <span className="font-medium text-slate-700">{convertSuccess.full_name}</span>{' '}
+              {targetJob
+                ? <>has been added to the talent pool and applied to <span className="font-medium text-slate-700">{targetJob.title}</span>.</>
+                : 'is now in the talent pool.'
+              }
             </p>
           </div>
           <button
-            onClick={() => { onClose(); queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] }); }}
+            onClick={() => {
+              onClose();
+              queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] });
+              if (targetJob && onApplyToJob) onApplyToJob(convertSuccess);
+            }}
             className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors"
           >
-            View in Talent Pool
+            {targetJob ? 'View in Pipeline' : 'View in Talent Pool'}
           </button>
         </div>
 

@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '../../lib/useDebounce';
 import { PageLoader } from '../../components/LoadingDots';
 import { ROUTES } from '../../routes/constants';
-import { Search, Briefcase, UserPlus, X } from 'lucide-react';
+import { Search, Briefcase, UserPlus, Upload, Users, X, ChevronDown } from 'lucide-react';
+import { useAuth } from '../../lib/authContext';
 
 import { useJobs, useFilterOptions } from './hooks/useJobs';
 import { useJobDetail } from './hooks/useJobDetail';
 import { useCollaborators } from './hooks/useCollaborators';
 import { useJobPipeline } from './hooks/useJobPipeline';
 import { useShare } from './hooks/useShare';
+import { useResumeUpload } from '../Candidates/hooks/useResumeUpload';
 
 import { jobsApi, candidatesApi, interviewsApi } from './services/jobsApi';
+import { candidates as candidatesLibApi } from '../../lib/api';
 
 import JobCard from './components/JobCard';
 import JobFilters from './components/JobFilters';
@@ -19,15 +23,21 @@ import JobDetailPanel from './components/JobDetailPanel';
 import PipelineView from './components/PipelineView';
 import JobEditModal from './components/JobEditModal';
 import CollaboratorsModal from './components/CollaboratorsModal';
-import AddCandidateModal from './components/AddCandidateModal';
+import ApplyCandidateModal from './components/ApplyCandidateModal';
 import ScheduleModal from './components/ScheduleModal';
 import NewScheduleModal from './components/NewScheduleModal';
 import DropModal from './components/DropModal';
 import ResumeModal from './components/ResumeModal';
 import SetReminderModal from './components/SetReminderModal';
+import UploadResumeModal from '../Candidates/components/UploadResumeModal';
+import ReviewResumeModal from '../Candidates/components/ReviewResumeModal';
 
 export default function JobsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const canUploadResume = user?.role === 'admin' || user?.role === 'recruiter';
+
   const [searchParams, setSearchParams] = useSearchParams();
 
   // ── URL-based List state ───────────────────────────────────────────────────
@@ -152,40 +162,53 @@ export default function JobsPage() {
     }
   };
 
-  // ── Add Profile state ──────────────────────────────────────────────────────
-  const [isAddProfileOpen, setIsAddProfileOpen] = useState(false);
-  const [addProfileTargetJob, setAddProfileTargetJob] = useState(null);
-  const [addForm, setAddForm] = useState({ full_name: '', email: '', phone: '', location: '', total_experience_years: '' });
-  const [addLoading, setAddLoading] = useState(false);
-  const [addProfileSuccess, setAddProfileSuccess] = useState('');
+  // ── Upload resume (job context) ────────────────────────────────────────────
+  const [jobResumeActiveModal, setJobResumeActiveModal] = useState(null); // 'upload' | 'review' | null
+  const jobResume = useResumeUpload({ setActiveModal: setJobResumeActiveModal });
 
-  const handleAddProfile = async () => {
-    if (!addForm.full_name || !addForm.email) return;
-    setAddLoading(true);
-    const targetJob = addProfileTargetJob || viewingJob;
-    try {
-      const candidate = await candidatesApi.create({
-        ...addForm,
-        total_experience_years: addForm.total_experience_years || null,
-        source: 'manual',
-      });
-      if (targetJob) await candidatesApi.assignJob(candidate.id, targetJob.id);
-      setIsAddProfileOpen(false);
-      setAddProfileTargetJob(null);
-      setAddForm({ full_name: '', email: '', phone: '', location: '', total_experience_years: '' });
-      if (viewingJob && targetJob?.id === viewingJob.id) {
+  // After a resume is converted, assign the candidate to the current job
+  useEffect(() => {
+    if (!jobResume.convertSuccess || !viewingJob) return;
+    candidatesLibApi.assignJob(jobResume.convertSuccess.id, viewingJob.id)
+      .then(() => {
         pipeline.setPipelineTab('Applied');
-        setIsPipelinePanelOpen(true);
         pipeline.refreshAllCandidates(viewingJob.id);
-      }
-      setAddProfileSuccess(`Profile added successfully${targetJob ? ` to ${targetJob.title}` : ''}.`);
-      setTimeout(() => setAddProfileSuccess(''), 4000);
-    } catch (err) {
-      alert(err.data?.email?.[0] || err.data?.detail || 'Failed to add profile');
-    } finally {
-      setAddLoading(false);
-    }
+      })
+      .catch(() => {}); // already-assigned is fine; pipeline still refreshes above
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobResume.convertSuccess]);
+
+  const handleResumeApplyToJob = () => {
+    // Called when user clicks "View in Pipeline" on the success screen
+    pipeline.setPipelineTab('Applied');
+    pipeline.refreshAllCandidates(viewingJob.id);
+    navigate(ROUTES.JOBS.CANDIDATES(viewingJob.id));
   };
+
+  // ── Apply existing candidate modal ────────────────────────────────────────
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [applyToast, setApplyToast] = useState('');
+
+  const handleApplyCandidateSuccess = (candidate) => {
+    pipeline.setPipelineTab('Applied');
+    pipeline.refreshAllCandidates(viewingJob.id);
+    setApplyToast(`${candidate.full_name} applied to ${viewingJob.title} successfully.`);
+    setTimeout(() => setApplyToast(''), 4000);
+  };
+
+  // ── Add profile dropdown state ─────────────────────────────────────────────
+  const [addDropdownOpen, setAddDropdownOpen] = useState(false);
+  const addDropdownRef = React.useRef(null);
+  useEffect(() => {
+    if (!addDropdownOpen) return;
+    const handler = (e) => {
+      if (addDropdownRef.current && !addDropdownRef.current.contains(e.target)) {
+        setAddDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [addDropdownOpen]);
 
   // ── Candidate profile ──────────────────────────────────────────────────────
   const openCandidateProfile = (c) => {
@@ -320,7 +343,9 @@ export default function JobsPage() {
           openEdit={jobDetail.openEdit}
           setIsDeleteJobOpen={jobDetail.setIsDeleteJobOpen}
           openCollabModal={collabs.openCollabModal}
-          setIsAddProfileOpen={setIsAddProfileOpen}
+          onUploadResume={jobResume.openUploadModal}
+          onApplyFromPool={() => setApplyModalOpen(true)}
+          canUploadResume={canUploadResume}
         />
       ) : (
         /* ══════════════════ JOB LIST VIEW ══════════════════ */
@@ -390,7 +415,6 @@ export default function JobsPage() {
                     job={job}
                     onView={(j) => openJobDetails(j)}
                     onOpenPipeline={(j, tab) => openJobDetails(j, tab, true)}
-                    onAddProfile={(j) => { setAddProfileTargetJob(j); setIsAddProfileOpen(true); }}
                     onCollaborators={(j) => collabs.openCollabModal(j)}
                   />
                 ))
@@ -434,12 +458,42 @@ export default function JobsPage() {
                 <h3 className="text-base font-bold text-slate-800 mt-0.5">{pipeline.pipelineTab}</h3>
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-4">
-                <button
-                  onClick={() => setIsAddProfileOpen(true)}
-                  className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-                >
-                  <UserPlus className="w-3.5 h-3.5" /> Add Profile
-                </button>
+                {/* Add candidate dropdown */}
+                <div className="relative" ref={addDropdownRef}>
+                  <button
+                    onClick={() => setAddDropdownOpen(o => !o)}
+                    className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" /> Add Candidate
+                    <ChevronDown className="w-3 h-3 ml-0.5" />
+                  </button>
+                  {addDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-[400] overflow-hidden">
+                      {canUploadResume && (
+                        <button
+                          onClick={() => { setAddDropdownOpen(false); jobResume.openUploadModal(); }}
+                          className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors text-left"
+                        >
+                          <Upload className="w-4 h-4 shrink-0" />
+                          <div>
+                            <p className="font-medium">Upload Resume</p>
+                            <p className="text-xs text-slate-400">Parse & add new candidate</p>
+                          </div>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setAddDropdownOpen(false); setApplyModalOpen(true); }}
+                        className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors text-left border-t border-slate-100"
+                      >
+                        <Users className="w-4 h-4 shrink-0" />
+                        <div>
+                          <p className="font-medium">From Talent Pool</p>
+                          <p className="text-xs text-slate-400">Apply existing candidate</p>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => { pipeline.setScreeningFilter('ALL'); pipeline.setInterviewFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
                   className="text-slate-400 hover:text-slate-700 transition-colors p-1"
@@ -465,6 +519,57 @@ export default function JobsPage() {
             />
           </div>
         </>
+      )}
+
+      {/* Upload Resume (job context) */}
+      <UploadResumeModal
+        isOpen={jobResumeActiveModal === 'upload'}
+        onClose={jobResume.closeUploadModal}
+        uploadFile={jobResume.uploadFile}
+        uploadLoading={jobResume.uploadLoading}
+        uploadResult={jobResume.uploadResult}
+        uploadError={jobResume.uploadError}
+        uploadDuplicate={jobResume.uploadDuplicate}
+        existingCandidate={jobResume.existingCandidate}
+        fileInputRef={jobResume.fileInputRef}
+        handleFileSelect={jobResume.handleFileSelect}
+        handleUploadSubmit={jobResume.handleUploadSubmit}
+        openReviewModal={jobResume.openReviewModal}
+        setUploadResult={jobResume.setUploadResult}
+        setUploadFile={jobResume.setUploadFile}
+        setUploadError={jobResume.setUploadError}
+      />
+      <ReviewResumeModal
+        isOpen={jobResumeActiveModal === 'review'}
+        onClose={jobResume.closeReviewModal}
+        reviewIngestion={jobResume.reviewIngestion}
+        reviewForm={jobResume.reviewForm}
+        reviewLoading={jobResume.reviewLoading}
+        reviewSaved={jobResume.reviewSaved}
+        convertLoading={jobResume.convertLoading}
+        duplicateInfo={jobResume.duplicateInfo}
+        resolveLoading={jobResume.resolveLoading}
+        convertSuccess={jobResume.convertSuccess}
+        reviewError={jobResume.reviewError}
+        setReviewField={jobResume.setReviewField}
+        updateEducation={jobResume.updateEducation}
+        addEducation={jobResume.addEducation}
+        removeEducation={jobResume.removeEducation}
+        handleSaveReview={jobResume.handleSaveReview}
+        handleConvert={jobResume.handleConvert}
+        handleResolveDuplicate={jobResume.handleResolveDuplicate}
+        queryClient={queryClient}
+        targetJob={viewingJob}
+        onApplyToJob={handleResumeApplyToJob}
+      />
+
+      {/* Apply from Talent Pool */}
+      {applyModalOpen && viewingJob && (
+        <ApplyCandidateModal
+          job={viewingJob}
+          onClose={() => setApplyModalOpen(false)}
+          onSuccess={handleApplyCandidateSuccess}
+        />
       )}
 
       {/* Set Reminder Modal */}
@@ -561,17 +666,6 @@ export default function JobsPage() {
         handleRemoveCollab={collabs.handleRemoveCollab}
       />
 
-      {/* Add Profile Modal */}
-      <AddCandidateModal
-        isAddProfileOpen={isAddProfileOpen}
-        setIsAddProfileOpen={setIsAddProfileOpen}
-        setAddProfileTargetJob={setAddProfileTargetJob}
-        addForm={addForm}
-        setAddForm={setAddForm}
-        addLoading={addLoading}
-        handleAddProfile={handleAddProfile}
-      />
-
       {/* Schedule Interview Modal (old flow) */}
       <ScheduleModal
         isScheduleOpen={isScheduleOpen}
@@ -629,11 +723,11 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Add Profile success toast */}
-      {addProfileSuccess && (
+      {/* Apply / upload success toast */}
+      {applyToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] bg-green-600 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
           <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
-          {addProfileSuccess}
+          {applyToast}
         </div>
       )}
     </>
