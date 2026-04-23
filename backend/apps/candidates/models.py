@@ -92,6 +92,7 @@ class Candidate(models.Model):
     location = models.CharField(max_length=255, blank=True)
     total_experience_years = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     skills = ArrayField(models.CharField(max_length=100), default=list, blank=True)
+    tags   = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     # Education — 10th
     tenth_board = models.CharField(max_length=255, blank=True)
     tenth_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
@@ -213,6 +214,8 @@ class CandidateJobMapping(models.Model):
         null=True,
         blank=True,
     )
+
+    action_reason = models.CharField(max_length=255, blank=True)
 
     moved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True)
     stage_updated_at = models.DateTimeField(auto_now=True)

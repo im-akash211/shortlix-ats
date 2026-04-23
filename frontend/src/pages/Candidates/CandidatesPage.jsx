@@ -35,6 +35,7 @@ export default function CandidatesPage() {
     search,
     urlSources,
     urlStages,
+    urlTags,
     urlJob,
     expMin,
     expMax,
@@ -109,7 +110,7 @@ export default function CandidatesPage() {
                     type="text"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
-                    placeholder="Search by name, email, skills…"
+                    placeholder="Search by name, email, skills, tags…"
                     className="w-full px-3 py-2 text-sm outline-none"
                   />
                   <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -270,6 +271,7 @@ export default function CandidatesPage() {
           activeFilterCount={activeFilterCount}
           urlSources={urlSources}
           urlStages={urlStages}
+          urlTags={urlTags}
           urlJob={urlJob}
           expMin={expMin}
           expMax={expMax}

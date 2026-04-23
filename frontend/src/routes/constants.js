@@ -2,7 +2,7 @@ export const ROUTES = {
   HOME: '/',
   LOGIN: '/login',
   DASHBOARD: '/dashboard',
-  
+
   // Requisitions
   REQUISITIONS: {
     ROOT: '/requisitions',
@@ -18,25 +18,22 @@ export const ROUTES = {
     DETAIL_PATTERN: '/jobs/:jobId',
     CANDIDATES: (jobId) => `/jobs/${jobId}/candidates`,
     CANDIDATES_PATTERN: '/jobs/:jobId/candidates',
-    CANDIDATE_PROFILE: (jobId, candidateId) => `/jobs/${jobId}/candidates/${candidateId}`,
-    CANDIDATE_PROFILE_PATTERN: '/jobs/:jobId/candidates/:candidateId',
     INTERVIEWS: (jobId) => `/jobs/${jobId}/interviews`,
     INTERVIEWS_PATTERN: '/jobs/:jobId/interviews',
     NEW_INTERVIEW: (jobId) => `/jobs/${jobId}/interview/new`,
     NEW_INTERVIEW_PATTERN: '/jobs/:jobId/interview/new',
   },
 
-  // Candidates
+  // Candidates — single canonical profile URL, jobId passed as query param when coming from pipeline
   CANDIDATES: {
     ROOT: '/candidates',
     DETAIL: (id) => `/candidates/${id}`,
     DETAIL_PATTERN: '/candidates/:candidateId',
     PROFILE: (id) => `/candidates/${id}/profile`,
     PROFILE_PATTERN: '/candidates/:candidateId/profile',
+    PROFILE_FROM_JOB: (candidateId, jobId) => `/candidates/${candidateId}/profile?jobId=${jobId}`,
     EDIT: (id) => `/candidates/${id}/edit`,
     EDIT_PATTERN: '/candidates/:candidateId/edit',
-    PROFILE: (id) => `/candidates/${id}/profile`,
-    PROFILE_PATTERN: '/candidates/:candidateId/profile',
   },
 
   // Approvals & Misc
