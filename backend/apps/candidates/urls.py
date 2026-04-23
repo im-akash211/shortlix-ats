@@ -6,6 +6,7 @@ from .views import (
     NextRoundView, JumpToRoundView, SetScreeningStatusView,
     CandidateJobCommentListCreateView,
     CandidateReminderListCreateView, CandidateReminderUpdateDeleteView,
+    CandidateAIMatchView,
 )
 
 urlpatterns = [
@@ -24,4 +25,5 @@ urlpatterns = [
     path('<uuid:pk>/jobs/<uuid:job_id>/comments/', CandidateJobCommentListCreateView.as_view(), name='candidate-job-comments'),
     path('<uuid:pk>/reminders/', CandidateReminderListCreateView.as_view(), name='candidate-reminders'),
     path('<uuid:pk>/reminders/<uuid:reminder_id>/', CandidateReminderUpdateDeleteView.as_view(), name='candidate-reminder-detail'),
+    path('<uuid:pk>/ai-match/', CandidateAIMatchView.as_view(), name='candidate-ai-match'),
 ]

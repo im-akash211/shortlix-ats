@@ -15,21 +15,30 @@ def _fire_due_reminders(user):
         remind_at__lte=timezone.now(),
         notified=False,
         is_done=False,
-    ).select_related('candidate')
+    ).select_related('candidate', 'mapping', 'mapping__job')
     if not due.exists():
         return
     notifications = []
     ids = []
     for reminder in due:
-        msg = f'Reminder for {reminder.candidate.full_name}'
+        job = reminder.mapping.job if reminder.mapping else None
+        macro_stage = reminder.mapping.macro_stage if reminder.mapping else ''
+        stage_label = macro_stage.capitalize() if macro_stage else ''
+        msg = f'Reminder: {reminder.candidate.full_name}'
+        if job:
+            msg += f' — {job.title}'
+        if stage_label:
+            msg += f' ({stage_label})'
         if reminder.note:
-            msg += f': {reminder.note}'
+            msg += f'. {reminder.note}'
         notifications.append(InAppNotification(
             recipient=user,
             sender=None,
             notification_type='reminder',
             message=msg,
             candidate=reminder.candidate,
+            job=job,
+            macro_stage=macro_stage,
         ))
         ids.append(reminder.id)
     InAppNotification.objects.bulk_create(notifications)

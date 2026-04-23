@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, User, Check, CheckCheck, Trash2 } from 'lucide-react';
+import { Bell, User, Check, CheckCheck, Trash2, Clock } from 'lucide-react';
 import { notifications as notificationsApi } from '../lib/api';
 import { ROUTES } from '../routes/constants';
 
@@ -70,10 +70,18 @@ export default function Topbar({ user, onLogout }) {
     } catch (err) { console.error(err); }
   };
 
+  const MACRO_TO_TAB = {
+    APPLIED: 'Applied', SHORTLISTED: 'Shortlisted',
+    INTERVIEW: 'Interview', OFFERED: 'Offered', JOINED: 'Offered', DROPPED: 'Offered',
+  };
+
   const handleNotifClick = async (n) => {
     if (!n.is_read) await markRead(n.id);
-    if (n.candidate_id) {
-      setNotifOpen(false);
+    setNotifOpen(false);
+    if (n.notification_type === 'reminder' && n.job_id) {
+      const tab = MACRO_TO_TAB[n.macro_stage] || 'Applied';
+      navigate(`/jobs/${n.job_id}/candidates?stage=${tab}`);
+    } else if (n.candidate_id) {
       navigate(ROUTES.CANDIDATES.PROFILE(n.candidate_id));
     }
   };
@@ -145,8 +153,8 @@ export default function Topbar({ user, onLogout }) {
                     onClick={() => handleNotifClick(n)}
                     className={`flex items-start gap-3 px-4 py-3 border-b border-slate-50 last:border-0 transition-colors cursor-pointer group ${!n.is_read ? 'bg-blue-50 hover:bg-blue-100' : 'bg-white hover:bg-slate-50'}`}
                   >
-                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                      <User className="w-4 h-4" />
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${n.notification_type === 'reminder' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                      {n.notification_type === 'reminder' ? <Clock className="w-4 h-4" /> : <User className="w-4 h-4" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-slate-700 leading-relaxed">{n.message}</p>

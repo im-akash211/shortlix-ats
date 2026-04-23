@@ -1,8 +1,8 @@
 import React from 'react';
-import { MapPin, Clock, Eye, UserPlus, Users, User, Building2 } from 'lucide-react';
+import { MapPin, Clock, Eye, Users, User, Building2 } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 
-export default function JobCard({ job, onView, onOpenPipeline, onAddProfile, onCollaborators }) {
+export default function JobCard({ job, onView, onOpenPipeline, onCollaborators }) {
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 flex justify-between shadow-sm hover:shadow-md transition-shadow gap-4">
       <div className="flex flex-col gap-3 flex-1 min-w-0">
@@ -34,13 +34,7 @@ export default function JobCard({ job, onView, onOpenPipeline, onAddProfile, onC
           <button onClick={() => onView(job)} className="flex items-center gap-1 hover:text-blue-800">
             <Eye className="w-3.5 h-3.5" /> View
           </button>
-          <button
-            onClick={() => onAddProfile(job)}
-            className="flex items-center gap-1 hover:text-blue-800"
-          >
-            <UserPlus className="w-3.5 h-3.5" /> Add Profile
-          </button>
-          <button onClick={() => onCollaborators(job)} className="flex items-center gap-1 hover:text-blue-800">
+<button onClick={() => onCollaborators(job)} className="flex items-center gap-1 hover:text-blue-800">
             <Users className="w-3.5 h-3.5" /> Collaborators
           </button>
         </div>

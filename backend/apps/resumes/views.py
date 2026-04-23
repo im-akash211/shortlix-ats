@@ -20,12 +20,9 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
-# ── Celery dispatch helper ─────────────────────────────────────────────────────
-
 def _dispatch_task(task, *args):
     """
     Try Celery first; fall back to background thread when broker unavailable.
-    This keeps the API response non-blocking in development without Redis.
     """
     try:
         task.delay(*args)
@@ -36,10 +33,51 @@ def _dispatch_task(task, *args):
         threading.Thread(target=task.apply, kwargs={"args": args}, daemon=True).start()
 
 
+def _commit_temp_to_s3(ingestion):
+    """Copy temp_file from ats/temp_resumes/ to ats/resumes/ as ingestion.file."""
+    if not ingestion.temp_file or ingestion.file:
+        return
+    try:
+        import os
+        import boto3
+        from django.conf import settings as _s
+
+        opts = _s.STORAGES.get('default', {}).get('OPTIONS', {})
+        bucket = opts.get('bucket_name') or os.environ.get('AWS_S3_BUCKET', '')
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=opts.get('access_key') or os.environ.get('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=opts.get('secret_key') or os.environ.get('AWS_SECRET_ACCESS_KEY'),
+            region_name=opts.get('region_name', 'us-west-2'),
+        )
+        src_key = ingestion.temp_file.name
+        dst_key = f"ats/resumes/{os.path.basename(src_key)}"
+        s3.copy_object(Bucket=bucket, CopySource={'Bucket': bucket, 'Key': src_key}, Key=dst_key)
+        s3.delete_object(Bucket=bucket, Key=src_key)
+
+        ingestion.file = dst_key
+        ingestion.temp_file = ''
+        ingestion.save(update_fields=['file', 'temp_file', 'updated_at'])
+    except Exception as exc:
+        logger.warning("Failed to commit temp file to S3 for ingestion %s: %s", ingestion.id, exc)
+
+
+def _delete_temp_file(ingestion):
+    """Delete temp_file from S3 if it exists."""
+    if not ingestion.temp_file:
+        return
+    try:
+        ingestion.temp_file.delete(save=False)
+        ingestion.temp_file = ''
+        ingestion.save(update_fields=['temp_file', 'updated_at'])
+    except Exception as exc:
+        logger.warning("Failed to delete temp file for ingestion %s: %s", ingestion.id, exc)
+
+
 # ── Phase 1 views ──────────────────────────────────────────────────────────────
 
 class ResumeUploadView(APIView):
-    """POST /api/v1/resume/upload/ — validate, store, queue parsing."""
+    """POST /api/v1/resume/upload/ — validate, store in temp S3, queue parsing."""
 
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]
@@ -52,28 +90,41 @@ class ResumeUploadView(APIView):
         file = serializer.validated_data["file"]
         ext  = file.name.rsplit(".", 1)[-1].lower()
 
-        # ── Exact duplicate detection via SHA-256 hash ─────────────────────────
-        from .utils.file_hash import generate_file_hash  # noqa: PLC0415
+        # ── SHA-256 duplicate detection ────────────────────────────────────────
+        from .utils.file_hash import generate_file_hash
         file_hash = generate_file_hash(file)
 
         existing = ResumeIngestion.objects.filter(file_hash=file_hash).first()
         if existing:
-            return Response(
-                {
-                    "duplicate": True,
-                    "message": "This exact resume file has already been uploaded.",
-                    "existing_resume_id": str(existing.id),
-                    "existing_status": existing.status,
-                    "uploaded_at": existing.created_at,
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
+            if existing.status == ResumeIngestion.STATUS_CONVERTED and existing.converted_candidate:
+                # Already fully saved — return duplicate candidate info
+                return Response(
+                    {
+                        "status": "already_converted",
+                        "message": "This resume has already been added to the talent pool.",
+                        "candidate": CandidateSnapshotSerializer(existing.converted_candidate).data,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            else:
+                # Still in temp/processing — resume the existing flow
+                existing_data = ResumeIngestionSerializer(
+                    ResumeIngestion.objects.select_related('parsed_data').get(pk=existing.pk)
+                ).data
+                return Response(
+                    {
+                        "status": "resume_existing",
+                        "message": "This resume was already uploaded and is being processed.",
+                        "ingestion": existing_data,
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
-        # ── New file — proceed with normal pipeline ────────────────────────────
+        # ── New upload — save to temp S3 prefix ───────────────────────────────
         try:
             ingestion = ResumeIngestion.objects.create(
                 uploaded_by=request.user,
-                file=file,
+                temp_file=file,
                 original_filename=file.name,
                 file_type=ext,
                 file_size=file.size,
@@ -81,21 +132,18 @@ class ResumeUploadView(APIView):
                 status=ResumeIngestion.STATUS_QUEUED,
             )
         except IntegrityError:
-            # Race condition: another request saved the same hash between our
-            # filter check and this insert — treat it as a duplicate.
             existing = ResumeIngestion.objects.filter(file_hash=file_hash).first()
+            if existing:
+                return Response(
+                    {"status": "resume_existing", "ingestion": ResumeIngestionSerializer(existing).data},
+                    status=status.HTTP_200_OK,
+                )
             return Response(
-                {
-                    "duplicate": True,
-                    "message": "This exact resume file has already been uploaded.",
-                    "existing_resume_id": str(existing.id) if existing else None,
-                    "existing_status": existing.status if existing else None,
-                    "uploaded_at": existing.created_at if existing else None,
-                },
+                {"detail": "Upload failed. Please try again."},
                 status=status.HTTP_409_CONFLICT,
             )
 
-        from .tasks import process_resume  # noqa: PLC0415
+        from .tasks import process_resume
         _dispatch_task(process_resume, str(ingestion.id))
         logger.info("Resume ingestion %s queued by user %s", ingestion.id, request.user.id)
 
@@ -132,13 +180,7 @@ class ResumeIngestionListView(generics.ListAPIView):
 # ── Phase 2 views ──────────────────────────────────────────────────────────────
 
 class ResumeReviewView(APIView):
-    """
-    PATCH /api/v1/resume/<uuid>/review/
-
-    Save human-reviewed / edited resume fields into ResumeParsedData.reviewed_output.
-    Advances ingestion status to STATUS_REVIEWED.
-    Original llm_output is never modified.
-    """
+    """PATCH /api/v1/resume/<uuid>/review/"""
 
     permission_classes = [IsAuthenticated]
 
@@ -158,10 +200,7 @@ class ResumeReviewView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         serializer.save_review(ingestion, request.user)
-        return Response(
-            ResumeIngestionSerializer(ingestion).data,
-            status=status.HTTP_200_OK,
-        )
+        return Response(ResumeIngestionSerializer(ingestion).data, status=status.HTTP_200_OK)
 
     @staticmethod
     def _get_ingestion(pk, user):
@@ -173,17 +212,35 @@ class ResumeReviewView(APIView):
             return None
 
 
+class ResumeDiscardView(APIView):
+    """
+    DELETE /api/v1/resume/<uuid>/discard/
+
+    Called when user closes the review modal without saving.
+    Deletes temp_file from S3 and removes the ingestion record.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            ingestion = ResumeIngestion.objects.get(pk=pk, uploaded_by=request.user)
+        except ResumeIngestion.DoesNotExist:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if ingestion.status == ResumeIngestion.STATUS_CONVERTED:
+            return Response(
+                {"detail": "Cannot discard a converted ingestion."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        _delete_temp_file(ingestion)
+        ingestion.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class ResumeConvertView(APIView):
-    """
-    POST /api/v1/resume/<uuid>/convert/
-
-    Runs deduplication and, if no duplicate exists, creates a Candidate record.
-
-    Response cases:
-      202 — {status: "converted",        candidate: {...}}
-      200 — {status: "duplicate_found",  duplicate_candidate: {...}, match_type: "..."}
-      400 — validation / missing data errors
-    """
+    """POST /api/v1/resume/<uuid>/convert/"""
 
     permission_classes = [IsAuthenticated]
 
@@ -200,7 +257,7 @@ class ResumeConvertView(APIView):
 
         if ingestion.status not in (
             ResumeIngestion.STATUS_REVIEWED,
-            ResumeIngestion.STATUS_PARSED,  # allow conversion without explicit review step
+            ResumeIngestion.STATUS_PARSED,
         ):
             return Response(
                 {"detail": f"Cannot convert from status '{ingestion.status}'."},
@@ -210,42 +267,45 @@ class ResumeConvertView(APIView):
         reviewed_data = ingestion.parsed_data.effective_output
 
         # ── Deduplication check ────────────────────────────────────────────────
-        from .services.dedup import find_duplicate  # noqa: PLC0415
-        duplicate, match_type = find_duplicate(reviewed_data)
+        from .services.dedup import find_duplicates
+        matches = find_duplicates(reviewed_data)
 
-        if duplicate:
+        if matches:
+            primary = matches[0]['candidate']
             with transaction.atomic():
                 ingestion.status = ResumeIngestion.STATUS_DUPLICATE_FOUND
-                ingestion.duplicate_candidate = duplicate
+                ingestion.duplicate_candidate = primary
                 ingestion.save(update_fields=["status", "duplicate_candidate", "updated_at"])
 
+            duplicate_candidates = [
+                {
+                    **CandidateSnapshotSerializer(m['candidate']).data,
+                    'match_type': m['match_type'],
+                    'confidence': m['confidence'],
+                }
+                for m in matches
+            ]
             return Response(
                 {
                     "status": "duplicate_found",
-                    "match_type": match_type,
-                    "duplicate_candidate": CandidateSnapshotSerializer(duplicate).data,
+                    "match_type": matches[0]['match_type'],
+                    "duplicate_candidates": duplicate_candidates,
                 },
                 status=status.HTTP_200_OK,
             )
 
-        # ── No duplicate — create candidate ───────────────────────────────────
-        from .services.candidate_creator import (  # noqa: PLC0415
-            CandidateCreationError,
-            create_candidate_from_ingestion,
-        )
+        # ── No duplicate — commit temp file to S3 then create candidate ────────
+        _commit_temp_to_s3(ingestion)
 
+        from .services.candidate_creator import CandidateCreationError, create_candidate_from_ingestion
         try:
             candidate = create_candidate_from_ingestion(ingestion, request.user)
         except CandidateCreationError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        from apps.candidates.serializers import CandidateListSerializer  # noqa: PLC0415
-
+        from apps.candidates.serializers import CandidateListSerializer
         return Response(
-            {
-                "status": "converted",
-                "candidate": CandidateListSerializer(candidate).data,
-            },
+            {"status": "converted", "candidate": CandidateListSerializer(candidate).data},
             status=status.HTTP_201_CREATED,
         )
 
@@ -260,16 +320,7 @@ class ResumeConvertView(APIView):
 
 
 class ResumeDuplicateResolveView(APIView):
-    """
-    POST /api/v1/resume/<uuid>/resolve-duplicate/
-
-    Body: { "decision": "merge" | "force_create" | "discard" }
-
-    merge       — link ingestion to existing candidate (no new row created)
-    force_create — create new candidate even though a fuzzy duplicate exists
-                   (blocked when duplicate was found by exact email match)
-    discard     — mark ingestion as discarded; no candidate created
-    """
+    """POST /api/v1/resume/<uuid>/resolve-duplicate/"""
 
     permission_classes = [IsAuthenticated]
 
@@ -290,15 +341,15 @@ class ResumeDuplicateResolveView(APIView):
 
         decision = serializer.validated_data["decision"]
 
-        # ── discard ────────────────────────────────────────────────────────────
         if decision == "discard":
+            _delete_temp_file(ingestion)
             ingestion.status = ResumeIngestion.STATUS_DISCARDED
             ingestion.merge_decision = "discard"
             ingestion.save(update_fields=["status", "merge_decision", "updated_at"])
             return Response({"status": "discarded"}, status=status.HTTP_200_OK)
 
-        # ── merge — link to existing candidate ────────────────────────────────
         if decision == "merge":
+            _commit_temp_to_s3(ingestion)
             with transaction.atomic():
                 ingestion.status = ResumeIngestion.STATUS_CONVERTED
                 ingestion.converted_candidate = ingestion.duplicate_candidate
@@ -306,8 +357,7 @@ class ResumeDuplicateResolveView(APIView):
                 ingestion.save(
                     update_fields=["status", "converted_candidate", "merge_decision", "updated_at"]
                 )
-
-            from apps.candidates.serializers import CandidateListSerializer  # noqa: PLC0415
+            from apps.candidates.serializers import CandidateListSerializer
             return Response(
                 {
                     "status": "merged",
@@ -316,42 +366,30 @@ class ResumeDuplicateResolveView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # ── force_create — only allowed for fuzzy (non-email) duplicates ───────
         if decision == "force_create":
-            # Re-check: if the duplicate was found by exact email, force_create is unsafe
             dup = ingestion.duplicate_candidate
             reviewed_data = ingestion.parsed_data.effective_output
             email = (reviewed_data.get('email') or '').strip().lower()
 
             if dup and dup.email.lower() == email:
                 return Response(
-                    {
-                        "detail": (
-                            "Cannot force-create: a candidate with this exact email already exists. "
-                            "Please choose 'merge' or 'discard'."
-                        )
-                    },
+                    {"detail": "Cannot force-create: a candidate with this exact email already exists."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            from .services.candidate_creator import (  # noqa: PLC0415
-                CandidateCreationError,
-                create_candidate_from_ingestion,
-            )
             ingestion.merge_decision = "force_create"
             ingestion.save(update_fields=["merge_decision", "updated_at"])
+            _commit_temp_to_s3(ingestion)
 
+            from .services.candidate_creator import CandidateCreationError, create_candidate_from_ingestion
             try:
                 candidate = create_candidate_from_ingestion(ingestion, request.user)
             except CandidateCreationError as exc:
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-            from apps.candidates.serializers import CandidateListSerializer  # noqa: PLC0415
+            from apps.candidates.serializers import CandidateListSerializer
             return Response(
-                {
-                    "status": "converted",
-                    "candidate": CandidateListSerializer(candidate).data,
-                },
+                {"status": "converted", "candidate": CandidateListSerializer(candidate).data},
                 status=status.HTTP_201_CREATED,
             )
 

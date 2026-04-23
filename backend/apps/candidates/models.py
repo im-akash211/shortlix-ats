@@ -168,6 +168,12 @@ class ResumeFile(models.Model):
         db_table = 'resume_files'
         ordering = ['-created_at']
 
+    def delete(self, *args, **kwargs):
+        # Delete the actual S3 file before removing the DB record
+        if self.file:
+            self.file.delete(save=False)
+        super().delete(*args, **kwargs)
+
     def __str__(self):
         return f"{self.candidate.full_name} - {self.original_filename}"
 
@@ -198,6 +204,11 @@ class CandidateJobMapping(models.Model):
 
     # Priority for sorting and display
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='MEDIUM')
+
+    # AI match score
+    ai_match_score = models.FloatField(null=True, blank=True)
+    ai_match_reason = models.TextField(blank=True)
+    ai_match_computed_at = models.DateTimeField(null=True, blank=True)
 
     # Screening status for APPLIED stage classification
     screening_status = models.CharField(
@@ -288,6 +299,10 @@ class CandidateNoteHistory(models.Model):
 class CandidateReminder(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='reminders')
+    mapping = models.ForeignKey(
+        CandidateJobMapping, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reminders',
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='candidate_reminders'
     )

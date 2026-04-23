@@ -350,6 +350,7 @@ export default function CandidatesPage() {
         uploadResult={resumeUpload.uploadResult}
         uploadError={resumeUpload.uploadError}
         uploadDuplicate={resumeUpload.uploadDuplicate}
+        existingCandidate={resumeUpload.existingCandidate}
         fileInputRef={resumeUpload.fileInputRef}
         handleFileSelect={resumeUpload.handleFileSelect}
         handleUploadSubmit={resumeUpload.handleUploadSubmit}
