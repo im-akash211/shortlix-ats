@@ -77,11 +77,31 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-slate-400 mt-6">
-          Demo: <span className="font-mono text-slate-600">admin@ats.com</span> / <span className="font-mono text-slate-600">admin123</span>
-        </p>
-
         <div className="mt-5 pt-5 border-t border-slate-100">
+          <p className="text-xs font-medium text-slate-500 mb-2">Demo accounts for testing:</p>
+          <div className="flex flex-col gap-1.5">
+            {[
+              { email: 'admin@ats.com',        password: 'Admin@123', role: 'Admin' },
+              { email: 'priya.sharma@ats.com', password: 'Pass@123',  role: 'Recruiter' },
+              { email: 'amit.verma@ats.com',   password: 'Pass@123',  role: 'Hiring Manager' },
+            ].map(acc => (
+              <button
+                key={acc.email}
+                type="button"
+                onClick={() => { setEmail(acc.email); setPassword(acc.password); }}
+                className="flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-700 text-slate-600 border border-slate-100 transition-colors"
+              >
+                <span className="font-mono">{acc.email}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-slate-400">{acc.password}</span>
+                  <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px] font-medium">{acc.role}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-slate-100">
           <p className="text-center text-xs text-slate-400 mb-3">Are you an employee?</p>
           <button
             type="button"
