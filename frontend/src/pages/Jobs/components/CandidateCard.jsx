@@ -1,5 +1,5 @@
 import React from 'react';
-import { Share2, MessageCircle, Send, ChevronDown, ChevronUp } from 'lucide-react';
+import { Share2, MessageCircle, Send, ChevronDown, ChevronUp, Bell } from 'lucide-react';
 import {
   SCREENING_STATUS_COLORS, SCREENING_STATUS_LABELS,
   ROUND_LABELS, ROUND_PROGRESSION,
@@ -11,6 +11,8 @@ export default function CandidateCard({
   // share state/handlers
   shareOpen, setShareOpen, shareSearch, setShareSearch, shareSelected, setShareSelected, shareRef,
   usersList, usersLoading, handleShare,
+  // reminder
+  onSetReminder,
   // pipeline action handlers
   openCandidateProfile,
   handleShortlist, shortlistingId,
@@ -126,6 +128,15 @@ export default function CandidateCard({
               </span>
             )}
             {isActive && (
+              <>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onSetReminder && onSetReminder(c); }}
+                className="text-slate-400 hover:text-amber-500 transition-colors p-1"
+                title="Set Reminder"
+              >
+                <Bell className="w-3 h-3" />
+              </button>
               <div className="relative" ref={isShareOpen ? shareRef : null}>
                 <button
                   type="button"
@@ -172,6 +183,7 @@ export default function CandidateCard({
                   </div>
                 )}
               </div>
+              </>
             )}
           </div>
         </div>

@@ -494,3 +494,51 @@ class CandidateReminderUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
             candidate_id=self.kwargs['pk'],
             created_by=self.request.user,
         )
+
+
+class CandidateAIMatchView(APIView):
+    """
+    POST /api/candidates/<pk>/ai-match/
+    Recomputes AI match scores for all jobs this candidate has applied to.
+    Returns list of {job_id, job_title, score, reason} sorted by score desc.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        candidate = generics.get_object_or_404(
+            Candidate.objects.prefetch_related('resume_files', 'job_mappings__job'),
+            pk=pk,
+        )
+        mappings = list(candidate.job_mappings.select_related('job').all())
+        if not mappings:
+            return Response([], status=status.HTTP_200_OK)
+
+        from .services.ai_match import compute_and_save_match
+        import threading
+
+        def _compute_all():
+            for mapping in mappings:
+                compute_and_save_match(mapping)
+
+        thread = threading.Thread(target=_compute_all, daemon=True)
+        thread.start()
+        thread.join(timeout=60)
+
+        # Refresh from DB
+        from .models import CandidateJobMapping
+        updated = CandidateJobMapping.objects.filter(
+            candidate=candidate
+        ).select_related('job').order_by('-ai_match_score')
+
+        result = [
+            {
+                'mapping_id': str(m.id),
+                'job_id': str(m.job_id),
+                'job_title': m.job.title if m.job else '',
+                'score': m.ai_match_score,
+                'reason': m.ai_match_reason,
+                'macro_stage': m.macro_stage,
+            }
+            for m in updated if m.ai_match_score is not None
+        ]
+        return Response(result, status=status.HTTP_200_OK)

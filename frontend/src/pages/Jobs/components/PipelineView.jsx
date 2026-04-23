@@ -31,10 +31,12 @@ export default function PipelineView({
   setScheduleModalCandidate, setScheduleModalRound,
   commentsByCard, commentsOpenId, commentsLoadingId, commentInput, setCommentInput,
   commentSubmittingId, handleToggleComments, handleAddComment, handlePriorityChange,
+  onSetReminder,
 }) {
   const cardProps = {
     shareOpen, setShareOpen, shareSearch, setShareSearch, shareSelected, setShareSelected, shareRef,
     usersList, usersLoading, handleShare,
+    onSetReminder,
     openCandidateProfile,
     handleShortlist, shortlistingId,
     handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,

@@ -74,6 +74,8 @@ class CandidateJobMappingSerializer(serializers.ModelSerializer):
             'candidate_designation',
             # Denormalised job fields
             'job_title', 'job_code',
+            # AI match
+            'ai_match_score', 'ai_match_reason', 'ai_match_computed_at',
         ]
         read_only_fields = ['id', 'moved_by', 'stage_updated_at', 'created_at']
 
@@ -150,7 +152,15 @@ class CandidateCreateSerializer(serializers.ModelSerializer):
 
 
 class CandidateReminderSerializer(serializers.ModelSerializer):
+    job_id = serializers.UUIDField(source='mapping.job.id', read_only=True)
+    job_title = serializers.CharField(source='mapping.job.title', read_only=True)
+    macro_stage = serializers.CharField(source='mapping.macro_stage', read_only=True)
+
     class Meta:
         model = CandidateReminder
-        fields = ['id', 'candidate', 'remind_at', 'note', 'is_done', 'notified', 'created_at', 'updated_at']
+        fields = [
+            'id', 'candidate', 'mapping', 'remind_at', 'note',
+            'is_done', 'notified', 'created_at', 'updated_at',
+            'job_id', 'job_title', 'macro_stage',
+        ]
         read_only_fields = ['id', 'candidate', 'notified', 'created_at', 'updated_at']

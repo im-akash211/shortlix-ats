@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -12,9 +12,10 @@ import { candidates as candidatesApi, interviews as interviewsApi, users as user
 import { useAuth } from '../lib/authContext';
 import { PageLoader } from '../components/LoadingDots';
 import NoteEditorModal, { stripHtml, Toolbar } from '../components/NoteEditorModal';
+import SkillTagInput from './Candidates/components/SkillTagInput';
 import {
   ArrowLeft, Mail, Phone, MapPin, Briefcase, Plus, Send,
-  FileText, ExternalLink, Download, User, Clock, Calendar, X, ChevronDown, ChevronUp,
+  FileText, ExternalLink, Download, User, Clock, Calendar, X, ChevronDown, ChevronUp, Pencil, Check, Trash2, Sparkles, Loader,
 } from 'lucide-react';
 
 const STAGE_COLORS = {
@@ -93,8 +94,61 @@ function SkillsRow({ skills }) {
   );
 }
 
-function CandidateProfileCard({ candidate }) {
+function CandidateProfileCard({ candidate, canEdit, onSave }) {
   const c = candidate;
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({});
+
+  const openEdit = () => {
+    setForm({
+      tenth_board: c.tenth_board || '',
+      tenth_percentage: c.tenth_percentage ?? '',
+      twelfth_board: c.twelfth_board || '',
+      twelfth_percentage: c.twelfth_percentage ?? '',
+      graduation_course: c.graduation_course || '',
+      graduation_college: c.graduation_college || '',
+      graduation_year: c.graduation_year ?? '',
+      graduation_percentage: c.graduation_percentage ?? '',
+      qualifying_exam: c.qualifying_exam || '',
+      qualifying_rank: c.qualifying_rank || '',
+      post_graduation_course: c.post_graduation_course || '',
+      post_graduation_college: c.post_graduation_college || '',
+      post_graduation_year: c.post_graduation_year ?? '',
+      post_graduation_percentage: c.post_graduation_percentage ?? '',
+      post_qualifying_exam: c.post_qualifying_exam || '',
+      post_qualifying_rank: c.post_qualifying_rank || '',
+      total_experience_years: c.total_experience_years ?? '',
+      ctc_fixed_lakhs: c.ctc_fixed_lakhs ?? '',
+      ctc_variable_lakhs: c.ctc_variable_lakhs ?? '',
+      current_ctc_lakhs: c.current_ctc_lakhs ?? '',
+      expected_ctc_lakhs: c.expected_ctc_lakhs ?? '',
+      offers_in_hand: c.offers_in_hand || '',
+      notice_period_days: c.notice_period_days ?? '',
+      notice_period_status: c.notice_period_status || '',
+      reason_for_change: c.reason_for_change || '',
+      native_location: c.native_location || '',
+      skills: c.skills || [],
+    });
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = {};
+      Object.entries(form).forEach(([k, v]) => {
+        payload[k] = v === '' ? null : v;
+      });
+      await onSave(payload);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const f = (k) => form[k];
+  const set = (k) => (e) => setForm(prev => ({ ...prev, [k]: e.target.value }));
 
   const pct = (v) => (v != null && v !== '') ? `${v}%` : null;
   const lpa = (v) => (v != null && v !== '') ? `${v} LPA` : null;
@@ -115,59 +169,144 @@ function CandidateProfileCard({ candidate }) {
     return parts.join(' · ') || null;
   })();
 
+  const inputCls = 'border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 outline-none focus:border-blue-400 w-full';
+  const selectCls = inputCls + ' bg-white';
+
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-2">
       <div className="flex items-center gap-2 mb-1">
         <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
           <User className="w-3.5 h-3.5 text-blue-600" />
         </div>
-        <span className="text-xs font-semibold text-slate-700">Profile Created</span>
+        <span className="text-xs font-semibold text-slate-700">Profile Details</span>
         <span className="text-xs text-slate-400 ml-auto">
           {new Date(c.created_at).toLocaleString('en-GB', {
             day: 'numeric', month: 'short', year: 'numeric',
             hour: '2-digit', minute: '2-digit',
           })}
         </span>
+        {canEdit && !editing && (
+          <button onClick={openEdit} className="flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 transition-colors">
+            <Pencil className="w-3 h-3" /> Edit
+          </button>
+        )}
       </div>
-      <div className="flex flex-col gap-1.5 pl-1">
-        <ProfileRow label="10th Board"                    value={c.tenth_board} />
-        <ProfileRow label="10th Percentage"               value={pct(c.tenth_percentage)} />
-        <ProfileRow label="12th Board"                    value={c.twelfth_board} />
-        <ProfileRow label="12th Percentage"               value={pct(c.twelfth_percentage)} />
-        <ProfileRow label="Graduation Course"             value={c.graduation_course} />
-        <ProfileRow label="Graduation College"            value={c.graduation_college} />
-        <ProfileRow label="Graduation Year"               value={c.graduation_year} />
-        <ProfileRow label="Graduation Percentage"         value={pct(c.graduation_percentage)} />
-        <ProfileRow label="Qualifying Exam"               value={c.qualifying_exam} />
-        <ProfileRow label="Qualifying Rank / Marks"       value={c.qualifying_rank} />
-        <ProfileRow label="PG Course"                     value={c.post_graduation_course} />
-        <ProfileRow label="PG College"                    value={c.post_graduation_college} />
-        <ProfileRow label="PG Year"                       value={c.post_graduation_year} />
-        <ProfileRow label="PG Percentage"                 value={pct(c.post_graduation_percentage)} />
-        <ProfileRow label="PG Qualifying Exam"            value={c.post_qualifying_exam} />
-        <ProfileRow label="PG Qualifying Rank / Marks"    value={c.post_qualifying_rank} />
-        <ProfileRow label="Experience"                    value={yrs(c.total_experience_years)} />
-        <ProfileRow label="CTC in LPA (Fixed + Variable)" value={ctcLabel} />
-        <ProfileRow label="ECTC in LPA"                   value={lpa(c.expected_ctc_lakhs)} />
-        <ProfileRow label="Offers if Any"                 value={c.offers_in_hand} />
-        <ProfileRow label="Notice Period"                 value={noticePeriodLabel} />
-        <ProfileRow label="Reason for Change"             value={c.reason_for_change} />
-        <ProfileRow label="Current Location"              value={c.location} />
-        <ProfileRow label="Native"                        value={c.native_location} />
-        {/* Skills */}
-        <div className="flex gap-2 text-xs mt-0.5">
-          <span className="text-slate-400 shrink-0 w-44">Skills</span>
-          {c.skills?.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {c.skills.map((s, i) => (
-                <span key={i} className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-[11px] font-medium">{s}</span>
-              ))}
+
+      {editing && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[400] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden max-h-[85vh]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0">
+              <span className="text-sm font-semibold text-slate-800">Edit Profile Details</span>
+              <button onClick={() => setEditing(false)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          ) : (
-            <span className="text-slate-300">—</span>
-          )}
+            <div className="flex-1 overflow-auto px-5 py-4">
+              <div className="flex flex-col gap-3">
+                {[
+                  { label: '10th Board', key: 'tenth_board', type: 'text' },
+                  { label: '10th Percentage', key: 'tenth_percentage', type: 'number' },
+                  { label: '12th Board', key: 'twelfth_board', type: 'text' },
+                  { label: '12th Percentage', key: 'twelfth_percentage', type: 'number' },
+                  { label: 'Graduation Course', key: 'graduation_course', type: 'text' },
+                  { label: 'Graduation College', key: 'graduation_college', type: 'text' },
+                  { label: 'Graduation Year', key: 'graduation_year', type: 'number' },
+                  { label: 'Graduation Percentage', key: 'graduation_percentage', type: 'number' },
+                  { label: 'Qualifying Exam', key: 'qualifying_exam', type: 'text' },
+                  { label: 'Qualifying Rank / Marks', key: 'qualifying_rank', type: 'text' },
+                  { label: 'PG Course', key: 'post_graduation_course', type: 'text' },
+                  { label: 'PG College', key: 'post_graduation_college', type: 'text' },
+                  { label: 'PG Year', key: 'post_graduation_year', type: 'number' },
+                  { label: 'PG Percentage', key: 'post_graduation_percentage', type: 'number' },
+                  { label: 'PG Qualifying Exam', key: 'post_qualifying_exam', type: 'text' },
+                  { label: 'PG Qualifying Rank / Marks', key: 'post_qualifying_rank', type: 'text' },
+                  { label: 'Experience (Years)', key: 'total_experience_years', type: 'number' },
+                  { label: 'CTC Fixed (LPA)', key: 'ctc_fixed_lakhs', type: 'number' },
+                  { label: 'CTC Variable (LPA)', key: 'ctc_variable_lakhs', type: 'number' },
+                  { label: 'Current CTC (LPA)', key: 'current_ctc_lakhs', type: 'number' },
+                  { label: 'Expected CTC (LPA)', key: 'expected_ctc_lakhs', type: 'number' },
+                  { label: 'Offers in Hand', key: 'offers_in_hand', type: 'text' },
+                  { label: 'Notice Period (Days)', key: 'notice_period_days', type: 'number' },
+                ].map(({ label, key, type }) => (
+                  <div key={key} className="flex gap-3 items-center text-xs">
+                    <span className="text-slate-500 shrink-0 w-48">{label}</span>
+                    <input type={type} value={f(key)} onChange={set(key)} className={inputCls} placeholder="—" step={type === 'number' ? 'any' : undefined} />
+                  </div>
+                ))}
+                <div className="flex gap-3 items-center text-xs">
+                  <span className="text-slate-500 shrink-0 w-48">Notice Period Status</span>
+                  <select value={f('notice_period_status')} onChange={set('notice_period_status')} className={selectCls}>
+                    <option value="">—</option>
+                    <option value="serving">Serving</option>
+                    <option value="lwd">LWD</option>
+                    <option value="notice">In Notice</option>
+                  </select>
+                </div>
+                {[
+                  { label: 'Reason for Change', key: 'reason_for_change', type: 'text' },
+                  { label: 'Native Location', key: 'native_location', type: 'text' },
+                ].map(({ label, key, type }) => (
+                  <div key={key} className="flex gap-3 items-center text-xs">
+                    <span className="text-slate-500 shrink-0 w-48">{label}</span>
+                    <input type={type} value={f(key)} onChange={set(key)} className={inputCls} placeholder="—" />
+                  </div>
+                ))}
+                <div className="flex flex-col gap-1.5 text-xs">
+                  <span className="text-slate-500 font-medium">Skills</span>
+                  <SkillTagInput
+                    skills={form.skills || []}
+                    onChange={(updated) => setForm(prev => ({ ...prev, skills: updated }))}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3.5 border-t border-slate-100 shrink-0">
+              <button onClick={() => setEditing(false)} className="text-xs text-slate-500 hover:text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-100 transition-colors">Cancel</button>
+              <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium">
+                <Check className="w-3 h-3" />{saving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+      <div className="flex flex-col gap-1.5 pl-1">
+          <ProfileRow label="10th Board"                    value={c.tenth_board} />
+          <ProfileRow label="10th Percentage"               value={pct(c.tenth_percentage)} />
+          <ProfileRow label="12th Board"                    value={c.twelfth_board} />
+          <ProfileRow label="12th Percentage"               value={pct(c.twelfth_percentage)} />
+          <ProfileRow label="Graduation Course"             value={c.graduation_course} />
+          <ProfileRow label="Graduation College"            value={c.graduation_college} />
+          <ProfileRow label="Graduation Year"               value={c.graduation_year} />
+          <ProfileRow label="Graduation Percentage"         value={pct(c.graduation_percentage)} />
+          <ProfileRow label="Qualifying Exam"               value={c.qualifying_exam} />
+          <ProfileRow label="Qualifying Rank / Marks"       value={c.qualifying_rank} />
+          <ProfileRow label="PG Course"                     value={c.post_graduation_course} />
+          <ProfileRow label="PG College"                    value={c.post_graduation_college} />
+          <ProfileRow label="PG Year"                       value={c.post_graduation_year} />
+          <ProfileRow label="PG Percentage"                 value={pct(c.post_graduation_percentage)} />
+          <ProfileRow label="PG Qualifying Exam"            value={c.post_qualifying_exam} />
+          <ProfileRow label="PG Qualifying Rank / Marks"    value={c.post_qualifying_rank} />
+          <ProfileRow label="Experience"                    value={yrs(c.total_experience_years)} />
+          <ProfileRow label="CTC in LPA (Fixed + Variable)" value={ctcLabel} />
+          <ProfileRow label="ECTC in LPA"                   value={lpa(c.expected_ctc_lakhs)} />
+          <ProfileRow label="Offers if Any"                 value={c.offers_in_hand} />
+          <ProfileRow label="Notice Period"                 value={noticePeriodLabel} />
+          <ProfileRow label="Reason for Change"             value={c.reason_for_change} />
+          <ProfileRow label="Current Location"              value={c.location} />
+          <ProfileRow label="Native"                        value={c.native_location} />
+          <div className="flex gap-2 text-xs mt-0.5">
+            <span className="text-slate-400 shrink-0 w-44">Skills</span>
+            {c.skills?.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {c.skills.map((s, i) => (
+                  <span key={i} className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-[11px] font-medium">{s}</span>
+                ))}
+              </div>
+            ) : (
+              <span className="text-slate-300">—</span>
+            )}
+          </div>
+        </div>
     </div>
   );
 }
@@ -209,10 +348,29 @@ export default function CandidateJobProfile() {
     },
   });
 
-  const { data: candidate, isLoading } = useQuery({
+  const { data: candidate, isLoading, refetch: refetchCandidate } = useQuery({
     queryKey: ['candidate', candidateId],
     queryFn: () => candidatesApi.detail(candidateId),
   });
+
+  const [aiMatch, setAiMatch]           = useState(null);  // { score, reason, job_title }
+  const [aiMatchLoading, setAiMatchLoading] = useState(false);
+
+  useEffect(() => {
+    if (!candidateId) return;
+    setAiMatchLoading(true);
+    candidatesApi.computeAIMatch(candidateId)
+      .then(results => {
+        if (results && results.length > 0) {
+          const best = results[0]; // already sorted by score desc
+          setAiMatch({ score: best.score, reason: best.reason, job_title: best.job_title });
+        } else {
+          setAiMatch(null);
+        }
+      })
+      .catch(() => setAiMatch(null))
+      .finally(() => setAiMatchLoading(false));
+  }, [candidateId]);
 
   const { data: notesRaw, refetch: refetchNotes } = useQuery({
     queryKey: ['candidate', candidateId, 'notes'],
@@ -356,20 +514,47 @@ export default function CandidateJobProfile() {
       <div className="flex-1 flex overflow-hidden">
 
         {/* Left: candidate info + resume */}
-        <div className="flex-1 bg-white border-r border-slate-200 overflow-hidden flex flex-col">
+        <div className="flex-1 bg-white border-r border-slate-200 overflow-auto flex flex-col">
 
           {/* Candidate identity block */}
-          <div className="px-5 py-4 border-b border-slate-100 shrink-0">
+          <div className="px-5 py-4 border-b border-slate-100">
             <div className="flex items-center gap-3 mb-3">
               <Avatar name={candidate.full_name} size="lg" />
-              <div>
-                <h1 className="text-lg font-bold text-slate-900">{candidate.full_name}</h1>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-lg font-bold text-slate-900">{candidate.full_name}</h1>
+                  {/* AI Match Badge */}
+                  {aiMatchLoading ? (
+                    <span className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full">
+                      <Loader className="w-3 h-3 animate-spin" /> Computing AI match…
+                    </span>
+                  ) : aiMatch ? (
+                    <span
+                      title={`Best match: ${aiMatch.job_title}\n${aiMatch.reason}`}
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border cursor-default ${
+                        aiMatch.score >= 75 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        aiMatch.score >= 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                        'bg-rose-50 text-rose-600 border-rose-200'
+                      }`}
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      AI Match {Math.round(aiMatch.score)}%
+                    </span>
+                  ) : candidate.job_mappings?.length === 0 ? (
+                    <span className="text-xs text-slate-400 italic">Not applied to any job</span>
+                  ) : null}
+                </div>
                 {candidate.designation && (
                   <p className="text-sm text-slate-500 mt-0.5">
                     {candidate.designation}
                     {candidate.current_employer && (
                       <span className="text-slate-400"> &bull; {candidate.current_employer}</span>
                     )}
+                  </p>
+                )}
+                {aiMatch && (
+                  <p className="text-xs text-slate-400 mt-0.5 truncate max-w-sm">
+                    <span className="font-medium text-slate-500">{aiMatch.job_title}</span> — {aiMatch.reason}
                   </p>
                 )}
               </div>
@@ -394,7 +579,7 @@ export default function CandidateJobProfile() {
           </div>
 
           {/* Resume viewer */}
-          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between shrink-0">
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Resume</span>
             {latestResume && (
               <div className="flex items-center gap-3">
@@ -417,16 +602,16 @@ export default function CandidateJobProfile() {
             )}
           </div>
 
-          <div className="flex-1 overflow-hidden">
+          <div className="min-h-[600px] flex-1">
             {latestResume ? (
               latestResume.file_type === 'pdf' ? (
                 <iframe
                   src={latestResume.file_url}
-                  className="w-full h-full"
+                  className="w-full h-[800px]"
                   title="Candidate Resume"
                 />
               ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-4 text-slate-400">
+                <div className="flex flex-col items-center justify-center py-16 gap-4 text-slate-400">
                   <FileText className="w-14 h-14 text-slate-200" />
                   <p className="text-sm font-medium text-slate-500">
                     {latestResume.original_filename || 'Resume'}
@@ -441,7 +626,7 @@ export default function CandidateJobProfile() {
                 </div>
               )
             ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-300">
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-300">
                 <FileText className="w-14 h-14" />
                 <p className="text-sm text-slate-400">No resume uploaded</p>
               </div>
@@ -516,6 +701,28 @@ export default function CandidateJobProfile() {
                           Edited
                         </span>
                       )}
+                      <div className="ml-auto flex items-center gap-1">
+                        {String(note.user_id) === String(currentUser?.id) && (
+                          <button
+                            onClick={() => setViewingNote(note)}
+                            title="Edit note"
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        )}
+                        {(String(note.user_id) === String(currentUser?.id) ||
+                          ['admin', 'hiring_manager'].includes(currentUser?.role)) && (
+                          <button
+                            onClick={() => handleDeleteNote(note.id)}
+                            disabled={deletingNoteId === note.id}
+                            title="Delete note"
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors disabled:opacity-40"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <button
                       onClick={() => setViewingNote(note)}
@@ -569,7 +776,14 @@ export default function CandidateJobProfile() {
             })}
 
             {/* Profile Created card — always at the bottom (oldest event) */}
-            <CandidateProfileCard candidate={candidate} />
+            <CandidateProfileCard
+              candidate={candidate}
+              canEdit={['admin', 'recruiter'].includes(currentUser?.role)}
+              onSave={async (payload) => {
+                await candidatesApi.update(candidateId, payload);
+                refetchCandidate();
+              }}
+            />
 
             {notes.length === 0 && (
               <div className="flex flex-col items-center gap-2 text-slate-300 py-4">

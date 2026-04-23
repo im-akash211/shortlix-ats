@@ -1,5 +1,6 @@
 import React from 'react';
-import { FileText, Upload, Loader, AlertCircle, CheckCircle, Edit } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { FileText, Upload, Loader, AlertCircle, CheckCircle, Edit, User, ExternalLink } from 'lucide-react';
 import Modal from './Modal';
 
 export default function UploadResumeModal({
@@ -10,6 +11,7 @@ export default function UploadResumeModal({
   uploadResult,
   uploadError,
   uploadDuplicate,
+  existingCandidate,
   fileInputRef,
   handleFileSelect,
   handleUploadSubmit,
@@ -18,6 +20,7 @@ export default function UploadResumeModal({
   setUploadFile,
   setUploadError,
 }) {
+  const navigate = useNavigate();
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Upload Resume" maxWidth="max-w-xl">
       <div className="flex flex-col gap-5">
@@ -92,6 +95,35 @@ export default function UploadResumeModal({
                 <p className="text-xs text-amber-700">
                   To re-upload, please ask an admin to remove the existing record first.
                 </p>
+              </div>
+            )}
+
+            {existingCandidate && (
+              <div className="flex flex-col gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+                <div className="flex items-start gap-2 text-amber-800">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                  <div>
+                    <p className="font-semibold">Already in Talent Pool</p>
+                    <p className="text-amber-700 mt-0.5">
+                      This resume has already been converted to a candidate profile.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { onClose(); navigate(`/candidates/${existingCandidate.id}/profile`); }}
+                  className="flex items-center gap-3 bg-white border border-amber-200 hover:border-amber-400 hover:bg-amber-50 rounded-lg px-4 py-3 transition-colors text-left group"
+                >
+                  <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                    <User className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-800 truncate">{existingCandidate.full_name}</p>
+                    {existingCandidate.email && (
+                      <p className="text-xs text-slate-500 truncate">{existingCandidate.email}</p>
+                    )}
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-amber-500 group-hover:text-amber-700 shrink-0" />
+                </button>
               </div>
             )}
 

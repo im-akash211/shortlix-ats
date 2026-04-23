@@ -24,6 +24,7 @@ import ScheduleModal from './components/ScheduleModal';
 import NewScheduleModal from './components/NewScheduleModal';
 import DropModal from './components/DropModal';
 import ResumeModal from './components/ResumeModal';
+import SetReminderModal from './components/SetReminderModal';
 
 export default function JobsPage() {
   const navigate = useNavigate();
@@ -191,6 +192,9 @@ export default function JobsPage() {
     navigate(ROUTES.JOBS.CANDIDATE_PROFILE(viewingJob.id, c.candidate));
   };
 
+  // ── Reminder modal state ───────────────────────────────────────────────────
+  const [reminderCandidate, setReminderCandidate] = useState(null);
+
   // ── Resume viewer state ────────────────────────────────────────────────────
   const [resumeModal, setResumeModal] = useState(null);
   const openResume = async (candidate) => {
@@ -226,6 +230,16 @@ export default function JobsPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchJobId, isCandidatesRoute]);
+
+  // ── Handle ?stage= param from reminder notification click ──────────────────
+  useEffect(() => {
+    const stage = searchParams.get('stage');
+    if (stage && isCandidatesRoute) {
+      pipeline.setPipelineTab(stage);
+      setSearchParams(p => { p.delete('stage'); return p; }, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, isCandidatesRoute]);
 
   // ── Load users when schedule modal opens ──────────────────────────────────
   useEffect(() => {
@@ -441,10 +455,19 @@ export default function JobsPage() {
               offeredFilter={pipeline.offeredFilter} setOfferedFilter={pipeline.setOfferedFilter}
               onTabChange={(tab) => { pipeline.setPipelineTab(tab); pipeline.setScreeningFilter('ALL'); pipeline.setInterviewFilter('ALL'); }}
               getStatCount={pipeline.getStatCount}
+              onSetReminder={setReminderCandidate}
               {...pipelineCardProps}
             />
           </div>
         </>
+      )}
+
+      {/* Set Reminder Modal */}
+      {reminderCandidate && (
+        <SetReminderModal
+          candidate={reminderCandidate}
+          onClose={() => setReminderCandidate(null)}
+        />
       )}
 
       {/* Drop Candidate Modal */}

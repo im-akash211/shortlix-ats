@@ -6,11 +6,12 @@ import { BLANK_REVIEW } from '../constants';
 export function useResumeUpload({ setActiveModal }) {
   const queryClient = useQueryClient();
 
-  const [uploadFile, setUploadFile]         = useState(null);
-  const [uploadLoading, setUploadLoading]   = useState(false);
-  const [uploadResult, setUploadResult]     = useState(null);
-  const [uploadError, setUploadError]       = useState('');
-  const [uploadDuplicate, setUploadDuplicate] = useState(null);
+  const [uploadFile, setUploadFile]               = useState(null);
+  const [uploadLoading, setUploadLoading]         = useState(false);
+  const [uploadResult, setUploadResult]           = useState(null);
+  const [uploadError, setUploadError]             = useState('');
+  const [uploadDuplicate, setUploadDuplicate]     = useState(null);
+  const [existingCandidate, setExistingCandidate] = useState(null);
   const fileInputRef                        = useRef(null);
   const pollIntervalRef                     = useRef(null);
 
@@ -31,6 +32,7 @@ export function useResumeUpload({ setActiveModal }) {
     setUploadError('');
     setUploadDuplicate(null);
     setUploadLoading(false);
+    setExistingCandidate(null);
     setActiveModal('upload');
   };
 
@@ -44,6 +46,7 @@ export function useResumeUpload({ setActiveModal }) {
     setUploadResult(null);
     setUploadError('');
     setUploadDuplicate(null);
+    setExistingCandidate(null);
   };
 
   const openReviewModal = (ingestion) => {
@@ -67,7 +70,11 @@ export function useResumeUpload({ setActiveModal }) {
     setActiveModal('review');
   };
 
-  const closeReviewModal = () => {
+  const closeReviewModal = async () => {
+    // If not yet converted, delete the temp file from S3
+    if (reviewIngestion && !convertSuccess) {
+      try { await resumesApi.discard(reviewIngestion.id); } catch { /* best effort */ }
+    }
     setActiveModal(null);
     setReviewIngestion(null);
     setDuplicateInfo(null);
@@ -121,6 +128,11 @@ export function useResumeUpload({ setActiveModal }) {
         if (terminal.includes(record.status)) {
           clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = null;
+          // Auto-transition: go straight to preview modal when parsed
+          if (record.status === 'parsed') {
+            setActiveModal(null);
+            openReviewModal(record);
+          }
         }
       } catch {
         clearInterval(pollIntervalRef.current);
@@ -136,12 +148,27 @@ export function useResumeUpload({ setActiveModal }) {
     setUploadDuplicate(null);
     try {
       const record = await resumesApi.upload(uploadFile);
-      setUploadResult(record);
-      if (!['parsed', 'failed', 'review_pending'].includes(record.status)) {
-        startPolling(record.id);
+
+      if (record.status === 'resume_existing') {
+        // Same file already in temp — resume the flow with existing ingestion
+        closeUploadModal();
+        openReviewModal(record.ingestion);
+        return;
+      }
+
+      if (record.status === 'parsed') {
+        // Already parsed — skip the upload modal entirely, go straight to preview
+        openReviewModal(record);
+      } else {
+        setUploadResult(record);
+        if (!['failed', 'review_pending'].includes(record.status)) {
+          startPolling(record.id);
+        }
       }
     } catch (err) {
-      if (err.status === 409 && err.data?.duplicate) {
+      if (err.status === 409 && err.data?.status === 'already_converted') {
+        setExistingCandidate(err.data.candidate);
+      } else if (err.status === 409 && err.data?.duplicate) {
         setUploadDuplicate(err.data);
       } else {
         const msg = err.data?.file?.[0] || err.data?.detail || err.message || 'Upload failed';
@@ -176,9 +203,16 @@ export function useResumeUpload({ setActiveModal }) {
     setConvertLoading(true);
     setReviewError('');
     try {
+      // Auto-save reviewed data before converting (Page 2 Save button)
+      const payload = {
+        ...reviewForm,
+        experience_years: reviewForm.experience_years !== '' ? Number(reviewForm.experience_years) : null,
+      };
+      await resumesApi.review(reviewIngestion.id, payload);
+
       const result = await resumesApi.convert(reviewIngestion.id);
       if (result.status === 'duplicate_found') {
-        setDuplicateInfo({ candidate: result.duplicate_candidate, matchType: result.match_type });
+        setDuplicateInfo({ candidates: result.duplicate_candidates, matchType: result.match_type });
       } else {
         setConvertSuccess(result.candidate);
         queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] });
@@ -219,6 +253,7 @@ export function useResumeUpload({ setActiveModal }) {
     uploadError,
     setUploadError,
     uploadDuplicate,
+    existingCandidate,
     fileInputRef,
     reviewIngestion,
     reviewForm,
