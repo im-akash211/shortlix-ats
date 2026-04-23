@@ -134,7 +134,7 @@ export default function NoteEditorModal({
 }) {
   const isAuthor   = String(note.user_id) === String(currentUser?.id);
   const isAdmin    = currentUser?.role === 'admin';
-  const canDelete  = currentUser?.role === 'admin' || currentUser?.role === 'hiring_manager';
+  const canDelete  = isAuthor || isAdmin || currentUser?.role === 'hiring_manager';
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const editor = useEditor({
