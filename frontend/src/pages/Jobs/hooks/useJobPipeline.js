@@ -75,18 +75,13 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
   }, [viewingJob, pipelineTab, isPipelinePanelOpen]);
 
   const getStatCount = (tab) => {
-    if (tab === 'Offered') {
-      return allCandidates.filter(c => ['OFFERED', 'JOINED', 'DROPPED'].includes(c.macro_stage)).length;
-    }
-    if (tab === 'Joined') {
-      return allCandidates.filter(c => c.macro_stage === 'JOINED').length;
-    }
-    if (tab === 'Dropped') {
-      return allCandidates.filter(c => c.macro_stage === 'DROPPED').length;
-    }
-    const stage = STAGE_TAB_MAP[tab];
-    if (!stage) return 0;
-    return allCandidates.filter(c => c.macro_stage === stage).length;
+    if (tab === 'Applied')     return allCandidates.length;
+    if (tab === 'Shortlisted') return allCandidates.filter(c => ['SHORTLISTED', 'INTERVIEW', 'OFFERED', 'JOINED'].includes(c.macro_stage)).length;
+    if (tab === 'Interview')   return allCandidates.filter(c => ['INTERVIEW', 'OFFERED', 'JOINED'].includes(c.macro_stage)).length;
+    if (tab === 'Offered')     return allCandidates.filter(c => ['OFFERED', 'JOINED'].includes(c.macro_stage)).length;
+    if (tab === 'Joined')      return allCandidates.filter(c => c.macro_stage === 'JOINED').length;
+    if (tab === 'Dropped')     return allCandidates.filter(c => c.macro_stage === 'DROPPED').length;
+    return 0;
   };
 
   const doStageChange = async (c, payload) => {
@@ -117,10 +112,10 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
     return all.filter(s => s !== currentScreeningStatus);
   };
 
-  const handleShortlist = async (c) => {
+  const handleShortlist = async (c, reason = '') => {
     setShortlistingId(c.id);
     try {
-      await doStageChange(c, { macro_stage: 'SHORTLISTED' });
+      await doStageChange(c, { macro_stage: 'SHORTLISTED', action_reason: reason });
     } catch (err) {
       alert(err.data?.error || err.data?.detail || 'Failed to shortlist candidate');
     } finally {
@@ -255,6 +250,45 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
     }
   };
 
+  const handleAppliedReject = async (c, reason = '') => {
+    setShortlistingId(c.id);
+    try {
+      await doStageChange(c, { macro_stage: 'DROPPED', drop_reason: 'REJECTED', action_reason: reason });
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to reject candidate');
+    } finally {
+      setShortlistingId(null);
+    }
+  };
+
+  const handleInterviewReject = async (c) => {
+    setRoundStatusLoadingId(c.id);
+    try {
+      if (c.latest_round?.id) {
+        await interviewsApi.setRoundResult(c.latest_round.id, 'FAIL');
+      } else {
+        await candidatesApi.changeStage(c.candidate, c.job, { interview_status: 'REJECTED' });
+      }
+      await refreshAllCandidates(viewingJob.id);
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to reject candidate');
+    } finally {
+      setRoundStatusLoadingId(null);
+    }
+  };
+
+  const handleClearInterviewReject = async (c) => {
+    setRoundStatusLoadingId(c.id);
+    try {
+      await candidatesApi.changeStage(c.candidate, c.job, { interview_status: null });
+      await refreshAllCandidates(viewingJob.id);
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to restore candidate');
+    } finally {
+      setRoundStatusLoadingId(null);
+    }
+  };
+
   const handleRestoreToShortlist = async (c) => {
     setRestoringId(c.id);
     try {
@@ -352,6 +386,7 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
     getMoveToOptions,
     handleScreeningStatus,
     handleShortlist,
+    handleAppliedReject,
     handleMoveToInterview,
     handleMakeOffer,
     handleMarkJoined,
@@ -361,6 +396,8 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
     handleNewScheduleSubmit,
     handleRoundStatus,
     handleRejectRound,
+    handleInterviewReject,
+    handleClearInterviewReject,
     handleRestoreToShortlist,
     handleToggleComments,
     handleAddComment,

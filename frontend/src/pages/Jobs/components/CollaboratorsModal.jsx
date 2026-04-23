@@ -16,7 +16,6 @@ export default function CollaboratorsModal({
   collabSuccess,
   recruiterUsers,
   collabFilter, setCollabFilter,
-  collabInputFocused, setCollabInputFocused,
   handleCollabSearch,
   handleAddCollab,
   handleRemoveCollab,
@@ -93,12 +92,10 @@ export default function CollaboratorsModal({
                 type="text"
                 value={collabFilter}
                 onChange={(e) => setCollabFilter(e.target.value)}
-                onFocus={() => setCollabInputFocused(true)}
-                onBlur={() => setTimeout(() => setCollabInputFocused(false), 150)}
                 placeholder="Search recruiters…"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
               />
-              {collabInputFocused && recruiterUsers.length > 0 && (
+              {recruiterUsers.length > 0 ? (
                 <div className="mt-3 flex flex-col gap-2 max-h-52 overflow-y-auto">
                   {recruiterUsers
                     .filter((u) => {
@@ -133,6 +130,8 @@ export default function CollaboratorsModal({
                       );
                     })}
                 </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-400 italic">No recruiter users found.</p>
               )}
               {collabSuccess && (
                 <p className="mt-2 text-xs text-emerald-600 font-medium">{collabSuccess}</p>

@@ -25,6 +25,16 @@ export default function CandidateRow({ candidate: c, openModal, openShare, openV
               <span className="flex items-center gap-1"><MapPin className="w-2.5 h-2.5 text-slate-400" /> {c.location || '—'}</span>
               <span className="flex items-center gap-1"><Briefcase className="w-2.5 h-2.5 text-slate-400" /> {c.total_experience_years ? `${c.total_experience_years} Yrs` : '—'}</span>
             </div>
+            {/* Tags display */}
+            {c.tags?.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {c.tags.map((tag, i) => (
+                  <span key={i} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
             {/* Action icons */}
             <div className="flex items-center gap-2 text-slate-400">
               <button onClick={() => openResume(c)} className="hover:text-blue-600 transition-colors" title="View Resume"><FileText className="w-3.5 h-3.5" /></button>

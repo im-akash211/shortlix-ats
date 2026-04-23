@@ -188,7 +188,7 @@ export default function JobsPage() {
 
   // ── Candidate profile ──────────────────────────────────────────────────────
   const openCandidateProfile = (c) => {
-    navigate(ROUTES.JOBS.CANDIDATE_PROFILE(viewingJob.id, c.candidate));
+    navigate(ROUTES.CANDIDATES.PROFILE_FROM_JOB(c.candidate, viewingJob.id));
   };
 
   // ── Resume viewer state ────────────────────────────────────────────────────
@@ -258,7 +258,9 @@ export default function JobsPage() {
     usersList: share.usersList, usersLoading: share.usersLoading,
     handleShare: share.handleShare,
     openCandidateProfile,
-    handleShortlist: pipeline.handleShortlist, shortlistingId: pipeline.shortlistingId,
+    handleShortlist: pipeline.handleShortlist,
+    handleAppliedReject: pipeline.handleAppliedReject,
+    shortlistingId: pipeline.shortlistingId,
     handleScreeningStatus: pipeline.handleScreeningStatus,
     screeningStatusLoadingId: pipeline.screeningStatusLoadingId,
     getMoveToOptions: pipeline.getMoveToOptions,
@@ -266,9 +268,12 @@ export default function JobsPage() {
     handleMakeOffer: pipeline.handleMakeOffer,
     handleMarkJoined: pipeline.handleMarkJoined,
     handleRestoreToShortlist: pipeline.handleRestoreToShortlist, restoringId: pipeline.restoringId,
+    handleInterviewReject: pipeline.handleInterviewReject,
+    handleClearInterviewReject: pipeline.handleClearInterviewReject,
     setDropModalCandidate: pipeline.setDropModalCandidate,
     setDropReason: pipeline.setDropReason,
     handleNextRound: pipeline.handleNextRound, nextRoundLoading: pipeline.nextRoundLoading,
+    handleJumpRound: pipeline.handleJumpRound, jumpRoundLoading: pipeline.jumpRoundLoading,
     handleRoundStatus: pipeline.handleRoundStatus, roundStatusLoadingId: pipeline.roundStatusLoadingId,
     setScheduleModalCandidate: pipeline.setScheduleModalCandidate,
     setScheduleModalRound: pipeline.setScheduleModalRound,
@@ -528,7 +533,6 @@ export default function JobsPage() {
         collabSuccess={collabs.collabSuccess}
         recruiterUsers={collabs.recruiterUsers}
         collabFilter={collabs.collabFilter} setCollabFilter={collabs.setCollabFilter}
-        collabInputFocused={collabs.collabInputFocused} setCollabInputFocused={collabs.setCollabInputFocused}
         handleCollabSearch={collabs.handleCollabSearch}
         handleAddCollab={collabs.handleAddCollab}
         handleRemoveCollab={collabs.handleRemoveCollab}
