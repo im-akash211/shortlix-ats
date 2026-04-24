@@ -201,6 +201,10 @@ export const interviews = {
   submitFeedback: (id, data) =>
     request(`/interviews/${id}/feedback/`, { method: 'POST', body: JSON.stringify(data) }),
   getFeedback: (id) => request(`/interviews/${id}/feedback/detail/`),
+  updateFeedback: (id, data) =>
+    request(`/interviews/${id}/feedback/detail/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteFeedback: (id) =>
+    request(`/interviews/${id}/feedback/detail/`, { method: 'DELETE' }),
   setRoundResult: (id, roundResult) =>
     request(`/interviews/${id}/round-result/`, {
       method: 'PATCH', body: JSON.stringify({ round_result: roundResult }),

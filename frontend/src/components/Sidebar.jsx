@@ -5,8 +5,8 @@ import { cn } from '../lib/utils';
 import { ROUTES } from '../routes/constants';
 
 export default function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [width, setWidth] = useState(256);
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [width, setWidth] = useState(80);
   const isResizing = useRef(false);
   const sidebarRef = useRef(null);
 
