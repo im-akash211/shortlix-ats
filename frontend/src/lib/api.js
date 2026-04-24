@@ -186,6 +186,12 @@ export const candidates = {
     request(`/candidates/${id}/reminders/${reminderId}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteReminder: (id, reminderId) =>
     request(`/candidates/${id}/reminders/${reminderId}/`, { method: 'DELETE' }),
+  uploadResume: (id, file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return requestUpload(`/candidates/${id}/resume/`, fd);
+  },
+  getAIMatch: (id) => request(`/candidates/${id}/ai-match/`),
   computeAIMatch: (id) =>
     request(`/candidates/${id}/ai-match/`, { method: 'POST' }),
 };
@@ -316,6 +322,13 @@ export const candidateShare = {
       method: 'POST',
       body: JSON.stringify({ user_ids: userIds }),
     }),
+};
+
+// ---- Referrals (Admin) ---- //
+export const referrals = {
+  list: (status = 'pending') => request(`/candidates/referrals/?status=${status}`),
+  approve: (id) => request(`/candidates/referrals/${id}/approve/`, { method: 'POST' }),
+  decline: (id) => request(`/candidates/referrals/${id}/decline/`, { method: 'POST' }),
 };
 
 // ---- Users (Admin) ---- //

@@ -54,11 +54,20 @@ export function useCandidateModals() {
               full_name:              detail.full_name || '',
               email:                  detail.email || '',
               phone:                  detail.phone || '',
-              location:               detail.location || '',
-              total_experience_years: detail.total_experience_years ?? '',
               designation:            detail.designation || '',
+              current_employer:       detail.current_employer || '',
+              location:               detail.location || '',
+              native_location:        detail.native_location || '',
+              total_experience_years: detail.total_experience_years ?? '',
+              ctc_fixed_lakhs:        detail.ctc_fixed_lakhs ?? '',
+              ctc_variable_lakhs:     detail.ctc_variable_lakhs ?? '',
               current_ctc_lakhs:      detail.current_ctc_lakhs ?? '',
+              expected_ctc_lakhs:     detail.expected_ctc_lakhs ?? '',
+              offers_in_hand:         detail.offers_in_hand || '',
               notice_period_days:     detail.notice_period_days ?? '',
+              notice_period_status:   detail.notice_period_status || '',
+              reason_for_change:      detail.reason_for_change || '',
+              skills:                 detail.skills || [],
             });
           }
         })
@@ -122,17 +131,15 @@ export function useCandidateModals() {
     if (!selectedCandidate) return;
     setEditLoading(true);
     try {
+      const toNum = (v) => (v !== '' && v != null) ? Number(v) : null;
       const payload = {
         ...editForm,
-        total_experience_years: editForm.total_experience_years !== ''
-          ? Number(editForm.total_experience_years)
-          : null,
-        current_ctc_lakhs: editForm.current_ctc_lakhs !== ''
-          ? Number(editForm.current_ctc_lakhs)
-          : null,
-        notice_period_days: editForm.notice_period_days !== ''
-          ? Number(editForm.notice_period_days)
-          : null,
+        total_experience_years: toNum(editForm.total_experience_years),
+        ctc_fixed_lakhs:        toNum(editForm.ctc_fixed_lakhs),
+        ctc_variable_lakhs:     toNum(editForm.ctc_variable_lakhs),
+        current_ctc_lakhs:      toNum(editForm.current_ctc_lakhs),
+        expected_ctc_lakhs:     toNum(editForm.expected_ctc_lakhs),
+        notice_period_days:     toNum(editForm.notice_period_days),
       };
       await candidatesApi.update(selectedCandidate.id, payload);
       closeModal();

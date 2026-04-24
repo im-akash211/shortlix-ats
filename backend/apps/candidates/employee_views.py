@@ -7,12 +7,12 @@ import logging
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework.parsers import MultiPartParser
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import User
-from apps.candidates.models import Candidate, CandidateJobMapping, ResumeFile
+from apps.candidates.models import Candidate, CandidateJobMapping, Referral, ResumeFile
 from apps.jobs.models import Job
 from apps.notifications.models import InAppNotification
 
@@ -65,14 +65,6 @@ class EmployeeReferralView(APIView):
 
         job = get_object_or_404(Job, pk=job_id, status='open')
 
-        # Employees are not in the User table — use first admin as system owner
-        admin_user = User.objects.filter(role='admin', is_active=True).first()
-        if not admin_user:
-            return Response(
-                {'detail': 'System not configured. Please contact an administrator.'},
-                status=500,
-            )
-
         fname = resume_file.name.lower()
         if fname.endswith('.pdf'):
             file_type = 'pdf'
@@ -100,16 +92,95 @@ class EmployeeReferralView(APIView):
         except LLMParsingError as exc:
             return Response({'detail': f'Failed to parse resume: {exc}'}, status=500)
 
-        # Build candidate fields
+        # Store as a pending referral — admin must approve
+        resume_file.seek(0)
+        referral = Referral.objects.create(
+            job=job,
+            employee_name=employee_name,
+            employee_id=employee_id,
+            parsed_data=parsed,
+            raw_text=raw_text,
+            resume_file=resume_file,
+            original_filename=resume_file.name,
+            file_type=file_type,
+            file_size=resume_file.size,
+            status=Referral.STATUS_PENDING,
+        )
+
+        # Notify admins only
+        admins = User.objects.filter(role='admin', is_active=True)
+        candidate_name = (
+            f"{(parsed.get('first_name') or '').strip()} {(parsed.get('last_name') or '').strip()}".strip()
+            or resume_file.name
+        )
+        msg = (
+            f'New referral: {candidate_name} for "{job.title}" '
+            f'by {employee_name} (Employee ID: {employee_id}). Awaiting your approval.'
+        )
+        InAppNotification.objects.bulk_create([
+            InAppNotification(
+                recipient=u,
+                sender=None,
+                notification_type='referral',
+                message=msg,
+                candidate=None,
+            )
+            for u in admins
+        ])
+
+        logger.info(
+            'Employee referral saved (pending): %s referred for job %s by %s',
+            candidate_name, job.title, employee_name,
+        )
+
+        return Response({
+            'referral_id': str(referral.id),
+            'candidate_name': candidate_name,
+            'job_title': job.title,
+            'status': 'pending',
+        }, status=201)
+
+
+# ---- Admin referral management ---- #
+
+class ReferralListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != 'admin':
+            return Response({'detail': 'Forbidden.'}, status=403)
+
+        status_filter = request.query_params.get('status', 'pending')
+        qs = (
+            Referral.objects.filter(status=status_filter)
+            .select_related('job', 'candidate', 'reviewed_by')
+            .order_by('-created_at')
+        )
+        data = [_referral_data(r, request) for r in qs]
+        return Response(data)
+
+
+class ReferralApproveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        from django.utils import timezone
+
+        if request.user.role != 'admin':
+            return Response({'detail': 'Forbidden.'}, status=403)
+
+        referral = get_object_or_404(Referral, pk=pk, status=Referral.STATUS_PENDING)
+        parsed = referral.parsed_data
+        admin_user = request.user
+
         first_name = (parsed.get('first_name') or '').strip()
         last_name  = (parsed.get('last_name')  or '').strip()
-        full_name  = f'{first_name} {last_name}'.strip() or resume_file.name
+        full_name  = f'{first_name} {last_name}'.strip() or referral.original_filename
         email      = (parsed.get('email') or '').strip()
 
         if not email:
             return Response(
-                {'detail': 'Could not extract an email address from the resume. '
-                           'Please ensure the resume contains a valid email.'},
+                {'detail': 'Resume has no email address. Cannot create candidate.'},
                 status=400,
             )
 
@@ -120,11 +191,9 @@ class EmployeeReferralView(APIView):
             experience = None
 
         with transaction.atomic():
-            # Re-use existing candidate if email matches
             existing = Candidate.objects.filter(email__iexact=email).first()
             if existing:
                 candidate = existing
-                created = False
             else:
                 candidate = Candidate.objects.create(
                     full_name=full_name,
@@ -135,68 +204,129 @@ class EmployeeReferralView(APIView):
                     total_experience_years=experience,
                     skills=parsed.get('skills') or [],
                     source='referral',
-                    sub_source=f'Referred by {employee_name} (ID: {employee_id})',
+                    sub_source=(
+                        f'Referred by {referral.employee_name} (ID: {referral.employee_id})'
+                    ),
                     parsed_data=parsed,
                     parsing_status='done',
                     created_by=admin_user,
                 )
-                resume_file.seek(0)
-                ResumeFile.objects.create(
-                    candidate=candidate,
-                    uploaded_by=admin_user,
-                    file=resume_file,
-                    original_filename=resume_file.name,
-                    file_type=file_type,
-                    file_size_bytes=resume_file.size,
-                    raw_text=raw_text,
-                    is_latest=True,
-                )
-                created = True
+                if referral.resume_file:
+                    ResumeFile.objects.create(
+                        candidate=candidate,
+                        uploaded_by=admin_user,
+                        file=referral.resume_file,
+                        original_filename=referral.original_filename,
+                        file_type=referral.file_type,
+                        file_size_bytes=referral.file_size or 0,
+                        raw_text=referral.raw_text,
+                        is_latest=True,
+                    )
 
-            # Assign to job at APPLIED stage (idempotent)
             CandidateJobMapping.objects.get_or_create(
                 candidate=candidate,
-                job=job,
+                job=referral.job,
                 defaults={'macro_stage': 'APPLIED'},
             )
 
-        # Notify admins + the recruiter(s) attached to this specific job
-        admin_ids = set(
-            User.objects.filter(role='admin', is_active=True).values_list('id', flat=True)
-        )
-        job_recruiter_ids = set()
+            referral.status = Referral.STATUS_APPROVED
+            referral.candidate = candidate
+            referral.reviewed_by = admin_user
+            referral.reviewed_at = timezone.now()
+            referral.save(update_fields=['status', 'candidate', 'reviewed_by', 'reviewed_at', 'updated_at'])
+
+        # Notify recruiters attached to the job
+        job = referral.job
+        recruiter_ids = set()
         if job.created_by and job.created_by.role == 'recruiter' and job.created_by.is_active:
-            job_recruiter_ids.add(job.created_by.id)
-        collaborator_ids = set(
+            recruiter_ids.add(job.created_by.id)
+        recruiter_ids.update(
             job.collaborators.filter(user__role='recruiter', user__is_active=True)
             .values_list('user_id', flat=True)
         )
-        job_recruiter_ids.update(collaborator_ids)
-        recipient_ids = admin_ids | job_recruiter_ids
-        recipients = User.objects.filter(id__in=recipient_ids)
-        msg = (
-            f'{candidate.full_name} has been referred for "{job.title}" '
-            f'by {employee_name} (Employee ID: {employee_id})'
-        )
-        InAppNotification.objects.bulk_create([
-            InAppNotification(
-                recipient=u,
-                sender=None,
-                notification_type='referral',
-                message=msg,
-                candidate=candidate,
+        if recruiter_ids:
+            recruiters = User.objects.filter(id__in=recruiter_ids)
+            notify_msg = (
+                f'{candidate.full_name} has been approved and added to the pipeline for '
+                f'"{job.title}" — referred by {referral.employee_name} (ID: {referral.employee_id}).'
             )
-            for u in recipients
-        ])
+            InAppNotification.objects.bulk_create([
+                InAppNotification(
+                    recipient=u,
+                    sender=admin_user,
+                    notification_type='referral',
+                    message=notify_msg,
+                    candidate=candidate,
+                )
+                for u in recruiters
+            ])
 
         logger.info(
-            'Employee referral: %s referred %s for job %s (new=%s)',
-            employee_name, candidate.full_name, job.title, created,
+            'Referral %s approved by %s — candidate %s created/linked',
+            referral.id, admin_user.email, candidate.id,
         )
-
         return Response({
+            'detail': 'Referral approved.',
             'candidate_id': str(candidate.id),
             'candidate_name': candidate.full_name,
-            'job_title': job.title,
-            'is_new': created,
-        }, status=201)
+        })
+
+
+class ReferralDeclineView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        from django.utils import timezone
+
+        if request.user.role != 'admin':
+            return Response({'detail': 'Forbidden.'}, status=403)
+
+        referral = get_object_or_404(Referral, pk=pk, status=Referral.STATUS_PENDING)
+        referral.status = Referral.STATUS_DECLINED
+        referral.reviewed_by = request.user
+        referral.reviewed_at = timezone.now()
+        referral.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'updated_at'])
+
+        logger.info('Referral %s declined by %s', referral.id, request.user.email)
+        return Response({'detail': 'Referral declined.'})
+
+
+def _referral_data(r, request=None):
+    parsed = r.parsed_data or {}
+    candidate_name = (
+        f"{(parsed.get('first_name') or '').strip()} {(parsed.get('last_name') or '').strip()}".strip()
+        or r.original_filename
+    )
+
+    resume_url = None
+    if r.resume_file:
+        try:
+            url = r.resume_file.url
+            if request and url.startswith('/'):
+                resume_url = request.build_absolute_uri(url)
+            else:
+                resume_url = url
+        except Exception:
+            pass
+
+    return {
+        'id': str(r.id),
+        'status': r.status,
+        'employee_name': r.employee_name,
+        'employee_id': r.employee_id,
+        'job_id': str(r.job_id),
+        'job_title': r.job.title,
+        'job_code': r.job.job_code or '',
+        'candidate_name': candidate_name,
+        'candidate_email': parsed.get('email', ''),
+        'candidate_phone': parsed.get('phone', ''),
+        'candidate_designation': parsed.get('designation', ''),
+        'candidate_experience': parsed.get('experience_years'),
+        'candidate_skills': parsed.get('skills') or [],
+        'resume_url': resume_url,
+        'original_filename': r.original_filename,
+        'candidate_id': str(r.candidate_id) if r.candidate_id else None,
+        'reviewed_by': r.reviewed_by.full_name if r.reviewed_by else None,
+        'reviewed_at': r.reviewed_at.isoformat() if r.reviewed_at else None,
+        'created_at': r.created_at.isoformat(),
+    }

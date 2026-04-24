@@ -434,11 +434,11 @@ class JobExcelReportView(APIView):
         CAND_HEADERS = [
             'S.No', 'Full Name', 'Email', 'Phone', 'Designation',
             'Current Employer', 'Location', 'Experience (yrs)',
-            'Current CTC (LPA)', 'Notice Period (days)', 'Source',
+            'Current CTC (LPA)', 'Notice Period (days)', 'Expected CTC (LPA)', 'Source',
             'Skills', 'Stage', 'Priority', 'Offer Status',
             'Drop Reason', 'Stage Last Updated',
         ]
-        col_widths = [6, 22, 28, 15, 20, 22, 15, 14, 14, 14, 16, 35, 14, 10, 14, 18, 20]
+        col_widths = [6, 22, 28, 15, 20, 22, 15, 14, 14, 16, 14, 16, 35, 14, 10, 14, 18, 20]
         for i, w in enumerate(col_widths, 1):
             ws2.column_dimensions[ws2.cell(1, i).column_letter].width = w
 
@@ -458,6 +458,7 @@ class JobExcelReportView(APIView):
                 float(c.total_experience_years) if c.total_experience_years else '—',
                 float(c.current_ctc_lakhs) if c.current_ctc_lakhs else '—',
                 c.notice_period_days if c.notice_period_days is not None else '—',
+                float(c.expected_ctc_lakhs) if c.expected_ctc_lakhs else '—',
                 c.get_source_display(),
                 ', '.join(c.skills) if c.skills else '—',
                 m.macro_stage,

@@ -60,12 +60,16 @@ def create_candidate_from_ingestion(ingestion: ResumeIngestion, created_by) -> C
             "Please merge with or discard the existing record."
         )
 
-    experience = data.get('experience_years')
-    if experience is not None:
+    def _safe_float(val):
+        if val is None:
+            return None
         try:
-            experience = float(experience)
+            return float(val)
         except (ValueError, TypeError):
-            experience = None
+            return None
+
+    experience = _safe_float(data.get('experience_years'))
+    expected_ctc = _safe_float(data.get('expected_ctc_lakhs'))
 
     with transaction.atomic():
         candidate = Candidate.objects.create(
@@ -75,6 +79,7 @@ def create_candidate_from_ingestion(ingestion: ResumeIngestion, created_by) -> C
             designation=(data.get('designation') or '').strip(),
             current_employer=(data.get('current_company') or '').strip(),
             total_experience_years=experience,
+            expected_ctc_lakhs=expected_ctc,
             skills=data.get('skills') or [],
             source='recruiter_upload',
             sub_source=ingestion.original_filename,

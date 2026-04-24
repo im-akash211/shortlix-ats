@@ -94,6 +94,79 @@ function SkillsRow({ skills }) {
   );
 }
 
+function ResumeUploadButton({ candidateId, onUploaded }) {
+  const inputRef = React.useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [duplicateModal, setDuplicateModal] = useState(null); // { existingFilename }
+
+  const handleChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['pdf', 'docx'].includes(ext)) {
+      alert('Only PDF or DOCX files are allowed.');
+      e.target.value = '';
+      return;
+    }
+    setUploading(true);
+    try {
+      await candidatesApi.uploadResume(candidateId, file);
+      onUploaded();
+    } catch (err) {
+      if (err.status === 409 && err.data?.duplicate) {
+        setDuplicateModal({ existingFilename: err.data.existing_filename });
+      } else {
+        alert(err.data?.detail || 'Upload failed. Please try again.');
+      }
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  return (
+    <>
+      <input ref={inputRef} type="file" accept=".pdf,.docx" className="hidden" onChange={handleChange} />
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600 disabled:opacity-50 transition-colors"
+      >
+        <Plus className="w-3.5 h-3.5" />
+        {uploading ? 'Uploading…' : 'Upload New Resume'}
+      </button>
+
+      {duplicateModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[600] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Duplicate Resume</h3>
+                <p className="text-xs text-slate-500 mt-0.5">This file has already been uploaded.</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
+              <span className="font-medium">{duplicateModal.existingFilename}</span> is already on file for this candidate.
+              Please upload a different version.
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setDuplicateModal(null)}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function TagsSection({ candidateId, initialTags = [], queryClient }) {
   const [tags, setTags] = useState(initialTags);
   const [inputVisible, setInputVisible] = useState(false);
@@ -313,6 +386,7 @@ function CandidateProfileCard({ candidate, canEdit, onSave }) {
             </div>
             <div className="flex-1 overflow-auto px-5 py-4">
               <div className="flex flex-col gap-3">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider pt-1">Education</p>
                 {[
                   { label: '10th Board', key: 'tenth_board', type: 'text' },
                   { label: '10th Percentage', key: 'tenth_percentage', type: 'number' },
@@ -330,6 +404,14 @@ function CandidateProfileCard({ candidate, canEdit, onSave }) {
                   { label: 'PG Percentage', key: 'post_graduation_percentage', type: 'number' },
                   { label: 'PG Qualifying Exam', key: 'post_qualifying_exam', type: 'text' },
                   { label: 'PG Qualifying Rank / Marks', key: 'post_qualifying_rank', type: 'text' },
+                ].map(({ label, key, type }) => (
+                  <div key={key} className="flex gap-3 items-center text-xs">
+                    <span className="text-slate-500 shrink-0 w-48">{label}</span>
+                    <input type={type} value={f(key)} onChange={set(key)} className={inputCls} placeholder="—" step={type === 'number' ? 'any' : undefined} />
+                  </div>
+                ))}
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider pt-2">Experience & Compensation</p>
+                {[
                   { label: 'Experience (Years)', key: 'total_experience_years', type: 'number' },
                   { label: 'CTC Fixed (LPA)', key: 'ctc_fixed_lakhs', type: 'number' },
                   { label: 'CTC Variable (LPA)', key: 'ctc_variable_lakhs', type: 'number' },
@@ -443,6 +525,43 @@ export default function CandidateJobProfile() {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleToast, setScheduleToast] = useState(null);
 
+  // Identity block inline edit
+  const [editingIdentity, setEditingIdentity] = useState(false);
+  const [identityForm, setIdentityForm] = useState({});
+  const [identitySaving, setIdentitySaving] = useState(false);
+  const [identityError, setIdentityError] = useState('');
+
+  const openIdentityEdit = (c) => {
+    setIdentityForm({
+      full_name:              c.full_name || '',
+      email:                  c.email || '',
+      phone:                  c.phone || '',
+      designation:            c.designation || '',
+      current_employer:       c.current_employer || '',
+      location:               c.location || '',
+      total_experience_years: c.total_experience_years ?? '',
+      skills:                 c.skills || [],
+    });
+    setIdentityError('');
+    setEditingIdentity(true);
+  };
+
+  const handleIdentitySave = async () => {
+    setIdentitySaving(true);
+    setIdentityError('');
+    try {
+      const payload = { ...identityForm };
+      if (payload.total_experience_years === '') payload.total_experience_years = null;
+      await candidatesApi.update(candidateId, payload);
+      refetchCandidate();
+      setEditingIdentity(false);
+    } catch (err) {
+      setIdentityError(err.data?.detail || JSON.stringify(err.data) || 'Save failed.');
+    } finally {
+      setIdentitySaving(false);
+    }
+  };
+
   const addNoteEditor = useEditor({
     extensions: [
       StarterKit,
@@ -466,24 +585,37 @@ export default function CandidateJobProfile() {
     queryFn: () => candidatesApi.detail(candidateId),
   });
 
-  const [aiMatch, setAiMatch]           = useState(null);  // { score, reason, job_title }
-  const [aiMatchLoading, setAiMatchLoading] = useState(false);
+  const [aiMatch, setAiMatch]               = useState(null);  // { score, reason, job_title }
+  const [aiMatchLoading, setAiMatchLoading]   = useState(false);
+  const [aiRecomputing, setAiRecomputing]     = useState(false);
 
+  const applyAIResults = (results) => {
+    if (results && results.length > 0) {
+      const best = results[0];
+      setAiMatch({ score: best.score, reason: best.reason, job_title: best.job_title });
+    } else {
+      setAiMatch(null);
+    }
+  };
+
+  // On mount: read cached scores — no LLM call
   useEffect(() => {
     if (!candidateId) return;
     setAiMatchLoading(true);
-    candidatesApi.computeAIMatch(candidateId)
-      .then(results => {
-        if (results && results.length > 0) {
-          const best = results[0]; // already sorted by score desc
-          setAiMatch({ score: best.score, reason: best.reason, job_title: best.job_title });
-        } else {
-          setAiMatch(null);
-        }
-      })
+    candidatesApi.getAIMatch(candidateId)
+      .then(applyAIResults)
       .catch(() => setAiMatch(null))
       .finally(() => setAiMatchLoading(false));
   }, [candidateId]);
+
+  const handleRecomputeAI = () => {
+    if (aiRecomputing) return;
+    setAiRecomputing(true);
+    candidatesApi.computeAIMatch(candidateId)
+      .then(applyAIResults)
+      .catch(() => {})
+      .finally(() => setAiRecomputing(false));
+  };
 
   const { data: notesRaw, refetch: refetchNotes } = useQuery({
     queryKey: ['candidate', candidateId, 'notes'],
@@ -503,14 +635,40 @@ export default function CandidateJobProfile() {
   const stage = mapping?.macro_stage || 'APPLIED';
   const latestResume = candidate?.resume_files?.find(f => f.is_latest) || candidate?.resume_files?.[0];
 
+  const [resumeDownloading, setResumeDownloading] = useState(false);
+
+  // Open in new tab: direct navigation — no fetch, no CORS issue
   const openResumeInNewTab = (file) => {
     const url = file?.file_url;
-    if (!url) {
-      alert('Resume URL is not available. Please check if the file was uploaded correctly.');
-      return;
+    if (!url) { alert('Resume URL not available.'); return; }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  // Download: fetch from our own backend proxy (same-origin → no CORS)
+  const downloadResume = async (file) => {
+    if (resumeDownloading) return;
+    setResumeDownloading(true);
+    try {
+      const BASE_API = (import.meta.env.VITE_API_URL || '') + '/api/v1';
+      const token = localStorage.getItem('access');
+      const res = await fetch(`${BASE_API}/candidates/${candidateId}/resume/download/`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Download failed.');
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = file?.original_filename || 'resume';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+    } catch {
+      alert('Could not download resume. Please try again.');
+    } finally {
+      setResumeDownloading(false);
     }
-    const win = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!win) window.location.href = url;
   };
 
   const handleAddNote = async () => {
@@ -638,23 +796,44 @@ export default function CandidateJobProfile() {
                   <h1 className="text-lg font-bold text-slate-900">{candidate.full_name}</h1>
                   {aiMatchLoading ? (
                     <span className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full">
-                      <Loader className="w-3 h-3 animate-spin" /> Computing AI match…
+                      <Loader className="w-3 h-3 animate-spin" /> Loading…
                     </span>
                   ) : aiMatch ? (
-                    <span
-                      title={`Best match: ${aiMatch.job_title}\n${aiMatch.reason}`}
-                      className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border cursor-default ${
-                        aiMatch.score >= 75 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                        aiMatch.score >= 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                        'bg-rose-50 text-rose-600 border-rose-200'
-                      }`}
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      AI Match {Math.round(aiMatch.score)}%
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        title={`Best match: ${aiMatch.job_title}\n${aiMatch.reason}`}
+                        className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border cursor-default ${
+                          aiMatch.score >= 75 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          aiMatch.score >= 50 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                          'bg-rose-50 text-rose-600 border-rose-200'
+                        }`}
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        AI Match {Math.round(aiMatch.score)}%
+                      </span>
+                      <button
+                        onClick={handleRecomputeAI}
+                        disabled={aiRecomputing}
+                        title="Recompute AI match"
+                        className="text-slate-400 hover:text-blue-600 disabled:opacity-40 transition-colors"
+                      >
+                        <Loader className={`w-3.5 h-3.5 ${aiRecomputing ? 'animate-spin text-blue-500' : ''}`} />
+                      </button>
                     </span>
                   ) : candidate.job_mappings?.length === 0 ? (
                     <span className="text-xs text-slate-400 italic">Not applied to any job</span>
-                  ) : null}
+                  ) : (
+                    <button
+                      onClick={handleRecomputeAI}
+                      disabled={aiRecomputing}
+                      className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50 transition-colors"
+                    >
+                      {aiRecomputing
+                        ? <><Loader className="w-3 h-3 animate-spin" /> Computing…</>
+                        : <><Sparkles className="w-3 h-3" /> Compute AI Match</>
+                      }
+                    </button>
+                  )}
                 </div>
                 {candidate.designation && (
                   <p className="text-sm text-slate-500 mt-0.5">
@@ -670,8 +849,17 @@ export default function CandidateJobProfile() {
                   </p>
                 )}
               </div>
-              <div className="shrink-0 pt-0.5">
+              <div className="shrink-0 pt-0.5 flex items-start gap-2">
                 <TagsSection candidateId={candidateId} initialTags={candidate.tags || []} queryClient={queryClient} />
+                {['admin', 'recruiter'].includes(currentUser?.role) && (
+                  <button
+                    onClick={() => openIdentityEdit(candidate)}
+                    className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition-colors shrink-0"
+                    title="Edit candidate details"
+                  >
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-4 flex-wrap">
@@ -687,34 +875,103 @@ export default function CandidateJobProfile() {
                   {SOURCE_LABELS[candidate.source] || candidate.source}
                 </span>
               )}
+              {candidate.source === 'referral' && candidate.sub_source && (
+                <span className="text-xs bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-1 rounded-full font-medium">
+                  {candidate.sub_source}
+                </span>
+              )}
             </div>
             {candidate.skills?.length > 0 && (
               <SkillsRow skills={candidate.skills} />
             )}
           </div>
 
-          {/* Resume viewer */}
-          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Resume</span>
-            {latestResume && (
-              <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => openResumeInNewTab(latestResume)}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-              >
-                <ExternalLink className="w-3.5 h-3.5" /> Open in new tab
-              </button>
-              <a
-                href={latestResume.file_url}
-                download={latestResume.original_filename || 'resume'}
-                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
-                title="Download resume"
-              >
-                <Download className="w-3.5 h-3.5" />
-              </a>
+          {/* Identity edit modal */}
+          {editingIdentity && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[400] p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden max-h-[85vh]">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 shrink-0">
+                  <span className="text-sm font-semibold text-slate-800">Edit Candidate Details</span>
+                  <button onClick={() => setEditingIdentity(false)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-auto px-5 py-4">
+                  <div className="flex flex-col gap-3">
+                    {[
+                      { label: 'Full Name',        key: 'full_name',              type: 'text'   },
+                      { label: 'Email',             key: 'email',                  type: 'email'  },
+                      { label: 'Phone',             key: 'phone',                  type: 'text'   },
+                      { label: 'Designation',       key: 'designation',            type: 'text'   },
+                      { label: 'Current Company',   key: 'current_employer',       type: 'text'   },
+                      { label: 'Location',          key: 'location',               type: 'text'   },
+                      { label: 'Experience (Years)',key: 'total_experience_years', type: 'number' },
+                    ].map(({ label, key, type }) => (
+                      <div key={key} className="flex gap-3 items-center text-xs">
+                        <span className="text-slate-500 shrink-0 w-44">{label}</span>
+                        <input
+                          type={type}
+                          value={identityForm[key]}
+                          onChange={e => setIdentityForm(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 outline-none focus:border-blue-400 w-full"
+                          placeholder="—"
+                          step={type === 'number' ? 'any' : undefined}
+                        />
+                      </div>
+                    ))}
+                    <div className="flex flex-col gap-1.5 text-xs">
+                      <span className="text-slate-500 font-medium">Skills</span>
+                      <SkillTagInput
+                        skills={identityForm.skills || []}
+                        onChange={updated => setIdentityForm(prev => ({ ...prev, skills: updated }))}
+                      />
+                    </div>
+                    {identityError && (
+                      <p className="text-xs text-rose-600">{identityError}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 px-5 py-3.5 border-t border-slate-100 shrink-0">
+                  <button onClick={() => setEditingIdentity(false)} className="text-xs text-slate-500 hover:text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-100 transition-colors">
+                    Cancel
+                  </button>
+                  <button onClick={handleIdentitySave} disabled={identitySaving} className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium">
+                    <Check className="w-3 h-3" />{identitySaving ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
+          )}
+
+          {/* Resume viewer */}
+          <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider shrink-0">Resume</span>
+            <div className="flex items-center gap-3 flex-wrap">
+              {latestResume && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openResumeInNewTab(latestResume)}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Open in new tab
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadResume(latestResume)}
+                    disabled={resumeDownloading}
+                    className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 disabled:opacity-50"
+                    title="Download resume"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {resumeDownloading && <span className="text-xs">…</span>}
+                  </button>
+                </>
+              )}
+              {['admin', 'recruiter'].includes(currentUser?.role) && (
+                <ResumeUploadButton candidateId={candidateId} onUploaded={refetchCandidate} />
+              )}
+            </div>
           </div>
 
           <div className="min-h-[600px] flex-1">
@@ -733,10 +990,11 @@ export default function CandidateJobProfile() {
                   </p>
                   <button
                     type="button"
-                    onClick={() => openResumeInNewTab(latestResume)}
-                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                    onClick={() => downloadResume(latestResume)}
+                    disabled={resumeDownloading}
+                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50"
                   >
-                    <ExternalLink className="w-4 h-4" /> Download Resume
+                    <Download className="w-4 h-4" /> {resumeDownloading ? 'Downloading…' : 'Download Resume'}
                   </button>
                 </div>
               )

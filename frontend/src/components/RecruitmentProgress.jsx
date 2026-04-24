@@ -4,12 +4,12 @@ import {
 } from 'recharts';
 import { ChevronsRight } from 'lucide-react';
 
-const SOURCES = ['Referral', 'Recruiter Sourced', 'Inbound', 'Partner'];
+const SOURCES = ['Referral', 'Recruiter Sourced', 'Inbound', 'Admin'];
 const SOURCE_COLORS = {
   'Referral':          '#1e3a8a',
   'Recruiter Sourced': '#2563eb',
   'Inbound':           '#60a5fa',
-  'Partner':           '#93c5fd',
+  'Admin':             '#93c5fd',
 };
 
 const MultiLineTick = ({ x, y, payload }) => {
