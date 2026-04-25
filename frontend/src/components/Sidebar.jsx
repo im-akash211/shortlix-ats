@@ -85,7 +85,7 @@ export default function Sidebar() {
           <div className="w-6 h-6 bg-blue-500 rounded flex items-center justify-center shrink-0">
             <span className="text-white text-xs font-bold">S</span>
           </div>
-          {!isCollapsed && <span>Shorthills AI</span>}
+          {!isCollapsed && <span>Shortlix_ATS</span>}
         </div>
       </div>
 
