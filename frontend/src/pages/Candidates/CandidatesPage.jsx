@@ -82,7 +82,7 @@ export default function CandidatesPage() {
 
       {/* Top bar */}
       <div className="bg-slate-800 text-white px-6 py-3 flex items-center justify-between shrink-0">
-        <h1 className="text-lg font-medium">Talent Pool Search</h1>
+        <h1 className="text-lg font-medium">Talent Pool</h1>
         <div className="flex items-center gap-4">
           <button
             onClick={resumeUpload.openUploadModal}
