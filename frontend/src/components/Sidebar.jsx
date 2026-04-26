@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, Calendar, CheckSquare, FileText, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, Calendar, CheckSquare, FileText, Settings, ChevronLeft, ChevronRight, GitMerge } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { ROUTES } from '../routes/constants';
+import { useAuth } from '../lib/authContext';
 
 export default function Sidebar() {
+  const { user } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [width, setWidth] = useState(80);
   const isResizing = useRef(false);
@@ -68,6 +70,7 @@ export default function Sidebar() {
     { name: 'Interviews', icon: Calendar, path: ROUTES.INTERVIEWS },
     { name: 'Approvals', icon: CheckSquare, path: ROUTES.APPROVALS },
     { name: 'Requisitions', icon: FileText, path: ROUTES.REQUISITIONS.ROOT },
+    ...(user?.role === 'admin' ? [{ name: 'Referrals', icon: GitMerge, path: ROUTES.REFERRALS }] : []),
     { name: 'Settings', icon: Settings, path: ROUTES.SETTINGS },
   ];
 

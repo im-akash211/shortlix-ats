@@ -219,11 +219,20 @@ export default function ReviewResumeModal({
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-600">Total Experience (years)</label>
-            <input type="number" min="0" step="0.5" value={reviewForm.experience_years}
-              onChange={e => setReviewField('experience_years', e.target.value)}
-              className="w-40 border border-slate-300 rounded-md px-3 py-2 text-sm outline-none focus:border-blue-500" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-600">Total Experience (years)</label>
+              <input type="number" min="0" step="0.5" value={reviewForm.experience_years}
+                onChange={e => setReviewField('experience_years', e.target.value)}
+                className="border border-slate-300 rounded-md px-3 py-2 text-sm outline-none focus:border-blue-500" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-600">Expected CTC (LPA) <span className="text-slate-400 font-normal">optional</span></label>
+              <input type="number" min="0" step="0.5" value={reviewForm.expected_ctc_lakhs}
+                onChange={e => setReviewField('expected_ctc_lakhs', e.target.value)}
+                placeholder="e.g. 12.5"
+                className="border border-slate-300 rounded-md px-3 py-2 text-sm outline-none focus:border-blue-500" />
+            </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -293,6 +302,7 @@ export default function ReviewResumeModal({
             <PreviewField label="Designation" value={data.designation} />
             <PreviewField label="Current Company" value={data.current_company} />
             <PreviewField label="Experience (years)" value={data.experience_years} />
+            <PreviewField label="Expected CTC (LPA)" value={data.expected_ctc_lakhs || null} />
           </div>
 
           {data.skills?.length > 0 && (

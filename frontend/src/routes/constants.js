@@ -40,6 +40,7 @@ export const ROUTES = {
   APPROVALS: '/approvals',
   INTERVIEWS: '/interviews',
   SETTINGS: '/settings',
+  REFERRALS: '/referrals',
 
   // Employee portal (public — no auth required)
   EMPLOYEE_PORTAL: '/employee',

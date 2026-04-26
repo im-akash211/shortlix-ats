@@ -24,9 +24,9 @@ export default function JobCard({ job, onView, onOpenPipeline, onCollaborators }
           {job.hiring_manager_name && (
             <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {job.hiring_manager_name}</span>
           )}
-          {job.purpose && (
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${job.purpose === 'client' ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700'}`}>
-              {job.purpose_code || job.purpose}
+          {job.job_code && (
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${job.job_code.startsWith('SHT-CLT') ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700'}`}>
+              {job.job_code}
             </span>
           )}
         </div>

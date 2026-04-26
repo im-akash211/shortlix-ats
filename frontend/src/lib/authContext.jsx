@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, clearAuth } from './api';
+import { queryClient } from '../main';
 
 const AuthContext = createContext(null);
 
@@ -21,6 +22,7 @@ export function AuthProvider({ children }) {
   const handleLogout = () => {
     auth.logout().catch(() => {});
     clearAuth();
+    queryClient.clear();
     setUser(null);
   };
 

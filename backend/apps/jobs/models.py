@@ -22,7 +22,7 @@ class Job(models.Model):
     requisition = models.OneToOneField(
         'requisitions.Requisition', on_delete=models.PROTECT, related_name='job'
     )
-    job_code = models.CharField(max_length=20, unique=True)
+    job_code = models.CharField(max_length=15, unique=True)
     title = models.CharField(max_length=255)
     department = models.ForeignKey('departments.Department', on_delete=models.PROTECT)
     hiring_manager = models.ForeignKey(

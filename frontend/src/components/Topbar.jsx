@@ -78,7 +78,9 @@ export default function Topbar({ user, onLogout }) {
   const handleNotifClick = async (n) => {
     if (!n.is_read) await markRead(n.id);
     setNotifOpen(false);
-    if (n.notification_type === 'reminder' && n.job_id) {
+    if (n.notification_type === 'referral') {
+      navigate(ROUTES.REFERRALS);
+    } else if (n.notification_type === 'reminder' && n.job_id) {
       const tab = MACRO_TO_TAB[n.macro_stage] || 'Applied';
       navigate(`/jobs/${n.job_id}/candidates?stage=${tab}`);
     } else if (n.candidate_id) {

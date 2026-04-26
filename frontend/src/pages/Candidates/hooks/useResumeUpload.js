@@ -53,15 +53,16 @@ export function useResumeUpload({ setActiveModal }) {
     const data = ingestion.parsed_data?.reviewed_output || ingestion.parsed_data?.llm_output || {};
     setReviewIngestion(ingestion);
     setReviewForm({
-      first_name:       data.first_name       ?? '',
-      last_name:        data.last_name        ?? '',
-      email:            data.email            ?? '',
-      phone:            data.phone            ?? '',
-      designation:      data.designation      ?? '',
-      current_company:  data.current_company  ?? '',
-      experience_years: data.experience_years ?? '',
-      skills:           Array.isArray(data.skills) ? data.skills : [],
-      education:        Array.isArray(data.education) ? data.education : [],
+      first_name:         data.first_name         ?? '',
+      last_name:          data.last_name          ?? '',
+      email:              data.email              ?? '',
+      phone:              data.phone              ?? '',
+      designation:        data.designation        ?? '',
+      current_company:    data.current_company    ?? '',
+      experience_years:   data.experience_years   ?? '',
+      expected_ctc_lakhs: data.expected_ctc_lakhs ?? '',
+      skills:             Array.isArray(data.skills) ? data.skills : [],
+      education:          Array.isArray(data.education) ? data.education : [],
     });
     setReviewSaved(ingestion.status === 'reviewed');
     setDuplicateInfo(null);

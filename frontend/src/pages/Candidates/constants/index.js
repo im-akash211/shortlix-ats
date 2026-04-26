@@ -37,5 +37,6 @@ export const EMPTY_FILTERS = {
 export const BLANK_REVIEW = {
   first_name: '', last_name: '', email: '', phone: '',
   designation: '', current_company: '', experience_years: '',
+  expected_ctc_lakhs: '',
   skills: [], education: [],
 };
