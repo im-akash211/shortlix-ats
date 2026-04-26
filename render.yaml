@@ -52,7 +52,7 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    startCommand: celery -A config.celery worker --loglevel=info --concurrency=2
+    dockerCommand: celery -A config.celery worker --loglevel=info --concurrency=2
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.prod
@@ -97,3 +97,4 @@ services:
     name: ats-redis
     plan: free
     maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
