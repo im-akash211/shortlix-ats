@@ -1,12 +1,12 @@
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Count, Q, Sum
+from django.db.models import Avg, Count, ExpressionWrapper, F, Q, Sum, DurationField
 from django.db.models.functions import TruncWeek
 from django.utils import timezone
 from datetime import timedelta
-from apps.jobs.models import Job
-from apps.candidates.models import CandidateJobMapping, MACRO_STAGE_CHOICES
+from apps.jobs.models import Job, JobCollaborator
+from apps.candidates.models import CandidateJobMapping, Referral, MACRO_STAGE_CHOICES
 from apps.requisitions.models import Requisition
 from apps.interviews.models import Interview
 
@@ -40,14 +40,24 @@ def _calc_trend(queryset, now, date_field='created_at'):
 
 class DashboardSummaryView(APIView):
     def get(self, request):
+        user = request.user
         department = request.query_params.get('department')
-        job_status = request.query_params.get('status', 'open')
 
         jobs_qs = Job.objects.all()
+
+        # Role-based scope
+        if user.role == 'hiring_manager':
+            jobs_qs = jobs_qs.filter(hiring_manager=user)
+        elif user.role == 'recruiter':
+            collab_job_ids = JobCollaborator.objects.filter(user=user).values_list('job_id', flat=True)
+            jobs_qs = jobs_qs.filter(Q(created_by=user) | Q(id__in=collab_job_ids))
+        elif user.role == 'interviewer':
+            interviewer_job_ids = Interview.objects.filter(interviewer=user).values_list('mapping__job_id', flat=True).distinct()
+            jobs_qs = jobs_qs.filter(id__in=interviewer_job_ids)
+        # admin: no additional filter
+
         if department:
             jobs_qs = jobs_qs.filter(department_id=department)
-        if job_status and job_status != 'all':
-            jobs_qs = jobs_qs.filter(status=job_status)
 
         departments_param    = request.query_params.get('departments', '')
         hiring_managers_param = request.query_params.get('hiring_managers', '')
@@ -117,6 +127,14 @@ class DashboardSummaryView(APIView):
         all_candidates = total_applies
         progressed = total_applies - stage_counts.get('APPLIED', 0) - stage_counts.get('DROPPED', 0)
 
+        # Average days from application to offer/join
+        avg_duration = (
+            mappings.filter(macro_stage__in=['OFFERED', 'JOINED'])
+            .annotate(duration=ExpressionWrapper(F('stage_updated_at') - F('created_at'), output_field=DurationField()))
+            .aggregate(avg=Avg('duration'))['avg']
+        )
+        avg_days_to_hire = round(avg_duration.days) if avg_duration else None
+
         def source_breakdown(qs):
             # One aggregate query instead of 4 separate COUNT queries per call.
             agg = qs.aggregate(
@@ -129,11 +147,12 @@ class DashboardSummaryView(APIView):
                 'Referral': agg['referral'],
                 'Recruiter Sourced': agg['recruiter_sourced'],
                 'Inbound': agg['inbound'],
-                'Partner': agg['partner'],
+                'Admin': agg['partner'],
             }
 
         return Response({
             'metrics': metrics,
+            'avg_days_to_hire': avg_days_to_hire,
             'recruitment_progress': {
                 'all_candidates': all_candidates,
                 'progressed_candidates': progressed,
@@ -203,6 +222,7 @@ class DashboardFunnelView(APIView):
 class DashboardPendingActionsView(APIView):
     def get(self, request):
         user = request.user
+
         pending_approvals = Requisition.objects.filter(
             status='pending_approval', l1_approver=user
         ).count()
@@ -212,7 +232,32 @@ class DashboardPendingActionsView(APIView):
             interviewer=user, status='scheduled', scheduled_at__lt=now
         ).count()
 
+        pending_referrals = (
+            Referral.objects.filter(status='pending').count()
+            if user.role == 'admin' else 0
+        )
+
+        # Scope stale candidates to the same jobs the user sees in the summary
+        jobs_qs = Job.objects.all()
+        if user.role == 'hiring_manager':
+            jobs_qs = jobs_qs.filter(hiring_manager=user)
+        elif user.role == 'recruiter':
+            collab_job_ids = JobCollaborator.objects.filter(user=user).values_list('job_id', flat=True)
+            jobs_qs = jobs_qs.filter(Q(created_by=user) | Q(id__in=collab_job_ids))
+        elif user.role == 'interviewer':
+            interviewer_job_ids = Interview.objects.filter(interviewer=user).values_list('mapping__job_id', flat=True).distinct()
+            jobs_qs = jobs_qs.filter(id__in=interviewer_job_ids)
+
+        stale_threshold = now - timedelta(days=7)
+        stale_candidates = CandidateJobMapping.objects.filter(
+            job_id__in=jobs_qs.values_list('id', flat=True),
+            stage_updated_at__lt=stale_threshold,
+            macro_stage__in=['APPLIED', 'SHORTLISTED', 'INTERVIEW'],
+        ).count()
+
         return Response({
             'pending_approvals': pending_approvals,
             'pending_feedback': pending_feedback,
+            'pending_referrals': pending_referrals,
+            'stale_candidates': stale_candidates,
         })

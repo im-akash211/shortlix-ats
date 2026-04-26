@@ -43,7 +43,11 @@ class ResumeIngestion(models.Model):
         on_delete=models.PROTECT,
         related_name="resume_ingestions",
     )
-    file = models.FileField(upload_to="ats/resumes/")
+    file = models.FileField(upload_to="ats/resumes/", blank=True)
+    temp_file = models.FileField(
+        upload_to="ats/temp_resumes/", blank=True,
+        help_text="Staging file — moved to ats/resumes/ on convert, deleted on discard",
+    )
     file_hash = models.CharField(
         max_length=64, unique=True, db_index=True, null=True, blank=True,
         help_text="SHA-256 hex digest of file contents — used for exact duplicate detection",

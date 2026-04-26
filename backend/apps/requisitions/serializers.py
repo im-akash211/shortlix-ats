@@ -67,8 +67,7 @@ class RequisitionDetailSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
     sub_vertical_1_name = serializers.CharField(source='sub_vertical_1.name', read_only=True, default=None)
     sub_vertical_2_name = serializers.CharField(source='sub_vertical_2.name', read_only=True, default=None)
-    hiring_manager_name = serializers.CharField(source='hiring_manager.full_name', read_only=True)
-    l1_approver_name = serializers.CharField(source='l1_approver.full_name', read_only=True)
+    hiring_manager_name = serializers.CharField(source='hiring_manager.full_name', read_only=True, default=None)
     created_by_name = serializers.CharField(source='created_by.full_name', read_only=True)
     approval_logs = RequisitionApprovalSerializer(many=True, read_only=True)
 
@@ -113,10 +112,8 @@ class RequisitionCreateSerializer(serializers.ModelSerializer):
         elif float(exp_max) < float(exp_min):
             errors['experience_max'] = 'Max experience must be ≥ min.'
 
-        if not data.get('salary_min'):
-            errors['salary_min'] = 'Salary min is required.'
-        if not data.get('salary_max'):
-            errors['salary_max'] = 'Salary max is required.'
+        if not data.get('hiring_manager'):
+            errors['hiring_manager'] = 'Hiring manager is required.'
 
         if errors:
             raise serializers.ValidationError(errors)

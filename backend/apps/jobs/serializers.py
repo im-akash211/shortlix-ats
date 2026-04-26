@@ -89,14 +89,14 @@ class JobDetailSerializer(serializers.ModelSerializer):
 
     def get_recruiters_working(self, obj):
         result = []
-        if obj.created_by and obj.created_by.role == 'recruiter':
+        if obj.created_by:
             result.append({
                 'id': str(obj.created_by.id),
                 'name': obj.created_by.full_name,
                 'email': obj.created_by.email,
             })
         for c in obj.collaborators.select_related('user').all():
-            if c.user.role == 'recruiter' and not any(r['id'] == str(c.user.id) for r in result):
+            if not any(r['id'] == str(c.user.id) for r in result):
                 result.append({
                     'id': str(c.user.id),
                     'name': c.user.full_name,

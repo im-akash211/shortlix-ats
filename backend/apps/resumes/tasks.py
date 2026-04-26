@@ -44,9 +44,10 @@ def process_resume(self, ingestion_id: str):
 
     # ── Step 1: Text extraction ────────────────────────────────────────────────
     try:
-        ingestion.file.open("rb")
-        raw_text = extract_text(ingestion.file, ingestion.file_type)
-        ingestion.file.close()
+        source = ingestion.temp_file if ingestion.temp_file else ingestion.file
+        source.open("rb")
+        raw_text = extract_text(source, ingestion.file_type)
+        source.close()
     except TextExtractionError as exc:
         logger.warning("Text extraction failed [%s]: %s", ingestion_id, exc)
         _fail(ingestion, str(exc))

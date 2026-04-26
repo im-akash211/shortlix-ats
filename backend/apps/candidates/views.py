@@ -503,3 +503,153 @@ class CandidateReminderUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
             candidate_id=self.kwargs['pk'],
             created_by=self.request.user,
         )
+
+
+class CandidateResumeUploadView(APIView):
+    """
+    POST /api/candidates/<pk>/resume/
+    Upload a new resume file for a candidate without re-parsing any details.
+    Marks previous files as is_latest=False.
+    Returns 409 if the exact same file (by SHA-256) was already uploaded.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [__import__('rest_framework.parsers', fromlist=['MultiPartParser']).MultiPartParser]
+
+    def post(self, request, pk):
+        import hashlib
+        from .models import ResumeFile
+        candidate = generics.get_object_or_404(Candidate, pk=pk)
+        resume_file = request.FILES.get('file')
+        if not resume_file:
+            return Response({'detail': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        fname = resume_file.name.lower()
+        if fname.endswith('.pdf'):
+            file_type = 'pdf'
+        elif fname.endswith('.docx'):
+            file_type = 'docx'
+        else:
+            return Response({'detail': 'Only PDF and DOCX files are accepted.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Compute SHA-256 hash to detect duplicates
+        resume_file.seek(0)
+        sha256 = hashlib.sha256(resume_file.read()).hexdigest()
+        resume_file.seek(0)
+
+        existing = ResumeFile.objects.filter(candidate=candidate, file_hash=sha256).first()
+        if existing:
+            return Response(
+                {
+                    'detail': 'This resume has already been uploaded for this candidate.',
+                    'duplicate': True,
+                    'existing_filename': existing.original_filename,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        with transaction.atomic():
+            ResumeFile.objects.filter(candidate=candidate, is_latest=True).update(is_latest=False)
+            rf = ResumeFile.objects.create(
+                candidate=candidate,
+                uploaded_by=request.user,
+                file=resume_file,
+                original_filename=resume_file.name,
+                file_type=file_type,
+                file_size_bytes=resume_file.size,
+                file_hash=sha256,
+                is_latest=True,
+            )
+
+        from .serializers import ResumeFileSerializer
+        return Response(ResumeFileSerializer(rf, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+
+class CandidateResumeDownloadView(APIView):
+    """
+    GET /api/candidates/<pk>/resume/download/
+    Proxies the latest resume file through the backend so the browser
+    receives it as same-origin — avoids S3 CORS restrictions on fetch().
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        import urllib.request
+        from django.http import HttpResponse
+        from .models import ResumeFile
+
+        candidate = generics.get_object_or_404(Candidate, pk=pk)
+        rf = (
+            ResumeFile.objects.filter(candidate=candidate, is_latest=True).first()
+            or ResumeFile.objects.filter(candidate=candidate).order_by('-created_at').first()
+        )
+        if not rf or not rf.file:
+            return Response({'detail': 'No resume file found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            url = rf.file.url
+            with urllib.request.urlopen(url) as resp:
+                data = resp.read()
+        except Exception as exc:
+            return Response({'detail': f'Could not fetch file: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        content_type = 'application/pdf' if rf.file_type == 'pdf' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        response = HttpResponse(data, content_type=content_type)
+        response['Content-Disposition'] = f'attachment; filename="{rf.original_filename}"'
+        return response
+
+
+class CandidateAIMatchView(APIView):
+    """
+    GET  /api/candidates/<pk>/ai-match/  — return cached scores (no LLM call)
+    POST /api/candidates/<pk>/ai-match/  — recompute scores via LLM and return
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _serialise(self, mappings_qs):
+        return [
+            {
+                'mapping_id': str(m.id),
+                'job_id': str(m.job_id),
+                'job_title': m.job.title if m.job else '',
+                'score': m.ai_match_score,
+                'reason': m.ai_match_reason,
+                'macro_stage': m.macro_stage,
+            }
+            for m in mappings_qs if m.ai_match_score is not None
+        ]
+
+    def get(self, request, pk):
+        candidate = generics.get_object_or_404(Candidate, pk=pk)
+        cached = (
+            CandidateJobMapping.objects.filter(candidate=candidate)
+            .select_related('job')
+            .order_by('-ai_match_score')
+        )
+        return Response(self._serialise(cached), status=status.HTTP_200_OK)
+
+    def post(self, request, pk):
+        candidate = generics.get_object_or_404(
+            Candidate.objects.prefetch_related('resume_files', 'job_mappings__job'),
+            pk=pk,
+        )
+        mappings = list(candidate.job_mappings.select_related('job').all())
+        if not mappings:
+            return Response([], status=status.HTTP_200_OK)
+
+        from .services.ai_match import compute_and_save_match
+        import threading
+
+        def _compute_all():
+            for mapping in mappings:
+                compute_and_save_match(mapping)
+
+        thread = threading.Thread(target=_compute_all, daemon=True)
+        thread.start()
+        thread.join(timeout=60)
+
+        updated = (
+            CandidateJobMapping.objects.filter(candidate=candidate)
+            .select_related('job')
+            .order_by('-ai_match_score')
+        )
+        return Response(self._serialise(updated), status=status.HTTP_200_OK)

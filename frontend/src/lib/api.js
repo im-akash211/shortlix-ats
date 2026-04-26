@@ -186,6 +186,14 @@ export const candidates = {
     request(`/candidates/${id}/reminders/${reminderId}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteReminder: (id, reminderId) =>
     request(`/candidates/${id}/reminders/${reminderId}/`, { method: 'DELETE' }),
+  uploadResume: (id, file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return requestUpload(`/candidates/${id}/resume/`, fd);
+  },
+  getAIMatch: (id) => request(`/candidates/${id}/ai-match/`),
+  computeAIMatch: (id) =>
+    request(`/candidates/${id}/ai-match/`, { method: 'POST' }),
 };
 
 // ---- Interviews ---- //
@@ -199,6 +207,10 @@ export const interviews = {
   submitFeedback: (id, data) =>
     request(`/interviews/${id}/feedback/`, { method: 'POST', body: JSON.stringify(data) }),
   getFeedback: (id) => request(`/interviews/${id}/feedback/detail/`),
+  updateFeedback: (id, data) =>
+    request(`/interviews/${id}/feedback/detail/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteFeedback: (id) =>
+    request(`/interviews/${id}/feedback/detail/`, { method: 'DELETE' }),
   setRoundResult: (id, roundResult) =>
     request(`/interviews/${id}/round-result/`, {
       method: 'PATCH', body: JSON.stringify({ round_result: roundResult }),
@@ -248,6 +260,7 @@ export const resumes = {
   list: () => request('/resume/'),
   review: (id, data) => request(`/resume/${id}/review/`, { method: 'PATCH', body: JSON.stringify(data) }),
   convert: (id) => request(`/resume/${id}/convert/`, { method: 'POST' }),
+  discard: (id) => request(`/resume/${id}/discard/`, { method: 'DELETE' }),
   resolveDuplicate: (id, decision) =>
     request(`/resume/${id}/resolve-duplicate/`, { method: 'POST', body: JSON.stringify({ decision }) }),
 };
@@ -256,6 +269,17 @@ export const resumes = {
 export const ai = {
   generateRequisitionContent: (data) =>
     request('/requisitions/ai/generate/', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+// ---- Reminders ---- //
+export const remindersApi = {
+  create: (candidateId, data) =>
+    request(`/candidates/${candidateId}/reminders/`, { method: 'POST', body: JSON.stringify(data) }),
+  list: (candidateId) => request(`/candidates/${candidateId}/reminders/`),
+  delete: (candidateId, reminderId) =>
+    request(`/candidates/${candidateId}/reminders/${reminderId}/`, { method: 'DELETE' }),
+  markDone: (candidateId, reminderId) =>
+    request(`/candidates/${candidateId}/reminders/${reminderId}/`, { method: 'PATCH', body: JSON.stringify({ is_done: true }) }),
 };
 
 // ---- Notifications ---- //
@@ -298,6 +322,13 @@ export const candidateShare = {
       method: 'POST',
       body: JSON.stringify({ user_ids: userIds }),
     }),
+};
+
+// ---- Referrals (Admin) ---- //
+export const referrals = {
+  list: (status = 'pending') => request(`/candidates/referrals/?status=${status}`),
+  approve: (id) => request(`/candidates/referrals/${id}/approve/`, { method: 'POST' }),
+  decline: (id) => request(`/candidates/referrals/${id}/decline/`, { method: 'POST' }),
 };
 
 // ---- Users (Admin) ---- //

@@ -161,12 +161,19 @@ class ResumeFile(models.Model):
     file_type = models.CharField(max_length=4, choices=FILE_TYPE_CHOICES)
     file_size_bytes = models.PositiveIntegerField()
     raw_text = models.TextField(blank=True, help_text='Extracted text from resume (before AI parsing)')
+    file_hash = models.CharField(max_length=64, blank=True, db_index=True, help_text='SHA-256 of uploaded bytes for duplicate detection')
     is_latest = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'resume_files'
         ordering = ['-created_at']
+
+    def delete(self, *args, **kwargs):
+        # Delete the actual S3 file before removing the DB record
+        if self.file:
+            self.file.delete(save=False)
+        super().delete(*args, **kwargs)
 
     def __str__(self):
         return f"{self.candidate.full_name} - {self.original_filename}"
@@ -198,6 +205,11 @@ class CandidateJobMapping(models.Model):
 
     # Priority for sorting and display
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='MEDIUM')
+
+    # AI match score
+    ai_match_score = models.FloatField(null=True, blank=True)
+    ai_match_reason = models.TextField(blank=True)
+    ai_match_computed_at = models.DateTimeField(null=True, blank=True)
 
     # Screening status for APPLIED stage classification
     screening_status = models.CharField(
@@ -285,9 +297,53 @@ class CandidateNoteHistory(models.Model):
         ordering = ['-edited_at']
 
 
+class Referral(models.Model):
+    STATUS_PENDING  = 'pending'
+    STATUS_APPROVED = 'approved'
+    STATUS_DECLINED = 'declined'
+
+    STATUS_CHOICES = [
+        ('pending',  'Pending'),
+        ('approved', 'Approved'),
+        ('declined', 'Declined'),
+    ]
+
+    id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    job           = models.ForeignKey('jobs.Job', on_delete=models.CASCADE, related_name='referrals')
+    employee_name = models.CharField(max_length=255)
+    employee_id   = models.CharField(max_length=100)
+    parsed_data   = models.JSONField(default=dict)
+    raw_text      = models.TextField(blank=True)
+    resume_file   = models.FileField(upload_to='ats/referrals/', null=True, blank=True)
+    original_filename = models.CharField(max_length=255, blank=True)
+    file_type     = models.CharField(max_length=4, blank=True)
+    file_size     = models.PositiveIntegerField(null=True, blank=True)
+    status        = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending', db_index=True)
+    candidate     = models.ForeignKey(
+        Candidate, on_delete=models.SET_NULL, null=True, blank=True, related_name='referrals'
+    )
+    reviewed_by   = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reviewed_referrals',
+    )
+    reviewed_at   = models.DateTimeField(null=True, blank=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
+    updated_at    = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Referral by {self.employee_name} for {self.job.title} [{self.status}]"
+
+
 class CandidateReminder(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='reminders')
+    mapping = models.ForeignKey(
+        CandidateJobMapping, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reminders',
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='candidate_reminders'
     )

@@ -6,7 +6,9 @@ from .views import (
     NextRoundView, JumpToRoundView, SetScreeningStatusView,
     CandidateJobCommentListCreateView,
     CandidateReminderListCreateView, CandidateReminderUpdateDeleteView,
+    CandidateAIMatchView, CandidateResumeUploadView, CandidateResumeDownloadView,
 )
+from .employee_views import ReferralListView, ReferralApproveView, ReferralDeclineView
 
 urlpatterns = [
     path('', CandidateListCreateView.as_view(), name='candidate-list'),
@@ -24,4 +26,11 @@ urlpatterns = [
     path('<uuid:pk>/jobs/<uuid:job_id>/comments/', CandidateJobCommentListCreateView.as_view(), name='candidate-job-comments'),
     path('<uuid:pk>/reminders/', CandidateReminderListCreateView.as_view(), name='candidate-reminders'),
     path('<uuid:pk>/reminders/<uuid:reminder_id>/', CandidateReminderUpdateDeleteView.as_view(), name='candidate-reminder-detail'),
+    path('<uuid:pk>/ai-match/', CandidateAIMatchView.as_view(), name='candidate-ai-match'),
+    path('<uuid:pk>/resume/', CandidateResumeUploadView.as_view(), name='candidate-resume-upload'),
+    path('<uuid:pk>/resume/download/', CandidateResumeDownloadView.as_view(), name='candidate-resume-download'),
+    # Referral management (admin only)
+    path('referrals/', ReferralListView.as_view(), name='referral-list'),
+    path('referrals/<uuid:pk>/approve/', ReferralApproveView.as_view(), name='referral-approve'),
+    path('referrals/<uuid:pk>/decline/', ReferralDeclineView.as_view(), name='referral-decline'),
 ]

@@ -19,6 +19,7 @@ const Approvals = lazy(() => import('./pages/Approvals'));
 const Interviews = lazy(() => import('./pages/Interviews'));
 const Requisitions = lazy(() => import('./pages/Requisitions'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Referrals = lazy(() => import('./pages/Referrals'));
 
 export default function App() {
   return (
@@ -79,7 +80,13 @@ export default function App() {
                   <Settings />
                 </Suspense>
               } />
-              
+
+              <Route path={ROUTES.REFERRALS} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <Referrals />
+                </Suspense>
+              } />
+
               {/* Catch-all route to dashboard */}
               <Route path="*" element={<Navigate to={ROUTES.DASHBOARD} replace />} />
             </Route>

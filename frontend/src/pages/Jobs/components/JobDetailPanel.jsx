@@ -1,5 +1,5 @@
-import React from 'react';
-import { MapPin, Eye, UserPlus, Users, ChevronRight, Edit2, Trash2, BookOpen, Download } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapPin, Eye, UserPlus, Users, ChevronRight, Edit2, Trash2, BookOpen, Download, Upload, ChevronDown } from 'lucide-react';
 import { jobsApi } from '../services/jobsApi';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../../../routes/constants';
@@ -19,10 +19,26 @@ export default function JobDetailPanel({
   openEdit,
   setIsDeleteJobOpen,
   openCollabModal,
-  setIsAddProfileOpen,
+  // add-candidate options
+  onUploadResume,
+  onApplyFromPool,
+  canUploadResume,
 }) {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [addDropdownOpen, setAddDropdownOpen] = useState(false);
+  const addDropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!addDropdownOpen) return;
+    const handler = (e) => {
+      if (addDropdownRef.current && !addDropdownRef.current.contains(e.target)) {
+        setAddDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [addDropdownOpen]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -81,12 +97,43 @@ export default function JobDetailPanel({
           >
             <Download className="w-3.5 h-3.5" /> Report
           </button>
-          <button
-            onClick={() => setIsAddProfileOpen(true)}
-            className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            <UserPlus className="w-3.5 h-3.5" /> Add Profile
-          </button>
+          <div className="relative" ref={addDropdownRef}>
+            <button
+              onClick={() => setAddDropdownOpen(o => !o)}
+              className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              <UserPlus className="w-3.5 h-3.5" /> Add Candidate
+              <ChevronDown className="w-3 h-3 ml-0.5" />
+            </button>
+            {addDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-[400] overflow-hidden">
+                {canUploadResume && onUploadResume && (
+                  <button
+                    onClick={() => { setAddDropdownOpen(false); onUploadResume(); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors text-left"
+                  >
+                    <Upload className="w-4 h-4 shrink-0" />
+                    <div>
+                      <p className="font-medium">Upload Resume</p>
+                      <p className="text-xs text-slate-400">Parse & add new candidate</p>
+                    </div>
+                  </button>
+                )}
+                {onApplyFromPool && (
+                  <button
+                    onClick={() => { setAddDropdownOpen(false); onApplyFromPool(); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors text-left border-t border-slate-100"
+                  >
+                    <Users className="w-4 h-4 shrink-0" />
+                    <div>
+                      <p className="font-medium">From Talent Pool</p>
+                      <p className="text-xs text-slate-400">Apply existing candidate</p>
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
