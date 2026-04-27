@@ -10,6 +10,7 @@ import { TextAlign } from '@tiptap/extension-text-align';
 import { Highlight } from '@tiptap/extension-highlight';
 import { candidates as candidatesApi, interviews as interviewsApi, users as usersApi } from '../lib/api';
 import { useAuth } from '../lib/authContext';
+import { hasPermission } from '../lib/permissions';
 import { PageLoader } from '../components/LoadingDots';
 import NoteEditorModal, { stripHtml, Toolbar } from '../components/NoteEditorModal';
 import SkillTagInput from './Candidates/components/SkillTagInput';
@@ -277,7 +278,7 @@ function TagsSection({ candidateId, initialTags = [], queryClient }) {
   );
 }
 
-function CandidateProfileCard({ candidate, canEdit, onSave }) {
+function CandidateProfileCard({ candidate, canEdit, canViewCompensation, onSave }) {
   const c = candidate;
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -413,18 +414,21 @@ function CandidateProfileCard({ candidate, canEdit, onSave }) {
                 <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider pt-2">Experience & Compensation</p>
                 {[
                   { label: 'Experience (Years)', key: 'total_experience_years', type: 'number' },
-                  { label: 'CTC Fixed (LPA)', key: 'ctc_fixed_lakhs', type: 'number' },
-                  { label: 'CTC Variable (LPA)', key: 'ctc_variable_lakhs', type: 'number' },
-                  { label: 'Current CTC (LPA)', key: 'current_ctc_lakhs', type: 'number' },
-                  { label: 'Expected CTC (LPA)', key: 'expected_ctc_lakhs', type: 'number' },
-                  { label: 'Offers in Hand', key: 'offers_in_hand', type: 'text' },
-                  { label: 'Notice Period (Days)', key: 'notice_period_days', type: 'number' },
+                  ...(canViewCompensation ? [
+                    { label: 'CTC Fixed (LPA)', key: 'ctc_fixed_lakhs', type: 'number' },
+                    { label: 'CTC Variable (LPA)', key: 'ctc_variable_lakhs', type: 'number' },
+                    { label: 'Current CTC (LPA)', key: 'current_ctc_lakhs', type: 'number' },
+                    { label: 'Expected CTC (LPA)', key: 'expected_ctc_lakhs', type: 'number' },
+                    { label: 'Offers in Hand', key: 'offers_in_hand', type: 'text' },
+                    { label: 'Notice Period (Days)', key: 'notice_period_days', type: 'number' },
+                  ] : []),
                 ].map(({ label, key, type }) => (
                   <div key={key} className="flex gap-3 items-center text-xs">
                     <span className="text-slate-500 shrink-0 w-48">{label}</span>
                     <input type={type} value={f(key)} onChange={set(key)} className={inputCls} placeholder="—" step={type === 'number' ? 'any' : undefined} />
                   </div>
                 ))}
+                {canViewCompensation && (
                 <div className="flex gap-3 items-center text-xs">
                   <span className="text-slate-500 shrink-0 w-48">Notice Period Status</span>
                   <select value={f('notice_period_status')} onChange={set('notice_period_status')} className={selectCls}>
@@ -434,6 +438,7 @@ function CandidateProfileCard({ candidate, canEdit, onSave }) {
                     <option value="notice">In Notice</option>
                   </select>
                 </div>
+                )}
                 {[
                   { label: 'Reason for Change', key: 'reason_for_change', type: 'text' },
                   { label: 'Native Location', key: 'native_location', type: 'text' },
@@ -479,10 +484,12 @@ function CandidateProfileCard({ candidate, canEdit, onSave }) {
           <ProfileRow label="PG Qualifying Exam"            value={c.post_qualifying_exam} />
           <ProfileRow label="PG Qualifying Rank / Marks"    value={c.post_qualifying_rank} />
           <ProfileRow label="Experience"                    value={yrs(c.total_experience_years)} />
+          {canViewCompensation && <>
           <ProfileRow label="CTC in LPA (Fixed + Variable)" value={ctcLabel} />
           <ProfileRow label="ECTC in LPA"                   value={lpa(c.expected_ctc_lakhs)} />
           <ProfileRow label="Offers if Any"                 value={c.offers_in_hand} />
           <ProfileRow label="Notice Period"                 value={noticePeriodLabel} />
+          </>}
           <ProfileRow label="Reason for Change"             value={c.reason_for_change} />
           <ProfileRow label="Current Location"              value={c.location} />
           <ProfileRow label="Native"                        value={c.native_location} />
@@ -1151,7 +1158,8 @@ export default function CandidateJobProfile() {
             {/* Profile Created card — always at the bottom (oldest event) */}
             <CandidateProfileCard
               candidate={candidate}
-              canEdit={['admin', 'recruiter'].includes(currentUser?.role)}
+              canEdit={hasPermission(currentUser, 'MANAGE_CANDIDATES')}
+              canViewCompensation={hasPermission(currentUser, 'VIEW_COMPENSATION')}
               onSave={async (payload) => {
                 await candidatesApi.update(candidateId, payload);
                 refetchCandidate();

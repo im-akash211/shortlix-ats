@@ -35,11 +35,13 @@ export default function PipelineView({
   commentsByCard, commentsOpenId, commentsLoadingId, commentInput, setCommentInput,
   commentSubmittingId, handleToggleComments, handleAddComment, handlePriorityChange,
   onSetReminder,
+  onViewDetails,
 }) {
   const cardProps = {
     shareOpen, setShareOpen, shareSearch, setShareSearch, shareSelected, setShareSelected, shareRef,
     usersList, usersLoading, handleShare,
     onSetReminder,
+    onViewDetails,
     openCandidateProfile,
     handleShortlist, handleAppliedReject, shortlistingId,
     handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,
@@ -178,6 +180,16 @@ export default function PipelineView({
             const currentStage = STAGE_TAB_MAP[pipelineTab];
             const stagePool = allCandidates.filter(c => c.macro_stage === currentStage);
 
+            // Derive dimmed candidates directly from allCandidates (no separate API call needed)
+            let localDimmed = [];
+            if (pipelineTab === 'Applied') {
+              localDimmed = allCandidates.filter(c => c.macro_stage !== 'APPLIED');
+            } else if (pipelineTab === 'Shortlisted') {
+              localDimmed = allCandidates.filter(c => ['INTERVIEW', 'OFFERED', 'JOINED'].includes(c.macro_stage));
+            } else if (pipelineTab === 'Interview') {
+              localDimmed = allCandidates.filter(c => ['OFFERED', 'JOINED'].includes(c.macro_stage));
+            }
+
             // Interview tab: split active vs rejected into dedicated sections
             const isInterview = pipelineTab === 'Interview';
             const rejectedCandidates = isInterview
@@ -196,7 +208,7 @@ export default function PipelineView({
               });
 
             const isEmpty = activeCandidates.length === 0 && rejectedCandidates.length === 0
-              && dimmedCandidates.length === 0 && !dimmedLoading;
+              && localDimmed.length === 0;
 
             if (isEmpty) {
               return (
@@ -226,26 +238,20 @@ export default function PipelineView({
                 )}
 
                 {/* ── Progressed / dimmed section ───────────────────────────── */}
-                {dimmedLoading ? (
-                  <div className="flex items-center justify-center gap-2 py-4 text-slate-400 text-xs border-t border-dashed border-slate-200 mt-1">
-                    <svg className="animate-spin w-3.5 h-3.5 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-                    </svg>
-                    Loading history…
-                  </div>
-                ) : dimmedCandidates.length > 0 ? (
+                {localDimmed.length > 0 && (
                   <>
                     <div className="flex items-center gap-2 py-2 my-1">
-                      <div className="flex-1 border-t border-dashed border-slate-200" />
-                      <span className="text-xs text-slate-400 shrink-0">
-                        {dimmedCandidates.length} candidate{dimmedCandidates.length !== 1 ? 's' : ''} progressed from this stage
+                      <div className="flex-1 border-t border-dashed border-slate-300" />
+                      <span className="text-xs font-medium text-slate-500 shrink-0 bg-slate-100 px-2 py-0.5 rounded-full">
+                        {localDimmed.length} candidate{localDimmed.length !== 1 ? 's' : ''} progressed from this stage
                       </span>
-                      <div className="flex-1 border-t border-dashed border-slate-200" />
+                      <div className="flex-1 border-t border-dashed border-slate-300" />
                     </div>
-                    {dimmedCandidates.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+                    {localDimmed.map(c => (
+                      <CandidateCard key={c.id} c={{ ...c, is_current_stage: false }} {...cardProps} />
+                    ))}
                   </>
-                ) : null}
+                )}
               </div>
             );
           })()

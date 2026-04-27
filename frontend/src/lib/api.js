@@ -92,15 +92,32 @@ export const dashboard = {
   funnel: (params = {}) => request('/dashboard/funnel/?' + new URLSearchParams(params)),
   pendingActions: () => request('/dashboard/pending-actions/'),
   filterOptions: () => request('/dashboard/filter-options/'),
+  reportExcelUrl: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return `${BASE}/dashboard/report/excel/${qs ? '?' + qs : ''}`;
+  },
 };
 
 // ---- Departments ---- //
 export const departments = {
   list: () => request('/departments/'),
+  create: (data) => request('/departments/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/departments/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id) => request(`/departments/${id}/`, { method: 'DELETE' }),
   subVerticals: (deptId, parentParam) => {
     const qs = parentParam !== undefined ? `?parent=${parentParam}` : '';
     return request(`/departments/${deptId}/sub-verticals/${qs}`);
   },
+};
+
+// ---- Roles ---- //
+export const roles = {
+  list: () => request('/roles/'),
+  updatePermissions: (id, permissionKeys) =>
+    request(`/roles/${id}/permissions/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ permission_keys: permissionKeys }),
+    }),
 };
 
 // ---- Requisitions ---- //
@@ -169,7 +186,12 @@ export const candidates = {
     }),
   moveJob: (id, fromJobId, toJobId) =>
     request(`/candidates/${id}/move-job/`, {
-      method: 'POST', body: JSON.stringify({ from_job_id: fromJobId, to_job_id: toJobId }),
+      method: 'POST',
+      body: JSON.stringify(
+        fromJobId
+          ? { from_job_id: fromJobId, to_job_id: toJobId }
+          : { to_job_id: toJobId }
+      ),
     }),
   delete: (id) => request(`/candidates/${id}/delete/`, { method: 'DELETE' }),
   getComments: (candidateId, jobId) =>
@@ -334,11 +356,16 @@ export const referrals = {
 // ---- Users (Admin) ---- //
 export const users = {
   dropdown: () => request('/users/dropdown/'),
-  list: (params = {}) => request('/users/?' + new URLSearchParams(params)),
+  list: (params = {}) => request('/users/?' + new URLSearchParams({ page_size: 200, ...params })),
   lookup: (params = {}) => request('/users/lookup/?' + new URLSearchParams(params)),
   detail: (id) => request(`/users/${id}/`),
   create: (data) => request('/users/', { method: 'POST', body: JSON.stringify(data) }),
   update: (id, data) => request(`/users/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   activate: (id) => request(`/users/${id}/activate/`, { method: 'POST' }),
   deactivate: (id) => request(`/users/${id}/deactivate/`, { method: 'POST' }),
+  changeRole: (id, role) =>
+    request(`/users/${id}/role/`, { method: 'PATCH', body: JSON.stringify({ role }) }),
+  changeStatus: (id, status) =>
+    request(`/users/${id}/status/`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  remove: (id) => request(`/users/${id}/remove/`, { method: 'DELETE' }),
 };

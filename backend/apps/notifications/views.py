@@ -44,6 +44,12 @@ def _fire_due_reminders(user):
     InAppNotification.objects.bulk_create(notifications)
     CandidateReminder.objects.filter(id__in=ids).update(notified=True)
 
+    from .utils import notify_reminder_due
+    for reminder in due:
+        job = reminder.mapping.job if reminder.mapping else None
+        macro_stage = reminder.mapping.macro_stage if reminder.mapping else ''
+        notify_reminder_due(user, reminder, job, macro_stage)
+
 
 class NotificationListView(generics.ListAPIView):
     serializer_class = InAppNotificationSerializer

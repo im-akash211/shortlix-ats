@@ -79,6 +79,7 @@ class Interview(models.Model):
     )
     end_time = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='scheduled')
+    last_feedback_reminder_sent = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='scheduled_interviews'
     )

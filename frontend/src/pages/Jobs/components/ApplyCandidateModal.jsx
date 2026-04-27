@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, User, CheckCircle, AlertCircle, Loader, X } from 'lucide-react';
+import { Search, User, CheckCircle, AlertCircle, Loader, X, ArrowRight } from 'lucide-react';
 import { candidates as candidatesApi } from '../../../lib/api';
 
 export default function ApplyCandidateModal({ job, onClose, onSuccess }) {
   const [search, setSearch] = useState('');
   const [results, setResults] = useState([]);
   const [fetching, setFetching] = useState(false);
-  const [applying, setApplying] = useState(null); // candidate id being applied
+  const [applying, setApplying] = useState(null); // candidate id being applied/moved
   const [applied, setApplied] = useState({}); // { [candidateId]: true }
+  const [conflicts, setConflicts] = useState({}); // { [candidateId]: { id, title, job_code } }
   const [errors, setErrors] = useState({}); // { [candidateId]: message }
   const debounceRef = useRef(null);
   const inputRef = useRef(null);
@@ -33,12 +34,32 @@ export default function ApplyCandidateModal({ job, onClose, onSuccess }) {
   const handleApply = async (candidate) => {
     setApplying(candidate.id);
     setErrors(prev => ({ ...prev, [candidate.id]: undefined }));
+    setConflicts(prev => ({ ...prev, [candidate.id]: undefined }));
     try {
       await candidatesApi.assignJob(candidate.id, job.id);
       setApplied(prev => ({ ...prev, [candidate.id]: true }));
       onSuccess && onSuccess(candidate);
     } catch (err) {
-      const msg = err.data?.error || err.data?.detail || 'Failed to apply';
+      if (err.status === 409 && err.data?.conflict) {
+        setConflicts(prev => ({ ...prev, [candidate.id]: err.data.current_job }));
+      } else {
+        const msg = err.data?.error || err.data?.detail || 'Failed to apply';
+        setErrors(prev => ({ ...prev, [candidate.id]: msg }));
+      }
+    } finally {
+      setApplying(null);
+    }
+  };
+
+  const handleMove = async (candidate, fromJobId) => {
+    setApplying(candidate.id);
+    setConflicts(prev => ({ ...prev, [candidate.id]: undefined }));
+    try {
+      await candidatesApi.moveJob(candidate.id, fromJobId, job.id);
+      setApplied(prev => ({ ...prev, [candidate.id]: true }));
+      onSuccess && onSuccess(candidate);
+    } catch (err) {
+      const msg = err.data?.error || err.data?.detail || 'Failed to move candidate';
       setErrors(prev => ({ ...prev, [candidate.id]: msg }));
     } finally {
       setApplying(null);
@@ -90,6 +111,7 @@ export default function ApplyCandidateModal({ job, onClose, onSuccess }) {
               {results.map(c => {
                 const isApplied = applied[c.id];
                 const isApplying = applying === c.id;
+                const conflict = conflicts[c.id];
                 const error = errors[c.id];
                 return (
                   <div key={c.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
@@ -103,6 +125,28 @@ export default function ApplyCandidateModal({ job, onClose, onSuccess }) {
                         {c.total_experience_years != null && ` · ${c.total_experience_years}yr exp`}
                         {c.designation && ` · ${c.designation}`}
                       </p>
+                      {conflict && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-amber-600 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 shrink-0" />
+                            Currently in <span className="font-semibold">{conflict.job_code}</span>
+                          </span>
+                          <button
+                            onClick={() => handleMove(c, conflict.id)}
+                            disabled={isApplying}
+                            className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 border border-blue-300 hover:border-blue-500 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full transition-colors disabled:opacity-50"
+                          >
+                            {isApplying ? <Loader className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
+                            Move here
+                          </button>
+                          <button
+                            onClick={() => setConflicts(prev => ({ ...prev, [c.id]: undefined }))}
+                            className="text-xs text-slate-400 hover:text-slate-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
                       {error && (
                         <p className="text-xs text-rose-500 flex items-center gap-1 mt-0.5">
                           <AlertCircle className="w-3 h-3 shrink-0" />{error}
@@ -114,7 +158,7 @@ export default function ApplyCandidateModal({ job, onClose, onSuccess }) {
                         <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
                           <CheckCircle className="w-3.5 h-3.5" /> Applied
                         </span>
-                      ) : (
+                      ) : !conflict ? (
                         <button
                           onClick={() => handleApply(c)}
                           disabled={isApplying}
@@ -122,7 +166,7 @@ export default function ApplyCandidateModal({ job, onClose, onSuccess }) {
                         >
                           {isApplying ? <><Loader className="w-3 h-3 animate-spin" /> Applying…</> : 'Apply'}
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );

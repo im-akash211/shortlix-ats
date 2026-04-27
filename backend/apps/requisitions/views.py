@@ -1,9 +1,9 @@
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db import transaction
-from apps.core.permissions import IsAdmin, IsAdminOrHM, IsAdminRecruiterOrHM
+from apps.core.permissions import rbac_perm
+from apps.core.rbac import has_permission
 from .models import Requisition, RequisitionApproval
 from .serializers import (
     RequisitionListSerializer, RequisitionDetailSerializer,
@@ -29,7 +29,7 @@ class GenerateRequisitionContentView(APIView):
     One Gemini call generates all three fields simultaneously.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('MANAGE_REQUISITIONS')]
 
     def post(self, request):
         department     = (request.data.get("department") or "").strip()
@@ -69,22 +69,20 @@ class RequisitionListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsAuthenticated(), IsAdminRecruiterOrHM()]
-        return [IsAuthenticated()]
+            return [rbac_perm('MANAGE_REQUISITIONS')()]
+        return [rbac_perm('MANAGE_REQUISITIONS')()]
 
     def get_queryset(self):
         qs = Requisition.objects.select_related('department', 'hiring_manager', 'created_by')
         tab = self.request.query_params.get('tab', 'all')
         user = self.request.user
         if tab == 'mine':
-            qs = qs.filter(created_by=user)
-        elif user.role == 'recruiter':
-            qs = qs.filter(created_by=user)
-        elif user.role == 'hiring_manager':
-            qs = qs.filter(department=user.department)
-        elif user.role == 'interviewer':
-            qs = qs.none()
-        return qs
+            return qs.filter(created_by=user)
+        if has_permission(user, 'MANAGE_USERS'):
+            return qs
+        if has_permission(user, 'APPROVE_REQUISITIONS') and not has_permission(user, 'MANAGE_REQUISITIONS'):
+            return qs.filter(department=user.department)
+        return qs.filter(created_by=user)
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -103,8 +101,8 @@ class RequisitionDetailView(generics.RetrieveUpdateAPIView):
 
     def get_permissions(self):
         if self.request.method in ('PUT', 'PATCH'):
-            return [IsAuthenticated(), IsAdminRecruiterOrHM()]
-        return [IsAuthenticated()]
+            return [rbac_perm('MANAGE_REQUISITIONS')()]
+        return [rbac_perm('MANAGE_REQUISITIONS')()]
 
     def get_serializer_class(self):
         if self.request.method in ('PUT', 'PATCH'):
@@ -116,7 +114,7 @@ class RequisitionDetailView(generics.RetrieveUpdateAPIView):
 
 
 class RequisitionDeleteView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminRecruiterOrHM]
+    permission_classes = [rbac_perm('MANAGE_REQUISITIONS')]
 
     def delete(self, request, pk):
         req = generics.get_object_or_404(Requisition, pk=pk)
@@ -125,7 +123,7 @@ class RequisitionDeleteView(APIView):
 
 
 class RequisitionSubmitView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminRecruiterOrHM]
+    permission_classes = [rbac_perm('MANAGE_REQUISITIONS')]
 
     def post(self, request, pk):
         req = generics.get_object_or_404(Requisition, pk=pk)
@@ -139,11 +137,13 @@ class RequisitionSubmitView(APIView):
                 requisition=req, action='submitted', acted_by=request.user,
                 comments=request.data.get('comments', '')
             )
+        from apps.notifications.utils import notify_requisition_submitted
+        notify_requisition_submitted(req, request.user)
         return Response(RequisitionDetailSerializer(req).data)
 
 
 class RequisitionApproveView(APIView):
-    permission_classes = [IsAdminOrHM]
+    permission_classes = [rbac_perm('APPROVE_REQUISITIONS')]
 
     def post(self, request, pk):
         req = generics.get_object_or_404(Requisition, pk=pk)
@@ -157,11 +157,13 @@ class RequisitionApproveView(APIView):
                 requisition=req, action='approved', acted_by=request.user,
                 comments=request.data.get('comments', '')
             )
+        from apps.notifications.utils import notify_requisition_approved
+        notify_requisition_approved(req, request.user)
         return Response(RequisitionDetailSerializer(req).data)
 
 
 class RequisitionRejectView(APIView):
-    permission_classes = [IsAdminOrHM]
+    permission_classes = [rbac_perm('APPROVE_REQUISITIONS')]
 
     def post(self, request, pk):
         req = generics.get_object_or_404(Requisition, pk=pk)
@@ -175,4 +177,6 @@ class RequisitionRejectView(APIView):
                 requisition=req, action='rejected', acted_by=request.user,
                 comments=request.data.get('comments', '')
             )
+        from apps.notifications.utils import notify_requisition_rejected
+        notify_requisition_rejected(req, request.user)
         return Response(RequisitionDetailSerializer(req).data)

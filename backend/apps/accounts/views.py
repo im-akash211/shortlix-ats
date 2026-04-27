@@ -61,11 +61,15 @@ class UserDropdownListView(generics.ListAPIView):
 
 
 class UserListCreateView(generics.ListCreateAPIView):
-    queryset = User.objects.select_related('department').all()
-    permission_classes = [IsAdmin]
+    queryset = User.objects.select_related('department').order_by('full_name')
     search_fields = ['full_name', 'email']
     filterset_fields = ['role', 'is_active', 'department']
     ordering_fields = ['full_name', 'created_at']
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAdmin()]
+        return [IsAuthenticated()]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':

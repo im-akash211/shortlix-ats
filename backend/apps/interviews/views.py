@@ -1,6 +1,5 @@
 from rest_framework import generics, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db import transaction
@@ -11,6 +10,8 @@ from .serializers import (
     InterviewListSerializer, InterviewCreateSerializer,
     InterviewFeedbackSerializer, FeedbackTemplateSerializer
 )
+from apps.core.permissions import rbac_perm
+from apps.core.rbac import has_permission
 
 
 # ---------------------------------------------------------------------------
@@ -19,19 +20,18 @@ from .serializers import (
 
 def _role_queryset(user, base_qs):
     """Return a queryset scoped to what the user is allowed to see."""
-    role = getattr(user, 'role', None)
-    if role == 'admin':
+    if has_permission(user, 'MANAGE_USERS'):
         return base_qs
-    if role == 'recruiter':
+    if has_permission(user, 'SCHEDULE_INTERVIEW'):
         return base_qs.filter(
             Q(created_by=user) |
-            Q(mapping__job__collaborators__user=user)
+            Q(mapping__job__collaborators__user=user) |
+            Q(mapping__job__hiring_manager=user)
         ).distinct()
-    if role == 'interviewer':
-        return base_qs.filter(interviewer=user)
-    if role == 'hiring_manager':
+    if has_permission(user, 'APPROVE_REQUISITIONS'):
         return base_qs.filter(mapping__job__hiring_manager=user)
-    # Fallback: nothing
+    if has_permission(user, 'GIVE_FEEDBACK'):
+        return base_qs.filter(interviewer=user)
     return base_qs.none()
 
 
@@ -46,7 +46,6 @@ def _assert_not_completed(interview, user):
 # ---------------------------------------------------------------------------
 
 class InterviewListCreateView(generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticated]
     search_fields = ['mapping__candidate__full_name', 'mapping__job__title']
     ordering_fields = ['scheduled_at', 'created_at']
 
@@ -94,6 +93,11 @@ class InterviewListCreateView(generics.ListCreateAPIView):
 
         return qs
 
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [rbac_perm('SCHEDULE_INTERVIEW')()]
+        return [rbac_perm('VIEW_JOBS')()]
+
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return InterviewCreateSerializer
@@ -106,30 +110,27 @@ class InterviewListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         user = self.request.user
-        role = getattr(user, 'role', None)
-        if role not in ('admin', 'recruiter'):
-            raise PermissionDenied('Only admins and recruiters can schedule interviews.')
-
         mapping = serializer.validated_data['mapping']
         round_name = serializer.validated_data.get('round_name')
         round_number = mapping.interviews.count() + 1
         round_label = self._ROUND_LABELS.get(round_name, round_name or 'Round')
+        is_reschedule = (
+            mapping.macro_stage == 'INTERVIEW'
+            and mapping.interview_status == 'REJECTED'
+            and round_name
+        )
         interview = serializer.save(
             created_by=user,
             round_number=round_number,
             round_label=round_label,
         )
-        # Clear rejection flag on reschedule
-        mapping = interview.mapping
-        if (
-            mapping.macro_stage == 'INTERVIEW'
-            and mapping.interview_status == 'REJECTED'
-            and interview.round_name
-        ):
+        if is_reschedule:
             mapping.interview_status = None
             mapping.current_interview_round = interview.round_name
             mapping.moved_by = user
             mapping.save(update_fields=['interview_status', 'current_interview_round', 'moved_by', 'stage_updated_at'])
+        from apps.notifications.utils import notify_interview_scheduled
+        notify_interview_scheduled(interview, is_reschedule=is_reschedule)
 
 
 # ---------------------------------------------------------------------------
@@ -137,8 +138,12 @@ class InterviewListCreateView(generics.ListCreateAPIView):
 # ---------------------------------------------------------------------------
 
 class InterviewDetailView(generics.RetrieveUpdateAPIView):
-    permission_classes = [IsAuthenticated]
     serializer_class = InterviewCreateSerializer
+
+    def get_permissions(self):
+        if self.request.method in ('PUT', 'PATCH'):
+            return [rbac_perm('SCHEDULE_INTERVIEW')()]
+        return [rbac_perm('VIEW_JOBS')()]
 
     def get_queryset(self):
         return _role_queryset(
@@ -148,17 +153,17 @@ class InterviewDetailView(generics.RetrieveUpdateAPIView):
 
     def update(self, request, *args, **kwargs):
         interview = self.get_object()
-        role = getattr(request.user, 'role', None)
 
-        # Block non-admins from editing completed interviews
-        if interview.computed_status == 'COMPLETED' and role != 'admin':
+        if interview.computed_status == 'COMPLETED' and not has_permission(request.user, 'MANAGE_USERS'):
             raise PermissionDenied('Completed interviews cannot be modified.')
 
-        # Hiring managers are read-only
-        if role == 'hiring_manager':
-            raise PermissionDenied('Hiring managers have read-only access to interviews.')
-
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        # Notify as reschedule if scheduled_at changed
+        if 'scheduled_at' in request.data:
+            interview.refresh_from_db()
+            from apps.notifications.utils import notify_interview_scheduled
+            notify_interview_scheduled(interview, is_reschedule=True)
+        return response
 
 
 # ---------------------------------------------------------------------------
@@ -166,12 +171,9 @@ class InterviewDetailView(generics.RetrieveUpdateAPIView):
 # ---------------------------------------------------------------------------
 
 class InterviewCancelView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('SCHEDULE_INTERVIEW')]
 
     def post(self, request, pk):
-        role = getattr(request.user, 'role', None)
-        if role not in ('admin', 'recruiter'):
-            raise PermissionDenied('Only admins and recruiters can cancel interviews.')
 
         interview = generics.get_object_or_404(
             _role_queryset(request.user, Interview.objects.all()), pk=pk
@@ -189,24 +191,19 @@ class InterviewCancelView(APIView):
 # ---------------------------------------------------------------------------
 
 class InterviewFeedbackCreateView(generics.CreateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('GIVE_FEEDBACK')]
     serializer_class = InterviewFeedbackSerializer
 
     def perform_create(self, serializer):
         user = self.request.user
-        role = getattr(user, 'role', None)
 
         interview = generics.get_object_or_404(
             _role_queryset(user, Interview.objects.select_related('mapping__job')),
             pk=self.kwargs['pk']
         )
 
-        # Only interviewers and admins can create feedback
-        if role not in ('admin', 'interviewer'):
-            raise PermissionDenied('Only interviewers and admins can submit feedback.')
-
-        # Interviewers can only submit feedback for their own assigned interviews
-        if role == 'interviewer' and interview.interviewer_id != user.id:
+        # Non-admin users can only submit feedback for interviews assigned to them
+        if not has_permission(user, 'MANAGE_USERS') and interview.interviewer_id != user.id:
             raise PermissionDenied('You can only submit feedback for interviews assigned to you.')
 
         if InterviewFeedback.objects.filter(interview=interview).exists():
@@ -223,7 +220,7 @@ class InterviewFeedbackCreateView(generics.CreateAPIView):
 # ---------------------------------------------------------------------------
 
 class InterviewFeedbackDetailView(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('GIVE_FEEDBACK')]
     serializer_class = InterviewFeedbackSerializer
 
     def get_object(self):
@@ -238,16 +235,12 @@ class InterviewFeedbackDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
     def _assert_can_mutate(self, request):
-        """Admin or the assigned interviewer can create/edit/delete feedback."""
-        role = getattr(request.user, 'role', None)
-        if role == 'admin':
+        if has_permission(request.user, 'MANAGE_USERS'):
             return
-        if role == 'interviewer':
-            feedback = self.get_object()
-            if feedback.interviewer_id == request.user.id:
-                return
-            raise PermissionDenied('You can only modify feedback you submitted.')
-        raise PermissionDenied('You have read-only access to feedback.')
+        feedback = self.get_object()
+        if feedback.interviewer_id == request.user.id:
+            return
+        raise PermissionDenied('You can only modify feedback you submitted.')
 
     def update(self, request, *args, **kwargs):
         self._assert_can_mutate(request)
@@ -263,7 +256,7 @@ class InterviewFeedbackDetailView(generics.RetrieveUpdateDestroyAPIView):
 # ---------------------------------------------------------------------------
 
 class InterviewSummaryView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('VIEW_JOBS')]
 
     def get(self, request):
         user = request.user
@@ -286,14 +279,11 @@ class InterviewSummaryView(APIView):
 # ---------------------------------------------------------------------------
 
 class SetRoundResultView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('GIVE_FEEDBACK')]
 
     VALID_RESULTS = {'PASS', 'FAIL', 'ON_HOLD'}
 
     def patch(self, request, pk):
-        role = getattr(request.user, 'role', None)
-        if role not in ('admin', 'recruiter', 'interviewer'):
-            raise PermissionDenied('You do not have permission to set round results.')
 
         round_result = request.data.get('round_result')
         if round_result not in self.VALID_RESULTS:
@@ -320,8 +310,12 @@ class SetRoundResultView(APIView):
                 mapping.interview_status = 'REJECTED'
                 mapping.save(update_fields=['interview_status'])
                 response_data['auto_rejected'] = True
+                from apps.notifications.utils import notify_candidate_interview_rejected
+                notify_candidate_interview_rejected(mapping.candidate, mapping.job)
             elif round_result == 'PASS':
                 response_data['suggest_move_to_offered'] = True
+                from apps.notifications.utils import notify_candidate_round_passed
+                notify_candidate_round_passed(mapping.candidate, mapping.job, interview)
 
         return Response(response_data)
 
@@ -331,14 +325,11 @@ class SetRoundResultView(APIView):
 # ---------------------------------------------------------------------------
 
 class SetRoundStatusView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('GIVE_FEEDBACK')]
 
     VALID_STATUSES = {'SCHEDULED', 'ON_HOLD', 'COMPLETED'}
 
     def patch(self, request, pk):
-        role = getattr(request.user, 'role', None)
-        if role not in ('admin', 'recruiter', 'interviewer'):
-            raise PermissionDenied('You do not have permission to update round status.')
 
         round_status = request.data.get('round_status')
         if round_status not in self.VALID_STATUSES:
@@ -352,8 +343,7 @@ class SetRoundStatusView(APIView):
             pk=pk
         )
 
-        # Prevent reverting a completed interview
-        if interview.computed_status == 'COMPLETED' and round_status != 'COMPLETED' and role != 'admin':
+        if interview.computed_status == 'COMPLETED' and round_status != 'COMPLETED' and not has_permission(request.user, 'MANAGE_USERS'):
             raise PermissionDenied('Only admins can revert a completed interview status.')
 
         interview.round_status = round_status
