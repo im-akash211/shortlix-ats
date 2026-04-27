@@ -82,8 +82,8 @@ export default function Login() {
           <div className="flex flex-col gap-1.5">
             {[
               { email: 'admin@ats.com',        password: 'Admin@123', role: 'Admin' },
-              { email: 'priya.sharma@ats.com', password: 'Pass@123',  role: 'Recruiter' },
-              { email: 'amit.verma@ats.com',   password: 'Pass@123',  role: 'Hiring Manager' },
+              { email: 'nikhil.bhatia@ats.com', password: 'Admin@123',  role: 'Recruiter' },
+              { email: 'vikash.sharma@ats.com',   password: 'Admin@123',  role: 'Hiring Manager' },
             ].map(acc => (
               <button
                 key={acc.email}

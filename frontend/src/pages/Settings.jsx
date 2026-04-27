@@ -556,6 +556,8 @@ function DepartmentsSection({ isAdmin }) {
   const [editName, setEditName] = useState('');
   const [editLoading, setEditLoading] = useState(false);
   const [error, setError] = useState('');
+  const [deleteModal, setDeleteModal] = useState({ open: false, dept: null });
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     deptApi.list()
@@ -600,14 +602,19 @@ function DepartmentsSection({ isAdmin }) {
     }
   };
 
-  const handleRemove = async (dept) => {
-    if (!window.confirm(`Remove department "${dept.name}"? This cannot be undone.`)) return;
+  const confirmRemove = async () => {
+    if (!deleteModal.dept) return;
+    setDeleteLoading(true);
     try {
-      await deptApi.remove(dept.id);
-      setDeptList((prev) => prev.filter((d) => d.id !== dept.id));
+      await deptApi.remove(deleteModal.dept.id);
+      setDeptList((prev) => prev.filter((d) => d.id !== deleteModal.dept.id));
+      setDeleteModal({ open: false, dept: null });
     } catch (err) {
       const msg = err.data?.detail || 'Failed to remove department.';
-      alert(msg);
+      setError(msg);
+      setDeleteModal({ open: false, dept: null });
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -678,7 +685,7 @@ function DepartmentsSection({ isAdmin }) {
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleRemove(dept)}
+                            onClick={() => setDeleteModal({ open: true, dept })}
                             className="p-1.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors"
                             title="Remove"
                           >
@@ -720,6 +727,48 @@ function DepartmentsSection({ isAdmin }) {
             <Plus className="w-4 h-4" />
             {addLoading ? 'Adding…' : 'Add Department'}
           </button>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteModal.open && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-[420px] max-w-[90vw] p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-800">Remove Department</h3>
+              <button onClick={() => setDeleteModal({ open: false, dept: null })}>
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            <div className="flex items-start gap-3 mb-5">
+              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-800 mb-1">
+                  Remove &ldquo;{deleteModal.dept?.name}&rdquo;?
+                </p>
+                <p className="text-sm text-slate-500">
+                  This action cannot be undone. Departments with active users assigned cannot be removed.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmRemove}
+                disabled={deleteLoading}
+                className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white px-5 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {deleteLoading ? 'Removing…' : 'Remove Department'}
+              </button>
+              <button
+                onClick={() => setDeleteModal({ open: false, dept: null })}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2 rounded text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
