@@ -289,6 +289,37 @@ def notify_candidate_rejected(candidate, job):
     )
 
 
+STAGE_DISPLAY = {
+    'INTERVIEW':   'Interview',
+    'SHORTLISTED': 'Shortlisted',
+    'APPLIED':     'Applied',
+}
+
+
+def notify_rejection_reversed(candidate, job, stage):
+    """Send when a previous rejection is undone and the candidate is active again."""
+    if not candidate.email:
+        return
+    stage_label = STAGE_DISPLAY.get(stage, stage.capitalize())
+    body = _html_wrap(
+        'Great News — Your Application Has Been Reconsidered',
+        f'''<p style="color:#374151;">Dear {candidate.full_name},</p>
+        <p style="color:#374151;">We are pleased to let you know that a previous decision on your application for <strong>{job.title}</strong> has been reconsidered.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+            <tr><td style="padding:8px;color:#6b7280;font-size:13px;">Role</td><td style="padding:8px;font-weight:600;color:#111827;">{job.title}</td></tr>
+            <tr style="background:#f9fafb;"><td style="padding:8px;color:#6b7280;font-size:13px;">Current Stage</td><td style="padding:8px;font-weight:600;color:#16a34a;">{stage_label}</td></tr>
+        </table>
+        <p style="color:#374151;">You are now back in the <strong>{stage_label}</strong> stage of the hiring process. Our team will be in touch with the next steps shortly.</p>''',
+    )
+    notify(
+        event_key='rejection_reversed',
+        recipient=candidate.email,
+        message='',
+        subject=f'Your application has been reconsidered — {job.title}',
+        html_body=body,
+    )
+
+
 def notify_interview_scheduled(interview, is_reschedule=False):
     mapping = interview.mapping
     candidate = mapping.candidate
@@ -468,3 +499,48 @@ def notify_reminder_due(user, reminder, job, macro_stage):
         cta_text='View Candidate', cta_url=f'{BASE_URL}/candidates/{reminder.candidate.id}/profile',
     )
     _send_email('reminder_due', user.email, f'Reminder: {reminder.candidate.full_name} — {job_title}', body)
+
+
+def notify_feedback_pending_reminder(interview):
+    """
+    Sent to the interviewer every 24 h while feedback for a completed interview
+    remains unsubmitted.
+    """
+    interviewer = interview.interviewer
+    if not interviewer or not interviewer.email:
+        return
+
+    candidate = interview.mapping.candidate
+    job = interview.mapping.job
+    round_label = interview.round_label or interview.round_name or 'Interview'
+    scheduled_str = (
+        interview.scheduled_at.strftime('%d %b %Y, %I:%M %p')
+        if interview.scheduled_at else '—'
+    )
+    url = f'{BASE_URL}/interviews'
+
+    body = _html_wrap(
+        'Interview Feedback Pending — Action Required',
+        f'''<p style="color:#374151;">Hi {interviewer.full_name},</p>
+        <p style="color:#374151;">A friendly reminder that your feedback for the following interview is still pending.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+            <tr><td style="padding:8px;color:#6b7280;font-size:13px;">Candidate</td><td style="padding:8px;font-weight:600;color:#111827;">{candidate.full_name}</td></tr>
+            <tr style="background:#f9fafb;"><td style="padding:8px;color:#6b7280;font-size:13px;">Role</td><td style="padding:8px;font-weight:600;color:#111827;">{job.title}</td></tr>
+            <tr><td style="padding:8px;color:#6b7280;font-size:13px;">Round</td><td style="padding:8px;font-weight:600;color:#111827;">{round_label}</td></tr>
+            <tr style="background:#f9fafb;"><td style="padding:8px;color:#6b7280;font-size:13px;">Scheduled</td><td style="padding:8px;font-weight:600;color:#111827;">{scheduled_str}</td></tr>
+        </table>
+        <p style="color:#374151;">Please submit your feedback as soon as possible so the hiring team can move forward.</p>''',
+        cta_text='Submit Feedback', cta_url=url,
+    )
+
+    notify(
+        event_key='feedback_pending_reminder',
+        recipient=interviewer,
+        message=f'Feedback pending for {candidate.full_name} ({round_label} — {job.title}).',
+        subject=f'Feedback Reminder: {candidate.full_name} — {job.title}',
+        html_body=body,
+        candidate=candidate,
+        job=job,
+        macro_stage='INTERVIEW',
+        notification_type='interview',
+    )

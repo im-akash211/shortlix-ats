@@ -108,6 +108,7 @@ export default function JobPipelinePage() {
   // ── Upload resume ────────────────────────────────────────────────────────────
   const [jobResumeActiveModal, setJobResumeActiveModal] = useState(null);
   const jobResume = useResumeUpload({ setActiveModal: setJobResumeActiveModal });
+  const [assignConflict, setAssignConflict] = useState(null); // { candidate, currentJob }
 
   useEffect(() => {
     if (!jobResume.convertSuccess || !job) return;
@@ -116,9 +117,25 @@ export default function JobPipelinePage() {
         pipeline.setPipelineTab('Applied');
         pipeline.refreshAllCandidates(job.id);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (err.status === 409 && err.data?.conflict) {
+          setAssignConflict({ candidate: jobResume.convertSuccess, currentJob: err.data.current_job });
+        }
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobResume.convertSuccess]);
+
+  const handleAssignConflictMove = async () => {
+    if (!assignConflict || !job) return;
+    try {
+      await candidatesLibApi.moveJob(assignConflict.candidate.id, assignConflict.currentJob.id, job.id);
+      setAssignConflict(null);
+      pipeline.setPipelineTab('Applied');
+      pipeline.refreshAllCandidates(job.id);
+    } catch {
+      setAssignConflict(null);
+    }
+  };
 
   const handleResumeApplyToJob = () => {
     pipeline.setPipelineTab('Applied');
@@ -263,6 +280,34 @@ export default function JobPipelinePage() {
       {applyToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-sm px-5 py-2.5 rounded-xl shadow-xl z-[500]">
           {applyToast}
+        </div>
+      )}
+
+      {/* ── Assign conflict dialog ──────────────────────────────────────────── */}
+      {assignConflict && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[600] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <p className="text-sm font-semibold text-slate-800">Candidate Already Applied</p>
+            <p className="text-sm text-slate-600">
+              <span className="font-medium">{assignConflict.candidate.full_name}</span> is currently applied to{' '}
+              <span className="font-medium">{assignConflict.currentJob.job_code} — {assignConflict.currentJob.title}</span>.
+              Move them to <span className="font-medium">{job?.job_code} — {job?.title}</span>?
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setAssignConflict(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssignConflictMove}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                Move Here
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

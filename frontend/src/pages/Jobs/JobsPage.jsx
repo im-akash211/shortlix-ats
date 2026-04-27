@@ -115,6 +115,7 @@ export default function JobsPage() {
   // ── Upload resume (job context) ────────────────────────────────────────────
   const [jobResumeActiveModal, setJobResumeActiveModal] = useState(null); // 'upload' | 'review' | null
   const jobResume = useResumeUpload({ setActiveModal: setJobResumeActiveModal });
+  const [assignConflict, setAssignConflict] = useState(null); // { candidate, currentJob }
 
   // After a resume is converted, assign the candidate to the current job
   useEffect(() => {
@@ -124,9 +125,25 @@ export default function JobsPage() {
         pipeline.setPipelineTab('Applied');
         pipeline.refreshAllCandidates(viewingJob.id);
       })
-      .catch(() => {}); // already-assigned is fine; pipeline still refreshes above
+      .catch((err) => {
+        if (err.status === 409 && err.data?.conflict) {
+          setAssignConflict({ candidate: jobResume.convertSuccess, currentJob: err.data.current_job });
+        }
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobResume.convertSuccess]);
+
+  const handleAssignConflictMove = async () => {
+    if (!assignConflict || !viewingJob) return;
+    try {
+      await candidatesLibApi.moveJob(assignConflict.candidate.id, assignConflict.currentJob.id, viewingJob.id);
+      setAssignConflict(null);
+      pipeline.setPipelineTab('Applied');
+      pipeline.refreshAllCandidates(viewingJob.id);
+    } catch {
+      setAssignConflict(null);
+    }
+  };
 
   const handleResumeApplyToJob = () => {
     // Called when user clicks "View in Pipeline" on the success screen
@@ -283,6 +300,34 @@ export default function JobsPage() {
         </div>
       )}
 
+
+      {/* Assign conflict dialog */}
+      {assignConflict && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[600] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <p className="text-sm font-semibold text-slate-800">Candidate Already Applied</p>
+            <p className="text-sm text-slate-600">
+              <span className="font-medium">{assignConflict.candidate.full_name}</span> is currently applied to{' '}
+              <span className="font-medium">{assignConflict.currentJob.job_code} — {assignConflict.currentJob.title}</span>.
+              Move them to <span className="font-medium">{viewingJob?.job_code} — {viewingJob?.title}</span>?
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setAssignConflict(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssignConflictMove}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                Move Here
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload Resume (job context) */}
       <UploadResumeModal

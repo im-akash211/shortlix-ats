@@ -145,6 +145,26 @@ class CandidateAssignJobView(APIView):
         if not job_id:
             return Response({'error': 'job_id is required'}, status=status.HTTP_400_BAD_REQUEST)
         candidate = generics.get_object_or_404(Candidate, pk=pk)
+
+        # Enforce one-job-per-candidate
+        existing = (
+            CandidateJobMapping.objects
+            .filter(candidate=candidate)
+            .select_related('job')
+            .exclude(job_id=job_id)
+            .first()
+        )
+        if existing:
+            return Response({
+                'error': 'Candidate is already applied to another job',
+                'conflict': True,
+                'current_job': {
+                    'id': str(existing.job.id),
+                    'title': existing.job.title,
+                    'job_code': existing.job.job_code,
+                },
+            }, status=status.HTTP_409_CONFLICT)
+
         mapping, created = CandidateJobMapping.objects.get_or_create(
             candidate=candidate, job_id=job_id,
             defaults={'moved_by': request.user, 'macro_stage': 'APPLIED'}
@@ -191,9 +211,14 @@ class CandidateChangeStageView(APIView):
                         val = request.data['interview_status']
                         mapping.interview_status = 'REJECTED' if val == 'REJECTED' else None
                     mapping.save()
-                if request.data.get('interview_status') == 'REJECTED':
+                interview_status_val = request.data.get('interview_status')
+                if interview_status_val == 'REJECTED':
                     from apps.notifications.utils import notify_candidate_rejected
                     notify_candidate_rejected(mapping.candidate, mapping.job)
+                elif interview_status_val is None or interview_status_val == '':
+                    # Rejection cleared — candidate back in Interview stage
+                    from apps.notifications.utils import notify_rejection_reversed
+                    notify_rejection_reversed(mapping.candidate, mapping.job, 'INTERVIEW')
                 return Response(CandidateJobMappingSerializer(mapping).data)
             return Response({'error': 'No updates provided'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -260,12 +285,15 @@ class CandidateChangeStageView(APIView):
 
         from apps.notifications.utils import (
             notify_candidate_shortlisted, notify_candidate_offered,
-            notify_candidate_interview_stage,
+            notify_candidate_interview_stage, notify_rejection_reversed,
         )
         candidate = mapping.candidate
         job = mapping.job
         if new_stage == 'SHORTLISTED':
-            notify_candidate_shortlisted(candidate, job)
+            if old_stage == 'DROPPED':
+                notify_rejection_reversed(candidate, job, 'SHORTLISTED')
+            else:
+                notify_candidate_shortlisted(candidate, job)
         elif new_stage == 'INTERVIEW':
             notify_candidate_interview_stage(candidate, job)
         elif new_stage == 'OFFERED':
@@ -369,21 +397,25 @@ class CandidateMoveJobView(APIView):
     def post(self, request, pk):
         from_job_id = request.data.get('from_job_id')
         to_job_id = request.data.get('to_job_id')
-        if not from_job_id or not to_job_id:
-            return Response({'error': 'from_job_id and to_job_id are required'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        if not to_job_id:
+            return Response({'error': 'to_job_id is required'}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
-            old_mapping = generics.get_object_or_404(
-                CandidateJobMapping, candidate_id=pk, job_id=from_job_id
-            )
-            old_mapping.delete()
+            if from_job_id:
+                old_mapping = generics.get_object_or_404(
+                    CandidateJobMapping, candidate_id=pk, job_id=from_job_id
+                )
+            else:
+                old_mapping = CandidateJobMapping.objects.filter(candidate_id=pk).first()
+            from_label = str(old_mapping.job_id) if old_mapping else 'unknown'
+            if old_mapping:
+                old_mapping.delete()
             new_mapping = CandidateJobMapping.objects.create(
                 candidate_id=pk, job_id=to_job_id,
                 moved_by=request.user, macro_stage='APPLIED'
             )
             PipelineStageHistory.objects.create(
                 mapping=new_mapping, from_macro_stage='', to_macro_stage='APPLIED',
-                moved_by=request.user, remarks=f'Moved from job {from_job_id}'
+                moved_by=request.user, remarks=f'Moved from job {from_label}'
             )
         return Response(CandidateJobMappingSerializer(new_mapping).data, status=status.HTTP_201_CREATED)
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { PageLoader } from '../components/LoadingDots';
@@ -6,11 +6,30 @@ import RecruitmentProgress from '../components/RecruitmentProgress';
 import { dashboard } from '../lib/api';
 import { useAuth } from '../lib/authContext';
 import { ROUTES } from '../routes/constants';
-import { TrendingUp, Users, CheckSquare, Calendar, ChevronRight, Layers, Award, Clock, ThumbsUp, GitMerge, AlertCircle } from 'lucide-react';
+import { TrendingUp, Users, CheckSquare, Calendar, ChevronRight, Layers, Award, Clock, ThumbsUp, GitMerge, AlertCircle, Download } from 'lucide-react';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadReport = async () => {
+    setDownloading(true);
+    try {
+      const url = dashboard.reportExcelUrl();
+      const token = localStorage.getItem('access');
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const blob = await res.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      const d = new Date();
+      link.download = `Dashboard_Report_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const summaryParams = {};
 
@@ -64,12 +83,13 @@ export default function Dashboard() {
     <div className="h-full overflow-y-auto" style={{ fontFamily: 'Inter, sans-serif', backgroundColor: '#f8f9fa' }}>
 
       {/* Page header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#191c1d]" style={{ fontFamily: 'Manrope, sans-serif', letterSpacing: '-0.02em' }}>
-          Recruitment Overview
-        </h1>
-        <div className="flex items-center gap-2 mt-1">
-          <p className="text-sm text-[#565e72]">Track your hiring pipeline at a glance</p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[#191c1d]" style={{ fontFamily: 'Manrope, sans-serif', letterSpacing: '-0.02em' }}>
+            Recruitment Overview
+          </h1>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-sm text-[#565e72]">Track your hiring pipeline at a glance</p>
           {user?.role !== 'admin' && (
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#dae2fa] text-[#0058be]">
               {user?.role === 'hiring_manager' ? 'Your Jobs' : user?.role === 'recruiter' ? 'Your Assigned Jobs' : 'Your Interviews'}
@@ -80,7 +100,16 @@ export default function Dashboard() {
               All Jobs
             </span>
           )}
+          </div>
         </div>
+        <button
+          onClick={handleDownloadReport}
+          disabled={downloading}
+          className="flex items-center gap-1.5 bg-white border border-emerald-300 text-emerald-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-50 disabled:opacity-50 transition-colors shadow-sm whitespace-nowrap"
+        >
+          <Download className="w-3.5 h-3.5" />
+          {downloading ? 'Downloading…' : 'Export Report'}
+        </button>
       </div>
 
       {isLoading ? (

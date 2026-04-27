@@ -52,7 +52,7 @@ export default function CandidateCard({
   return (
     <div key={c.id}>
       {/* Card */}
-      <div className={`border rounded-xl p-4 ${isActive ? 'bg-white hover:shadow-md transition-shadow border-slate-200' : 'bg-slate-50 opacity-50 border-slate-100'}`}>
+      <div className={`border rounded-xl p-4 ${isActive ? 'bg-white hover:shadow-md transition-shadow border-slate-200' : 'bg-slate-50/80 opacity-70 border-slate-100'}`}>
 
         {/* TOP: avatar + name + sub-info + badges + share */}
         <div className="flex items-start justify-between gap-2 mb-3">

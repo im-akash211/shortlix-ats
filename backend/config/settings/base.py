@@ -125,6 +125,15 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE = {
+    'send-feedback-reminders-hourly': {
+        'task': 'interviews.send_feedback_reminders',
+        # Runs at the top of every hour; the task itself enforces the 24h gap
+        'schedule': crontab(minute=0),
+    },
+}
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ── Email (Gmail SMTP) ─────────────────────────────────────────────────────────
