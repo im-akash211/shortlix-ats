@@ -91,7 +91,7 @@ export default function Topbar({ user, onLogout }) {
   const getTitle = () => {
     const path = location.pathname;
     if (path.startsWith('/jobs')) return 'Manage your Jobs & Applications';
-    if (path.startsWith('/candidates')) return 'Talent Pool Search';
+    if (path.startsWith('/candidates')) return 'Talent Pool';
     if (path.startsWith('/approvals')) return 'Manage your Approvals';
     if (path.startsWith('/interviews')) return 'Manage your Interviews';
     if (path.startsWith('/requisitions')) return 'Manage your Requisitions';
