@@ -44,6 +44,14 @@ class PipelineStageHistorySerializer(serializers.ModelSerializer):
 
 
 class CandidateJobMappingSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        from apps.core.rbac import has_permission
+        if request and not has_permission(request.user, 'VIEW_COMPENSATION'):
+            data.pop('offer_status', None)
+        return data
+
     candidate_name = serializers.CharField(source='candidate.full_name', read_only=True)
     candidate_email = serializers.CharField(source='candidate.email', read_only=True)
     candidate_phone = serializers.CharField(source='candidate.phone', read_only=True)
@@ -136,12 +144,10 @@ class CandidateDetailSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         request = self.context.get('request')
-        if not (
-            request
-            and hasattr(request.user, 'role')
-            and request.user.role in ('admin', 'recruiter')
-        ):
+        from apps.core.rbac import has_permission
+        if not (request and has_permission(request.user, 'VIEW_COMPENSATION')):
             data.pop('current_ctc_lakhs', None)
+            data.pop('expected_ctc_lakhs', None)
             data.pop('notice_period_days', None)
         return data
 

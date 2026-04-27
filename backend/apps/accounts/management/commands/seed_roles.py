@@ -2,31 +2,34 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 PERMISSIONS = [
-    ('VIEW_JOBS', 'View Jobs'),
-    ('EDIT_JOBS', 'Edit Jobs'),
-    ('SCHEDULE_INTERVIEW', 'Schedule Interviews'),
-    ('GIVE_FEEDBACK', 'Submit Interview Feedback'),
-    ('VIEW_REPORTS', 'View Reports & Dashboard'),
-    ('MANAGE_CANDIDATES', 'Manage Candidates'),
+    ('VIEW_JOBS',           'View Jobs'),
+    ('EDIT_JOBS',           'Edit & Create Jobs'),
+    ('SCHEDULE_INTERVIEW',  'Schedule Interviews'),
+    ('GIVE_FEEDBACK',       'Submit Interview Feedback'),
+    ('VIEW_REPORTS',        'View Reports & Dashboard'),
+    ('VIEW_CANDIDATES',     'View Candidates'),
+    ('MANAGE_CANDIDATES',   'Manage Candidates (edit / move / delete)'),
+    ('VIEW_COMPENSATION',   'View Compensation Details (CTC, Notice, ECTC, Offers)'),
     ('MANAGE_REQUISITIONS', 'Manage Requisitions'),
-    ('APPROVE_REQUISITIONS', 'Approve Requisitions'),
-    ('MANAGE_USERS', 'Manage Users'),
+    ('APPROVE_REQUISITIONS','Approve Requisitions'),
+    ('MANAGE_USERS',        'Manage Users'),
 ]
 
 # Role name matches user.role CharField values exactly
 ROLE_PERMISSIONS = {
     'admin': [
         'VIEW_JOBS', 'EDIT_JOBS', 'SCHEDULE_INTERVIEW', 'GIVE_FEEDBACK',
-        'VIEW_REPORTS', 'MANAGE_CANDIDATES', 'MANAGE_REQUISITIONS',
-        'APPROVE_REQUISITIONS', 'MANAGE_USERS',
+        'VIEW_REPORTS', 'VIEW_CANDIDATES', 'MANAGE_CANDIDATES', 'VIEW_COMPENSATION',
+        'MANAGE_REQUISITIONS', 'APPROVE_REQUISITIONS', 'MANAGE_USERS',
     ],
     'hiring_manager': [
         'VIEW_JOBS', 'APPROVE_REQUISITIONS', 'GIVE_FEEDBACK',
-        'VIEW_REPORTS', 'MANAGE_CANDIDATES',
+        'VIEW_REPORTS', 'VIEW_CANDIDATES', 'MANAGE_CANDIDATES',
     ],
     'recruiter': [
-        'VIEW_JOBS', 'EDIT_JOBS', 'SCHEDULE_INTERVIEW',
-        'MANAGE_CANDIDATES', 'MANAGE_REQUISITIONS', 'VIEW_REPORTS',
+        'VIEW_JOBS', 'EDIT_JOBS', 'SCHEDULE_INTERVIEW', 'GIVE_FEEDBACK',
+        'VIEW_CANDIDATES', 'MANAGE_CANDIDATES', 'VIEW_COMPENSATION',
+        'MANAGE_REQUISITIONS', 'VIEW_REPORTS',
     ],
     'interviewer': [
         'VIEW_JOBS', 'GIVE_FEEDBACK',

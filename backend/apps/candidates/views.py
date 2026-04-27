@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from django.db import transaction
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
+from apps.core.permissions import rbac_perm
 from .models import (
     Candidate, CandidateJobMapping, PipelineStageHistory, CandidateNote, CandidateNoteHistory,
     CandidateReminder, VALID_TRANSITIONS, ROUND_PROGRESSION, ROUND_CHOICES, SCREENING_STATUS_CHOICES,
@@ -22,6 +23,11 @@ from apps.notifications.models import InAppNotification
 class CandidateListCreateView(generics.ListCreateAPIView):
     search_fields = ['full_name', 'email', 'phone', 'skills', 'tags']
     ordering_fields = ['full_name', 'created_at', 'total_experience_years']
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [rbac_perm('MANAGE_CANDIDATES')()]
+        return [rbac_perm('VIEW_CANDIDATES')()]
 
     def get_queryset(self):
         qs = Candidate.objects.prefetch_related('job_mappings__job').all()
@@ -75,6 +81,11 @@ class CandidateListCreateView(generics.ListCreateAPIView):
 class CandidateDetailView(generics.RetrieveUpdateAPIView):
     queryset = Candidate.objects.prefetch_related('job_mappings__job', 'notes__user', 'resume_files').all()
 
+    def get_permissions(self):
+        if self.request.method in ('PUT', 'PATCH'):
+            return [rbac_perm('MANAGE_CANDIDATES')()]
+        return [rbac_perm('VIEW_CANDIDATES')()]
+
     def get_serializer_class(self):
         if self.request.method in ('PUT', 'PATCH'):
             return CandidateCreateSerializer
@@ -82,6 +93,8 @@ class CandidateDetailView(generics.RetrieveUpdateAPIView):
 
 
 class CandidateDeleteView(APIView):
+    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
+
     def delete(self, request, pk):
         candidate = generics.get_object_or_404(Candidate, pk=pk)
         candidate.delete()
@@ -90,6 +103,7 @@ class CandidateDeleteView(APIView):
 
 class CandidateNoteListCreateView(generics.ListCreateAPIView):
     serializer_class = CandidateNoteSerializer
+    permission_classes = [rbac_perm('VIEW_CANDIDATES')]
 
     def get_queryset(self):
         return CandidateNote.objects.filter(candidate_id=self.kwargs['pk']).select_related('user').prefetch_related('history')
@@ -140,6 +154,8 @@ class CandidateJobCommentListCreateView(generics.ListCreateAPIView):
 
 
 class CandidateAssignJobView(APIView):
+    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
+
     def post(self, request, pk):
         job_id = request.data.get('job_id')
         if not job_id:
@@ -193,6 +209,7 @@ class CandidateChangeStageView(APIView):
       priority     (optional LOW/MEDIUM/HIGH)
       next_interview_date (optional ISO datetime)
     """
+    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
 
     def patch(self, request, pk, job_id):
         new_stage = request.data.get('macro_stage')
@@ -310,6 +327,7 @@ class NextRoundView(APIView):
     Does NOT create an Interview record — scheduling is a separate step.
     Guard: the latest Interview for the current round must be COMPLETED.
     """
+    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
 
     def post(self, request, pk, job_id):
         mapping = generics.get_object_or_404(
@@ -360,6 +378,7 @@ class JumpToRoundView(APIView):
     Jumps to any round without completion guard (explicit skip intent).
     Does NOT create an Interview record — scheduling is a separate step.
     """
+    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
 
     def post(self, request, pk, job_id):
         round_name = request.data.get('round_name')
@@ -394,6 +413,8 @@ class JumpToRoundView(APIView):
 
 
 class CandidateMoveJobView(APIView):
+    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
+
     def post(self, request, pk):
         from_job_id = request.data.get('from_job_id')
         to_job_id = request.data.get('to_job_id')
@@ -493,6 +514,7 @@ class SetScreeningStatusView(APIView):
 
     Only allowed when macro_stage == "APPLIED". Returns 400 otherwise.
     """
+    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, pk, job_id):
@@ -562,7 +584,7 @@ class CandidateResumeUploadView(APIView):
     Marks previous files as is_latest=False.
     Returns 409 if the exact same file (by SHA-256) was already uploaded.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
     parser_classes = [__import__('rest_framework.parsers', fromlist=['MultiPartParser']).MultiPartParser]
 
     def post(self, request, pk):
@@ -620,7 +642,7 @@ class CandidateResumeDownloadView(APIView):
     Proxies the latest resume file through the backend so the browser
     receives it as same-origin — avoids S3 CORS restrictions on fetch().
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('VIEW_CANDIDATES')]
 
     def get(self, request, pk):
         import urllib.request
@@ -653,7 +675,7 @@ class CandidateAIMatchView(APIView):
     GET  /api/candidates/<pk>/ai-match/  — return cached scores (no LLM call)
     POST /api/candidates/<pk>/ai-match/  — recompute scores via LLM and return
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
 
     def _serialise(self, mappings_qs):
         return [

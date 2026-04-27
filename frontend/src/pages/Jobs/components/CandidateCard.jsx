@@ -6,6 +6,8 @@ import {
   OFFER_STATUS_LABELS, DROP_REASON_LABELS,
   SHORTLIST_REASONS, APPLIED_REJECT_REASONS,
 } from '../constants';
+import { useAuth } from '../../../lib/authContext';
+import { hasPermission } from '../../../lib/permissions';
 
 export default function CandidateCard({
   c,
@@ -38,6 +40,8 @@ export default function CandidateCard({
   const [rejectConfirm, setRejectConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState(null); // { type: 'shortlist'|'reject', reason: '' }
   const [jumpTarget, setJumpTarget] = useState(null);
+  const { user } = useAuth();
+  const canViewCompensation = hasPermission(user, 'VIEW_COMPENSATION');
   const isActive = c.is_current_stage !== false;
   const macroStage = c.macro_stage;
   const isShareOpen = shareOpen === c.id;
@@ -126,7 +130,7 @@ export default function CandidateCard({
                 </div>
               );
             })()}
-            {macroStage === 'OFFERED' && c.offer_status && (
+            {canViewCompensation && macroStage === 'OFFERED' && c.offer_status && (
               <span className="text-[10px] font-semibold bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-full">
                 {OFFER_STATUS_LABELS[c.offer_status]}
               </span>

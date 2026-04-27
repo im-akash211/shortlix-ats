@@ -40,14 +40,26 @@ class RoleSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True, default=None)
+    permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'email', 'full_name', 'role', 'department', 'department_name',
-            'is_active', 'status', 'created_at', 'updated_at',
+            'is_active', 'status', 'created_at', 'updated_at', 'permissions',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_permissions(self, obj):
+        from apps.core.rbac import _LEGACY_MAP
+        if getattr(obj, 'db_role_id', None) is not None:
+            keys = list(
+                obj.db_role.role_permissions
+                .values_list('permission__key', flat=True)
+            )
+        else:
+            keys = list(_LEGACY_MAP.get(getattr(obj, 'role', ''), set()))
+        return keys
 
 
 class UserDropdownSerializer(serializers.ModelSerializer):

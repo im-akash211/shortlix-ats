@@ -1,4 +1,3 @@
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Avg, Count, ExpressionWrapper, F, Q, Sum, DurationField
@@ -9,10 +8,25 @@ from apps.jobs.models import Job, JobCollaborator
 from apps.candidates.models import CandidateJobMapping, Referral, MACRO_STAGE_CHOICES
 from apps.requisitions.models import Requisition
 from apps.interviews.models import Interview
+from apps.core.permissions import rbac_perm
+from apps.core.rbac import has_permission
+
+
+def _jobs_scope(user, jobs_qs):
+    """Scope a Job queryset to what the user is allowed to see in the dashboard."""
+    if has_permission(user, 'MANAGE_USERS'):
+        return jobs_qs
+    if has_permission(user, 'SCHEDULE_INTERVIEW'):
+        collab_job_ids = JobCollaborator.objects.filter(user=user).values_list('job_id', flat=True)
+        return jobs_qs.filter(Q(created_by=user) | Q(id__in=collab_job_ids))
+    if has_permission(user, 'APPROVE_REQUISITIONS'):
+        return jobs_qs.filter(hiring_manager=user)
+    # Interviewers and custom roles with VIEW_REPORTS but no job-management perms see all
+    return jobs_qs
 
 
 class DashboardExcelReportView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('VIEW_REPORTS')]
 
     def get(self, request):
         import openpyxl
@@ -22,18 +36,7 @@ class DashboardExcelReportView(APIView):
 
         user = request.user
 
-        # ── Apply same role-based scoping as DashboardSummaryView ─────────────
-        jobs_qs = Job.objects.all()
-        if user.role == 'hiring_manager':
-            jobs_qs = jobs_qs.filter(hiring_manager=user)
-        elif user.role == 'recruiter':
-            collab_job_ids = JobCollaborator.objects.filter(user=user).values_list('job_id', flat=True)
-            jobs_qs = jobs_qs.filter(Q(created_by=user) | Q(id__in=collab_job_ids))
-        elif user.role == 'interviewer':
-            interviewer_job_ids = Interview.objects.filter(
-                interviewer=user
-            ).values_list('mapping__job_id', flat=True).distinct()
-            jobs_qs = jobs_qs.filter(id__in=interviewer_job_ids)
+        jobs_qs = _jobs_scope(user, Job.objects.all())
 
         # Accept the same filter params
         for param, field in [
@@ -255,7 +258,7 @@ class DashboardExcelReportView(APIView):
         pending_feedback  = Interview.objects.filter(
             interviewer=user, status='scheduled', scheduled_at__lt=now
         ).count()
-        pending_referrals = Referral.objects.filter(status='pending').count() if user.role == 'admin' else 0
+        pending_referrals = Referral.objects.filter(status='pending').count() if has_permission(user, 'MANAGE_USERS') else 0
         stale_threshold   = now - timedelta(days=7)
         stale_candidates  = CandidateJobMapping.objects.filter(
             job_id__in=job_ids,
@@ -313,22 +316,13 @@ def _calc_trend(queryset, now, date_field='created_at'):
 
 
 class DashboardSummaryView(APIView):
+    permission_classes = [rbac_perm('VIEW_REPORTS')]
+
     def get(self, request):
         user = request.user
         department = request.query_params.get('department')
 
-        jobs_qs = Job.objects.all()
-
-        # Role-based scope
-        if user.role == 'hiring_manager':
-            jobs_qs = jobs_qs.filter(hiring_manager=user)
-        elif user.role == 'recruiter':
-            collab_job_ids = JobCollaborator.objects.filter(user=user).values_list('job_id', flat=True)
-            jobs_qs = jobs_qs.filter(Q(created_by=user) | Q(id__in=collab_job_ids))
-        elif user.role == 'interviewer':
-            interviewer_job_ids = Interview.objects.filter(interviewer=user).values_list('mapping__job_id', flat=True).distinct()
-            jobs_qs = jobs_qs.filter(id__in=interviewer_job_ids)
-        # admin: no additional filter
+        jobs_qs = _jobs_scope(user, Job.objects.all())
 
         if department:
             jobs_qs = jobs_qs.filter(department_id=department)
@@ -444,6 +438,8 @@ class DashboardSummaryView(APIView):
 
 
 class DashboardFilterOptionsView(APIView):
+    permission_classes = [rbac_perm('VIEW_REPORTS')]
+
     def get(self, request):
         from apps.departments.models import Department
         from apps.accounts.models import User
@@ -474,6 +470,8 @@ class DashboardFilterOptionsView(APIView):
 
 
 class DashboardFunnelView(APIView):
+    permission_classes = [rbac_perm('VIEW_REPORTS')]
+
     def get(self, request):
         department = request.query_params.get('department')
         jobs_qs = Job.objects.filter(status='open')
@@ -494,6 +492,8 @@ class DashboardFunnelView(APIView):
 
 
 class DashboardPendingActionsView(APIView):
+    permission_classes = [rbac_perm('VIEW_REPORTS')]
+
     def get(self, request):
         user = request.user
 
@@ -508,19 +508,10 @@ class DashboardPendingActionsView(APIView):
 
         pending_referrals = (
             Referral.objects.filter(status='pending').count()
-            if user.role == 'admin' else 0
+            if has_permission(user, 'MANAGE_USERS') else 0
         )
 
-        # Scope stale candidates to the same jobs the user sees in the summary
-        jobs_qs = Job.objects.all()
-        if user.role == 'hiring_manager':
-            jobs_qs = jobs_qs.filter(hiring_manager=user)
-        elif user.role == 'recruiter':
-            collab_job_ids = JobCollaborator.objects.filter(user=user).values_list('job_id', flat=True)
-            jobs_qs = jobs_qs.filter(Q(created_by=user) | Q(id__in=collab_job_ids))
-        elif user.role == 'interviewer':
-            interviewer_job_ids = Interview.objects.filter(interviewer=user).values_list('mapping__job_id', flat=True).distinct()
-            jobs_qs = jobs_qs.filter(id__in=interviewer_job_ids)
+        jobs_qs = _jobs_scope(user, Job.objects.all())
 
         stale_threshold = now - timedelta(days=7)
         stale_candidates = CandidateJobMapping.objects.filter(
