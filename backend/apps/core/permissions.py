@@ -31,3 +31,21 @@ class IsAdminRecruiterOrHM(BasePermission):
             and hasattr(request.user, 'role')
             and request.user.role in ('admin', 'recruiter', 'hiring_manager')
         )
+
+
+class HasRBACPermission(BasePermission):
+    """
+    Generic DRF permission backed by the db_role → RolePermission system.
+
+    Usage in a view:
+        permission_classes = [HasRBACPermission]
+        required_permission = 'MANAGE_USERS'
+    """
+    required_permission = None
+
+    def has_permission(self, request, view):
+        from apps.core.rbac import has_permission as _has_perm
+        perm = getattr(view, 'required_permission', self.required_permission)
+        if not perm:
+            return False
+        return request.user.is_authenticated and _has_perm(request.user, perm)

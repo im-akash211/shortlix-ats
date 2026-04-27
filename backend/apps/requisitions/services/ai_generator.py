@@ -105,44 +105,68 @@ def generate_requisition_content(
     context_str = "\n".join(context_lines)
 
     # Updated PROMPT with specific instructions for the experience range
-    PROMPT = f"""You are an expert HR and Talent Acquisition Lead at a premier Generative AI and Data Engineering firm. 
-        Your goal is to generate an enterprise-grade job requisition that attracts top-tier talent by balancing technical depth with high-impact narrative.
+    PROMPT = f"""You are an expert HR and Talent Acquisition Lead at a premier Generative AI and Data Engineering firm. Your goal is to generate an enterprise-grade job requisition that attracts top-tier talent by balancing technical depth with high-impact narrative.
 
-        ### COMPANY CONTEXT:
-        We are an end-to-end GenAI and Data Engineering solution provider. We build enterprise-grade tools ranging from Data Pre-processing and Data Lakes to production-ready Machine Learning and LLM pipelines.
+    ### COMPANY CONTEXT:
+    We are an end-to-end GenAI and Data Engineering solution provider building enterprise-grade systems including:
+    - Data pipelines & Data Lakes
+    - Machine Learning systems
+    - LLM-powered applications
+    Assume a high-growth, performance-driven environment.
 
-        ### INPUT DATA:
-        - Role Context: {context_str}
+    ### INPUT DATA:
+    - Role Context: {context_str}
+    - Experience Range: {exp_min}–{exp_max} years
+    - Sub-Vertical / Domain: {sub_vertical_1}
 
+    *If any input is missing: Make reasonable assumptions and clearly state them briefly before the JSON output.*
 
-        ### ROLE-SPECIFIC LOGIC ENGINE:
-        1. **Engineering (AI/Data/Software):** Focus on scalability, technical debt management, system architecture, and "production-grade" reliability.
-        2. **HR/People:** Focus on organizational design, culture-building in a high-growth tech environment, and talent strategy.
-        3. **Sales/Growth:** Focus on technical solution selling, pipeline velocity, and enterprise client partnerships.
-        4. **Seniority Calibration:** 
-        - **Junior (0-3 yrs):** Emphasize execution, "learning from senior mentors," and "contributing to" systems.
-        - **Mid-Senior (4-7 yrs):** Emphasize "ownership," "designing components," and "cross-functional collaboration."
-        - **Lead/Staff (8+ yrs):** Emphasize "driving vision," "architecting systems," "mentoring," and "organizational impact."
+    ### ROLE-SPECIFIC LOGIC ENGINE:
+    1. **Engineering (AI/Data/Software):** Emphasize scalability, system design, performance, and production reliability.
+    2. **HR/People Roles:** Focus on culture, org design, and hiring strategy.
+    3. **Sales/Growth Roles:** Focus on solution selling, pipeline, and enterprise clients.
+    4. **Seniority Calibration:**
+        - **Junior (0–3 yrs):** Execution, learning, and support.
+        - **Mid (4–7 yrs):** Ownership, design, and collaboration.
+        - **Senior/Lead (8+ yrs):** Vision, architecture, and mentoring.
 
-        ### WRITING STYLE GUIDELINES (Reverse-Engineered from Industry Leaders):
-        - **The Hook:** Start with an engaging mission statement. Mention the {exp_min}-{exp_max} years requirement naturally within the context of impact.
-        - **Responsibilities:** Use the "Action + Purpose" formula (e.g., "Drive technology innovations to remain ahead of the curve" vs "Write code"). Include 6-8 bullets covering design, execution, testing, and collaboration.
-        - **Tone:** Professional, ambitious, and intellectually curious.
+    ### WRITING STYLE GUIDELINES:
+    - **The Hook:** Start with a strong mission-driven hook. Naturally integrate the {exp_min}–{exp_max} years experience range within the context.
+    - **Responsibilities:** Use the "Action + Purpose" format (e.g., “Drive scalable ML systems to power enterprise use cases”).
+    - **Tone:** Professional, ambitious, and intellectually engaging. Avoid vague buzzwords or generic filler.
 
-        ### OUTPUT REQUIREMENTS:
-        Generate a valid JSON object with these keys:
-        1. `job_description`: (HTML string) A compelling 3-4 paragraph summary including role overview, key responsibilities (6-8 bullets using active verbs: Own, Drive, Build, Mentor), and qualifications.
-        2. `required_skills`: (List) 5-7 core technical/hard skills aligned with {sub_vertical_1}.
-        3. `preferred_skills`: (List) 3-5 "Nice to have" skills (e.g., Cloud Certifications, specific AI frameworks, or soft skills like "Product Thinking").
+    ### CONTENT SPECIFICATIONS:
+    - **job_description (HTML string):** 
+        - 180–250 words total.
+        - 3–4 paragraphs including: Role overview, Business impact, and Culture/value proposition.
+        - Include 6–8 bullet points for responsibilities using active verbs (Own, Drive, Build, Mentor).
+        - Include a clear, role-aligned qualifications section.
+    - **required_skills (List):** 5–7 must-have skills aligned with {sub_vertical_1}. Avoid generic skills.
+    - **preferred_skills (List):** 3–5 good-to-have skills (certifications, tools, or soft skills like product thinking).
 
-        ### JSON STRUCTURE:
-        {{
-            "job_description": "string",
-            "required_skills": [],
-            "preferred_skills": []
-        }}
+    ### QUALITY & SAFETY GUIDELINES:
+    - Do NOT fabricate company claims or unrealistic benefits.
+    - Avoid biased or exclusionary language; ensure an inclusive and neutral hiring tone.
+    - Keep content grounded in provided inputs.
 
-        Return ONLY the JSON object.
+    ### OUTPUT REQUIREMENTS:
+    Return ONLY a valid JSON object with the following structure:
+
+    ```json
+    {
+    "job_description": "HTML string",
+    "required_skills": [],
+    "preferred_skills": []
+    }
+    ```
+
+    ### FINAL VALIDATION CHECK:
+    Before output, verify:
+    - JSON is valid and properly formatted.
+    - Word limits (180-250) are respected.
+    - Skills align perfectly with the role domain.
+    - Tone is professional and compelling.
+    - No placeholders remain in the final text.
     """
 
     last_exc: Exception | None = None
