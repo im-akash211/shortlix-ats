@@ -272,6 +272,8 @@ class JobCollaboratorListCreateView(generics.ListCreateAPIView):
             f'Collaborator added: {collab.user.full_name}',
             new_value={'user_id': str(collab.user.id), 'name': collab.user.full_name},
         )
+        from apps.notifications.utils import notify_collaborator_added
+        notify_collaborator_added(collab.job, collab.user, self.request.user)
 
 
 class JobCollaboratorDeleteView(APIView):

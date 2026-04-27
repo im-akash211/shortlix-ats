@@ -4,31 +4,24 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '../../lib/useDebounce';
 import { PageLoader } from '../../components/LoadingDots';
 import { ROUTES } from '../../routes/constants';
-import { Search, Briefcase, UserPlus, Upload, Users, X, ChevronDown } from 'lucide-react';
+import { Search, Briefcase, Users } from 'lucide-react';
 import { useAuth } from '../../lib/authContext';
 
 import { useJobs, useFilterOptions } from './hooks/useJobs';
 import { useJobDetail } from './hooks/useJobDetail';
 import { useCollaborators } from './hooks/useCollaborators';
 import { useJobPipeline } from './hooks/useJobPipeline';
-import { useShare } from './hooks/useShare';
 import { useResumeUpload } from '../Candidates/hooks/useResumeUpload';
 
-import { jobsApi, candidatesApi, interviewsApi } from './services/jobsApi';
+import { jobsApi } from './services/jobsApi';
 import { candidates as candidatesLibApi } from '../../lib/api';
 
 import JobCard from './components/JobCard';
 import JobFilters from './components/JobFilters';
 import JobDetailPanel from './components/JobDetailPanel';
-import PipelineView from './components/PipelineView';
 import JobEditModal from './components/JobEditModal';
 import CollaboratorsModal from './components/CollaboratorsModal';
 import ApplyCandidateModal from './components/ApplyCandidateModal';
-import ScheduleModal from './components/ScheduleModal';
-import NewScheduleModal from './components/NewScheduleModal';
-import DropModal from './components/DropModal';
-import ResumeModal from './components/ResumeModal';
-import SetReminderModal from './components/SetReminderModal';
 import UploadResumeModal from '../Candidates/components/UploadResumeModal';
 import ReviewResumeModal from '../Candidates/components/ReviewResumeModal';
 
@@ -106,61 +99,18 @@ export default function JobsPage() {
 
   // ── Job detail route ─────────────────────────────────────────────────────────
   const detailMatch = useMatch(ROUTES.JOBS.DETAIL_PATTERN);
-  const candidatesMatch = useMatch(ROUTES.JOBS.CANDIDATES_PATTERN);
   const interviewsMatch = useMatch(ROUTES.JOBS.INTERVIEWS_PATTERN);
-  const matchJobId = detailMatch?.params?.jobId || candidatesMatch?.params?.jobId || interviewsMatch?.params?.jobId;
+  const matchJobId = detailMatch?.params?.jobId || interviewsMatch?.params?.jobId;
 
   const [viewingJob, setViewingJob] = useState(null);
-  const [isPipelinePanelOpen, setIsPipelinePanelOpen] = useState(false);
-
-  const isCandidatesRoute = Boolean(candidatesMatch);
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
   const jobDetail = useJobDetail({ setViewingJob });
 
   const collabs = useCollaborators({ viewingJob, setJobDetail: jobDetail.setJobDetail });
 
-  const pipeline = useJobPipeline({ viewingJob, isPipelinePanelOpen });
+  const pipeline = useJobPipeline({ viewingJob, isPipelinePanelOpen: false });
 
-  const share = useShare();
-
-  // ── Schedule modal extra state (ScheduleModal - old flow) ──────────────────
-  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
-  const [scheduleCandidate, setScheduleCandidate] = useState(null);
-  const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [scheduleToast, setScheduleToast] = useState(null);
-
-  const closeScheduleModal = () => {
-    setIsScheduleOpen(false);
-    setScheduleCandidate(null);
-    pipeline.setScheduleForm({ round_number: 1, round_label: '', interviewer: '', scheduled_at: '', duration_minutes: 60, mode: 'virtual', meeting_link: '' });
-    setScheduleToast(null);
-  };
-
-  const handleScheduleSubmit = async () => {
-    const { scheduleForm } = pipeline;
-    if (!scheduleForm.interviewer || !scheduleForm.scheduled_at) return;
-    setScheduleLoading(true);
-    setScheduleToast(null);
-    try {
-      await interviewsApi.create({
-        mapping:          scheduleCandidate.id,
-        round_number:     Number(scheduleForm.round_number),
-        round_label:      scheduleForm.round_label,
-        interviewer:      scheduleForm.interviewer,
-        scheduled_at:     new Date(scheduleForm.scheduled_at).toISOString(),
-        duration_minutes: Number(scheduleForm.duration_minutes),
-        mode:             scheduleForm.mode,
-        meeting_link:     scheduleForm.meeting_link,
-      });
-      setScheduleToast({ type: 'success', message: 'Interview scheduled successfully.' });
-      setTimeout(() => closeScheduleModal(), 1200);
-    } catch (err) {
-      setScheduleToast({ type: 'error', message: err.data?.detail || JSON.stringify(err.data) || 'Failed to schedule.' });
-    } finally {
-      setScheduleLoading(false);
-    }
-  };
 
   // ── Upload resume (job context) ────────────────────────────────────────────
   const [jobResumeActiveModal, setJobResumeActiveModal] = useState(null); // 'upload' | 'review' | null
@@ -196,41 +146,6 @@ export default function JobsPage() {
     setTimeout(() => setApplyToast(''), 4000);
   };
 
-  // ── Add profile dropdown state ─────────────────────────────────────────────
-  const [addDropdownOpen, setAddDropdownOpen] = useState(false);
-  const addDropdownRef = React.useRef(null);
-  useEffect(() => {
-    if (!addDropdownOpen) return;
-    const handler = (e) => {
-      if (addDropdownRef.current && !addDropdownRef.current.contains(e.target)) {
-        setAddDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [addDropdownOpen]);
-
-  // ── Candidate profile ──────────────────────────────────────────────────────
-  const openCandidateProfile = (c) => {
-    navigate(ROUTES.CANDIDATES.PROFILE_FROM_JOB(c.candidate, viewingJob.id));
-  };
-
-  // ── Reminder modal state ───────────────────────────────────────────────────
-  const [reminderCandidate, setReminderCandidate] = useState(null);
-
-  // ── Resume viewer state ────────────────────────────────────────────────────
-  const [resumeModal, setResumeModal] = useState(null);
-  const openResume = async (candidate) => {
-    try {
-      const files = candidate.resume_files || [];
-      const latest = files.find(f => f.is_latest) || files[0];
-      if (files.length === 0) { setResumeModal({ name: candidate.full_name, empty: true }); return; }
-      if (!latest?.file_url) { setResumeModal({ name: candidate.full_name, missing: true }); return; }
-      setResumeModal({ url: latest.file_url, filename: latest.original_filename, type: latest.file_type, name: candidate.full_name });
-    } catch (err) {
-      setResumeModal({ name: candidate.full_name, error: true });
-    }
-  };
 
   // ── Sync route param with detail view ─────────────────────────────────────
   useEffect(() => {
@@ -245,91 +160,22 @@ export default function JobsPage() {
           .catch(console.error)
           .finally(() => jobDetail.setJobDetailLoading(false));
       }
-      setIsPipelinePanelOpen(isCandidatesRoute);
     } else {
       setViewingJob(null);
       jobDetail.setJobDetail(null);
-      setIsPipelinePanelOpen(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchJobId, isCandidatesRoute]);
+  }, [matchJobId]);
 
-  // ── Handle ?stage= param from reminder notification click ──────────────────
-  useEffect(() => {
-    const stage = searchParams.get('stage');
-    if (stage && isCandidatesRoute) {
-      pipeline.setPipelineTab(stage);
-      setSearchParams(p => { p.delete('stage'); return p; }, { replace: true });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, isCandidatesRoute]);
-
-  // ── Load users when schedule modal opens ──────────────────────────────────
-  useEffect(() => {
-    if (!pipeline.scheduleModalCandidate) return;
-    share.ensureUsersLoaded();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipeline.scheduleModalCandidate]);
 
   // ── Open job detail ────────────────────────────────────────────────────────
-  const openJobDetails = (job, tab = 'Applied', openPanel = false) => {
+  const openJobDetails = (job) => {
     setViewingJob(job);
-    pipeline.setPipelineTab(tab);
-    pipeline.setScreeningFilter('ALL');
-    pipeline.setInterviewFilter('ALL');
-    if (openPanel || tab !== 'Applied') {
-      navigate(ROUTES.JOBS.CANDIDATES(job.id));
-      pipeline.setDimmedLoading && pipeline.setDimmedLoading(true);
-      pipeline.refreshDimmed(job.id, tab).finally(() => pipeline.setDimmedLoading && pipeline.setDimmedLoading(false));
-    } else {
-      navigate(ROUTES.JOBS.DETAIL(job.id));
-    }
-  };
-
-  // Shared card props for CandidateCard/PipelineView
-  const pipelineCardProps = {
-    shareOpen: share.shareOpen, setShareOpen: share.setShareOpen,
-    shareSearch: share.shareSearch, setShareSearch: share.setShareSearch,
-    shareSelected: share.shareSelected, setShareSelected: share.setShareSelected,
-    shareRef: share.shareRef,
-    usersList: share.usersList, usersLoading: share.usersLoading,
-    handleShare: share.handleShare,
-    openCandidateProfile,
-    handleShortlist: pipeline.handleShortlist,
-    handleAppliedReject: pipeline.handleAppliedReject,
-    shortlistingId: pipeline.shortlistingId,
-    handleScreeningStatus: pipeline.handleScreeningStatus,
-    screeningStatusLoadingId: pipeline.screeningStatusLoadingId,
-    getMoveToOptions: pipeline.getMoveToOptions,
-    handleMoveToInterview: pipeline.handleMoveToInterview,
-    handleMakeOffer: pipeline.handleMakeOffer,
-    handleMarkJoined: pipeline.handleMarkJoined,
-    handleRestoreToShortlist: pipeline.handleRestoreToShortlist, restoringId: pipeline.restoringId,
-    handleInterviewReject: pipeline.handleInterviewReject,
-    handleClearInterviewReject: pipeline.handleClearInterviewReject,
-    setDropModalCandidate: pipeline.setDropModalCandidate,
-    setDropReason: pipeline.setDropReason,
-    handleNextRound: pipeline.handleNextRound, nextRoundLoading: pipeline.nextRoundLoading,
-    handleJumpRound: pipeline.handleJumpRound, jumpRoundLoading: pipeline.jumpRoundLoading,
-    handleRoundStatus: pipeline.handleRoundStatus, roundStatusLoadingId: pipeline.roundStatusLoadingId,
-    setScheduleModalCandidate: pipeline.setScheduleModalCandidate,
-    setScheduleModalRound: pipeline.setScheduleModalRound,
-    commentsByCard: pipeline.commentsByCard,
-    commentsOpenId: pipeline.commentsOpenId,
-    commentsLoadingId: pipeline.commentsLoadingId,
-    commentInput: pipeline.commentInput,
-    setCommentInput: pipeline.setCommentInput,
-    commentSubmittingId: pipeline.commentSubmittingId,
-    handleToggleComments: pipeline.handleToggleComments,
-    handleAddComment: pipeline.handleAddComment,
-    handlePriorityChange: pipeline.handlePriorityChange,
+    navigate(ROUTES.JOBS.DETAIL(job.id));
   };
 
   return (
     <>
-{/* Resume Viewer Modal */}
-      <ResumeModal resumeModal={resumeModal} setResumeModal={setResumeModal} />
-
       {/* ══════════════════ JOB DETAIL VIEW ══════════════════ */}
       {(viewingJob || matchJobId) ? (
         <JobDetailPanel
@@ -339,7 +185,6 @@ export default function JobsPage() {
           allCandidates={pipeline.allCandidates}
           allCandidatesLoading={pipeline.allCandidatesLoading}
           getStatCount={pipeline.getStatCount}
-          setPipelineTab={pipeline.setPipelineTab}
           openEdit={jobDetail.openEdit}
           setIsDeleteJobOpen={jobDetail.setIsDeleteJobOpen}
           openCollabModal={collabs.openCollabModal}
@@ -414,7 +259,6 @@ export default function JobsPage() {
                     key={job.id}
                     job={job}
                     onView={(j) => openJobDetails(j)}
-                    onOpenPipeline={(j, tab) => openJobDetails(j, tab, true)}
                     onCollaborators={(j) => collabs.openCollabModal(j)}
                   />
                 ))
@@ -439,87 +283,6 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* ══════════════════ PIPELINE SLIDE-OVER PANEL ══════════════════ */}
-      {isPipelinePanelOpen && viewingJob && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/20 z-40"
-            onClick={() => { pipeline.setScreeningFilter('ALL'); pipeline.setInterviewFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
-          />
-
-          {/* Drawer */}
-          <div className="fixed right-0 top-0 h-full w-[50vw] min-w-[550px] max-w-[95vw] bg-white shadow-2xl z-50 flex flex-col">
-
-            {/* Drawer header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
-              <div className="min-w-0">
-                <p className="text-xs text-slate-500 truncate">{viewingJob.job_code} — {viewingJob.title}</p>
-                <h3 className="text-base font-bold text-slate-800 mt-0.5">{pipeline.pipelineTab}</h3>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 ml-4">
-                {/* Add candidate dropdown */}
-                <div className="relative" ref={addDropdownRef}>
-                  <button
-                    onClick={() => setAddDropdownOpen(o => !o)}
-                    className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" /> Add Candidate
-                    <ChevronDown className="w-3 h-3 ml-0.5" />
-                  </button>
-                  {addDropdownOpen && (
-                    <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-[400] overflow-hidden">
-                      {canUploadResume && (
-                        <button
-                          onClick={() => { setAddDropdownOpen(false); jobResume.openUploadModal(); }}
-                          className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors text-left"
-                        >
-                          <Upload className="w-4 h-4 shrink-0" />
-                          <div>
-                            <p className="font-medium">Upload Resume</p>
-                            <p className="text-xs text-slate-400">Parse & add new candidate</p>
-                          </div>
-                        </button>
-                      )}
-                      <button
-                        onClick={() => { setAddDropdownOpen(false); setApplyModalOpen(true); }}
-                        className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors text-left border-t border-slate-100"
-                      >
-                        <Users className="w-4 h-4 shrink-0" />
-                        <div>
-                          <p className="font-medium">From Talent Pool</p>
-                          <p className="text-xs text-slate-400">Apply existing candidate</p>
-                        </div>
-                      </button>
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => { pipeline.setScreeningFilter('ALL'); pipeline.setInterviewFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
-                  className="text-slate-400 hover:text-slate-700 transition-colors p-1"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <PipelineView
-              pipelineTab={pipeline.pipelineTab}
-              allCandidates={pipeline.allCandidates}
-              allCandidatesLoading={pipeline.allCandidatesLoading}
-              dimmedCandidates={pipeline.dimmedCandidates}
-              dimmedLoading={pipeline.dimmedLoading}
-              screeningFilter={pipeline.screeningFilter} setScreeningFilter={pipeline.setScreeningFilter}
-              interviewFilter={pipeline.interviewFilter} setInterviewFilter={pipeline.setInterviewFilter}
-              offeredFilter={pipeline.offeredFilter} setOfferedFilter={pipeline.setOfferedFilter}
-              onTabChange={(tab) => { pipeline.setPipelineTab(tab); pipeline.setScreeningFilter('ALL'); pipeline.setInterviewFilter('ALL'); }}
-              getStatCount={pipeline.getStatCount}
-              onSetReminder={setReminderCandidate}
-              {...pipelineCardProps}
-            />
-          </div>
-        </>
-      )}
 
       {/* Upload Resume (job context) */}
       <UploadResumeModal
@@ -572,37 +335,6 @@ export default function JobsPage() {
         />
       )}
 
-      {/* Set Reminder Modal */}
-      {reminderCandidate && (
-        <SetReminderModal
-          candidate={reminderCandidate}
-          onClose={() => setReminderCandidate(null)}
-        />
-      )}
-
-      {/* Drop Candidate Modal */}
-      <DropModal
-        dropModalCandidate={pipeline.dropModalCandidate}
-        setDropModalCandidate={pipeline.setDropModalCandidate}
-        dropReason={pipeline.dropReason}
-        setDropReason={pipeline.setDropReason}
-        dropLoading={pipeline.dropLoading}
-        handleDropConfirm={pipeline.handleDropConfirm}
-      />
-
-      {/* New Schedule Modal (from pipeline) */}
-      <NewScheduleModal
-        scheduleModalCandidate={pipeline.scheduleModalCandidate}
-        scheduleModalRound={pipeline.scheduleModalRound}
-        setScheduleModalCandidate={pipeline.setScheduleModalCandidate}
-        setScheduleModalRound={pipeline.setScheduleModalRound}
-        scheduleForm={pipeline.scheduleForm}
-        setScheduleForm={pipeline.setScheduleForm}
-        scheduleSubmitting={pipeline.scheduleSubmitting}
-        usersList={share.usersList}
-        usersLoading={share.usersLoading}
-        handleNewScheduleSubmit={pipeline.handleNewScheduleSubmit}
-      />
 
       {/* Close Job Confirmation */}
       {jobDetail.isCloseConfirmOpen && (
@@ -666,18 +398,6 @@ export default function JobsPage() {
         handleRemoveCollab={collabs.handleRemoveCollab}
       />
 
-      {/* Schedule Interview Modal (old flow) */}
-      <ScheduleModal
-        isScheduleOpen={isScheduleOpen}
-        scheduleCandidate={scheduleCandidate}
-        scheduleForm={pipeline.scheduleForm}
-        setScheduleForm={pipeline.setScheduleForm}
-        scheduleLoading={scheduleLoading}
-        scheduleToast={scheduleToast}
-        usersList={share.usersList}
-        closeScheduleModal={closeScheduleModal}
-        handleScheduleSubmit={handleScheduleSubmit}
-      />
 
       {/* Delete Job Confirmation Modal */}
       {jobDetail.isDeleteJobOpen && (
@@ -715,13 +435,6 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Share success toast */}
-      {share.shareToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] bg-green-600 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
-          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
-          {share.shareToast}
-        </div>
-      )}
 
       {/* Apply / upload success toast */}
       {applyToast && (

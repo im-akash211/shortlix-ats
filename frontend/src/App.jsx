@@ -13,6 +13,7 @@ import EmployeePortal from './pages/EmployeePortal';
 // Lazy load actual protected features
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Jobs = lazy(() => import('./pages/Jobs'));
+const JobPipelinePage = lazy(() => import('./pages/Jobs/JobPipelinePage'));
 const Candidates = lazy(() => import('./pages/Candidates'));
 const CandidateProfile = lazy(() => import('./pages/CandidateProfile'));
 const Approvals = lazy(() => import('./pages/Approvals'));
@@ -36,6 +37,12 @@ export default function App() {
               <Route path={ROUTES.DASHBOARD} element={
                 <Suspense fallback={<PageSkeleton />}>
                   <Dashboard />
+                </Suspense>
+              } />
+
+              <Route path={ROUTES.JOBS.PIPELINE_PATTERN} element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <JobPipelinePage />
                 </Suspense>
               } />
 

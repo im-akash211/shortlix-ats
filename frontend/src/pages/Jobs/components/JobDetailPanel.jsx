@@ -243,20 +243,16 @@ export default function JobDetailPanel({
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: 'Applied',     tab: 'Applied' },
-                { label: 'Shortlisted', tab: 'Shortlisted' },
-                { label: 'Interview',   tab: 'Interview' },
-                { label: 'Offered',     tab: 'Offered' },
-                { label: 'Joined',      tab: 'Joined' },
-                { label: 'Dropped',     tab: 'Dropped' },
-              ].map(({ label, tab }) => (
+                { label: 'Applied',     tab: 'Applied',     stage: 'applied' },
+                { label: 'Shortlisted', tab: 'Shortlisted', stage: 'shortlisted' },
+                { label: 'Interview',   tab: 'Interview',   stage: 'interview' },
+                { label: 'Offered',     tab: 'Offered',     stage: 'offered' },
+                { label: 'Joined',      tab: 'Joined',      stage: 'offered' },
+                { label: 'Dropped',     tab: 'Dropped',     stage: 'offered' },
+              ].map(({ label, tab, stage }) => (
                 <button
                   key={tab}
-                  onClick={() => {
-                    const targetTab = ['Joined', 'Dropped'].includes(tab) ? 'Offered' : tab;
-                    setPipelineTab(targetTab);
-                    navigate(ROUTES.JOBS.CANDIDATES(viewingJob.id));
-                  }}
+                  onClick={() => navigate(ROUTES.JOBS.PIPELINE(viewingJob.id, stage))}
                   className="flex flex-col items-center p-2 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
                 >
                   <span className="text-2xl font-bold text-slate-700">{getStatCount(tab)}</span>

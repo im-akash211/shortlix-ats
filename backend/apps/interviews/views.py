@@ -114,6 +114,11 @@ class InterviewListCreateView(generics.ListCreateAPIView):
         round_name = serializer.validated_data.get('round_name')
         round_number = mapping.interviews.count() + 1
         round_label = self._ROUND_LABELS.get(round_name, round_name or 'Round')
+        is_reschedule = (
+            interview.mapping.macro_stage == 'INTERVIEW'
+            and interview.mapping.interview_status == 'REJECTED'
+            and interview.round_name
+        )
         interview = serializer.save(
             created_by=user,
             round_number=round_number,
@@ -121,15 +126,13 @@ class InterviewListCreateView(generics.ListCreateAPIView):
         )
         # Clear rejection flag on reschedule
         mapping = interview.mapping
-        if (
-            mapping.macro_stage == 'INTERVIEW'
-            and mapping.interview_status == 'REJECTED'
-            and interview.round_name
-        ):
+        if is_reschedule:
             mapping.interview_status = None
             mapping.current_interview_round = interview.round_name
             mapping.moved_by = user
             mapping.save(update_fields=['interview_status', 'current_interview_round', 'moved_by', 'stage_updated_at'])
+        from apps.notifications.utils import notify_interview_scheduled
+        notify_interview_scheduled(interview, is_reschedule=is_reschedule)
 
 
 # ---------------------------------------------------------------------------
@@ -158,7 +161,13 @@ class InterviewDetailView(generics.RetrieveUpdateAPIView):
         if role == 'hiring_manager':
             raise PermissionDenied('Hiring managers have read-only access to interviews.')
 
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+        # Notify as reschedule if scheduled_at changed
+        if 'scheduled_at' in request.data:
+            interview.refresh_from_db()
+            from apps.notifications.utils import notify_interview_scheduled
+            notify_interview_scheduled(interview, is_reschedule=True)
+        return response
 
 
 # ---------------------------------------------------------------------------
@@ -320,8 +329,12 @@ class SetRoundResultView(APIView):
                 mapping.interview_status = 'REJECTED'
                 mapping.save(update_fields=['interview_status'])
                 response_data['auto_rejected'] = True
+                from apps.notifications.utils import notify_candidate_interview_rejected
+                notify_candidate_interview_rejected(mapping.candidate, mapping.job)
             elif round_result == 'PASS':
                 response_data['suggest_move_to_offered'] = True
+                from apps.notifications.utils import notify_candidate_round_passed
+                notify_candidate_round_passed(mapping.candidate, mapping.job, interview)
 
         return Response(response_data)
 

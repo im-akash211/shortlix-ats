@@ -18,6 +18,8 @@ export const ROUTES = {
     DETAIL_PATTERN: '/jobs/:jobId',
     CANDIDATES: (jobId) => `/jobs/${jobId}/candidates`,
     CANDIDATES_PATTERN: '/jobs/:jobId/candidates',
+    PIPELINE: (jobId, stage) => `/jobs/${jobId}/pipeline/${stage}`,
+    PIPELINE_PATTERN: '/jobs/:jobId/pipeline/:stage',
     INTERVIEWS: (jobId) => `/jobs/${jobId}/interviews`,
     INTERVIEWS_PATTERN: '/jobs/:jobId/interviews',
     NEW_INTERVIEW: (jobId) => `/jobs/${jobId}/interview/new`,

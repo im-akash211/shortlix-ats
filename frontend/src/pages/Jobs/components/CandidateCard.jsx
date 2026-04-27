@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, MessageCircle, Send, ChevronDown, ChevronUp, Bell, AlertTriangle } from 'lucide-react';
+import { Share2, MessageCircle, Send, ChevronDown, ChevronUp, Bell, AlertTriangle, ExternalLink } from 'lucide-react';
 import {
   SCREENING_STATUS_COLORS, SCREENING_STATUS_LABELS,
   ROUND_LABELS, ROUND_PROGRESSION,
@@ -32,6 +32,8 @@ export default function CandidateCard({
   // comments
   commentsByCard, commentsOpenId, commentsLoadingId, commentInput, setCommentInput,
   commentSubmittingId, handleToggleComments, handleAddComment, handlePriorityChange,
+  // full-page pipeline extras
+  onViewDetails,
 }) {
   const [rejectConfirm, setRejectConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState(null); // { type: 'shortlist'|'reject', reason: '' }
@@ -133,6 +135,15 @@ export default function CandidateCard({
               <span className="text-[10px] font-semibold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
                 {DROP_REASON_LABELS[c.drop_reason]}
               </span>
+            )}
+            {onViewDetails && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onViewDetails(c); }}
+                className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full transition-colors"
+              >
+                <ExternalLink className="w-2.5 h-2.5" /> View Details
+              </button>
             )}
             {isActive && (
               <>

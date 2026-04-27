@@ -1,8 +1,11 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MapPin, Clock, Eye, Users, User, Building2 } from 'lucide-react';
 import StatusBadge from './StatusBadge';
+import { ROUTES } from '../../../routes/constants';
 
 export default function JobCard({ job, onView, onOpenPipeline, onCollaborators }) {
+  const navigate = useNavigate();
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 flex justify-between shadow-sm hover:shadow-md transition-shadow gap-4">
       <div className="flex flex-col gap-3 flex-1 min-w-0">
@@ -43,14 +46,14 @@ export default function JobCard({ job, onView, onOpenPipeline, onCollaborators }
       {/* Stat tiles — clicking opens detail page + pipeline panel */}
       <div className="flex gap-1 items-center shrink-0">
         {[
-          { label: 'Applied',     value: job.applies_count,     tab: 'Applied' },
-          { label: 'Shortlisted', value: job.shortlists_count,  tab: 'Shortlisted' },
-          { label: 'Interview',   value: job.interviews_count,  tab: 'Interview' },
-          { label: 'Offered',     value: job.offers_count,      tab: 'Offered' },
+          { label: 'Applied',     value: job.applies_count,     stage: 'applied' },
+          { label: 'Shortlisted', value: job.shortlists_count,  stage: 'shortlisted' },
+          { label: 'Interview',   value: job.interviews_count,  stage: 'interview' },
+          { label: 'Offered',     value: job.offers_count,      stage: 'offered' },
         ].map((stat) => (
           <button
             key={stat.label}
-            onClick={() => onOpenPipeline(job, stat.tab)}
+            onClick={() => navigate(ROUTES.JOBS.PIPELINE(job.id, stat.stage))}
             className="flex flex-col items-center min-w-[60px] hover:bg-blue-50 p-2 rounded-lg transition-colors"
           >
             <span className="text-xl font-bold text-slate-700">{stat.value ?? 0}</span>

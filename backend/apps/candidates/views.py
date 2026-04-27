@@ -156,6 +156,8 @@ class CandidateAssignJobView(APIView):
             mapping=mapping, from_macro_stage='', to_macro_stage='APPLIED',
             moved_by=request.user, remarks='Assigned to job'
         )
+        from apps.notifications.utils import notify_candidate_applied
+        notify_candidate_applied(candidate, mapping.job, request.user)
         return Response(CandidateJobMappingSerializer(mapping).data, status=status.HTTP_201_CREATED)
 
 
@@ -189,6 +191,9 @@ class CandidateChangeStageView(APIView):
                         val = request.data['interview_status']
                         mapping.interview_status = 'REJECTED' if val == 'REJECTED' else None
                     mapping.save()
+                if request.data.get('interview_status') == 'REJECTED':
+                    from apps.notifications.utils import notify_candidate_rejected
+                    notify_candidate_rejected(mapping.candidate, mapping.job)
                 return Response(CandidateJobMappingSerializer(mapping).data)
             return Response({'error': 'No updates provided'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -252,6 +257,19 @@ class CandidateChangeStageView(APIView):
                 moved_by=request.user,
                 remarks=request.data.get('remarks', ''),
             )
+
+        from apps.notifications.utils import (
+            notify_candidate_shortlisted, notify_candidate_offered,
+            notify_candidate_interview_stage,
+        )
+        candidate = mapping.candidate
+        job = mapping.job
+        if new_stage == 'SHORTLISTED':
+            notify_candidate_shortlisted(candidate, job)
+        elif new_stage == 'INTERVIEW':
+            notify_candidate_interview_stage(candidate, job)
+        elif new_stage == 'OFFERED':
+            notify_candidate_offered(candidate, job)
 
         return Response(CandidateJobMappingSerializer(mapping).data)
 

@@ -139,6 +139,8 @@ class RequisitionSubmitView(APIView):
                 requisition=req, action='submitted', acted_by=request.user,
                 comments=request.data.get('comments', '')
             )
+        from apps.notifications.utils import notify_requisition_submitted
+        notify_requisition_submitted(req, request.user)
         return Response(RequisitionDetailSerializer(req).data)
 
 
@@ -157,6 +159,8 @@ class RequisitionApproveView(APIView):
                 requisition=req, action='approved', acted_by=request.user,
                 comments=request.data.get('comments', '')
             )
+        from apps.notifications.utils import notify_requisition_approved
+        notify_requisition_approved(req, request.user)
         return Response(RequisitionDetailSerializer(req).data)
 
 
@@ -175,4 +179,6 @@ class RequisitionRejectView(APIView):
                 requisition=req, action='rejected', acted_by=request.user,
                 comments=request.data.get('comments', '')
             )
+        from apps.notifications.utils import notify_requisition_rejected
+        notify_requisition_rejected(req, request.user)
         return Response(RequisitionDetailSerializer(req).data)
