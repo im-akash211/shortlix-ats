@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Users, Plus, X, Shield, Building2, Pencil, Trash2 } from 'lucide-react';
-import { users as usersApi, departments as deptApi, roles as rolesApi } from '../lib/api';
+import { ChevronDown, ChevronUp, Users, Plus, X, Shield, Building2, Pencil, Trash2, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { users as usersApi, departments as deptApi, roles as rolesApi, auth as authApi } from '../lib/api';
 import { useAuth } from '../lib/authContext';
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -63,6 +63,11 @@ function ManageUsersSection({ currentUser }) {
   const [removeModal, setRemoveModal] = useState({ open: false, user: null });
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Admin set-password modal
+  const [pwModal, setPwModal] = useState({ open: false, user: null });
+  const [pwValue, setPwValue] = useState('');
+  const [pwShow, setPwShow] = useState(false);
+
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([usersApi.list(), deptApi.list()])
@@ -80,8 +85,17 @@ function ManageUsersSection({ currentUser }) {
     try {
       const updated = await usersApi.changeStatus(u.id, newStatus);
       setUsersList((prev) => prev.map((p) => (p.id === u.id ? updated : p)));
+    } catch (err) {
+      alert(err.data?.detail || 'Failed to update status.');
+    }
+  };
+
+  const handleDeptChange = async (u, deptId) => {
+    try {
+      const updated = await usersApi.update(u.id, { department: deptId || null });
+      setUsersList((prev) => prev.map((p) => (p.id === u.id ? updated : p)));
     } catch {
-      alert('Failed to update status.');
+      alert('Failed to update department.');
     }
   };
 
@@ -113,6 +127,21 @@ function ManageUsersSection({ currentUser }) {
       setRemoveModal({ open: false, user: null });
     } catch {
       alert('Failed to remove user.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const confirmAdminSetPassword = async () => {
+    if (!pwModal.user || pwValue.length < 6) return;
+    setActionLoading(true);
+    try {
+      await usersApi.adminChangePassword(pwModal.user.id, pwValue);
+      setPwModal({ open: false, user: null });
+      setPwValue('');
+      setPwShow(false);
+    } catch (err) {
+      alert(err.data?.detail || 'Failed to set password.');
     } finally {
       setActionLoading(false);
     }
@@ -155,50 +184,71 @@ function ManageUsersSection({ currentUser }) {
         <div className="text-slate-400 text-sm py-8 text-center">Loading users…</div>
       ) : (
         <div className="border border-slate-200 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[20%]" />
+              <col className="w-[13%]" />
+              <col className="w-[15%]" />
+              <col className="w-[10%]" />
+              {isAdmin && <col className="w-[28%]" />}
+            </colgroup>
             <thead className="bg-slate-50 text-slate-600 font-semibold">
               <tr>
-                <th className="px-4 py-3 text-left border-b border-slate-200">Name</th>
-                <th className="px-4 py-3 text-left border-b border-slate-200">Email</th>
-                <th className="px-4 py-3 text-left border-b border-slate-200">Role</th>
-                <th className="px-4 py-3 text-left border-b border-slate-200">Department</th>
-                <th className="px-4 py-3 text-center border-b border-slate-200">Status</th>
+                <th className="px-3 py-3 text-left border-b border-slate-200">Name</th>
+                <th className="px-3 py-3 text-left border-b border-slate-200">Email</th>
+                <th className="px-3 py-3 text-left border-b border-slate-200">Role</th>
+                <th className="px-3 py-3 text-left border-b border-slate-200">Department</th>
+                <th className="px-3 py-3 text-center border-b border-slate-200">Status</th>
                 {isAdmin && (
-                  <th className="px-4 py-3 text-center border-b border-slate-200">Actions</th>
+                  <th className="px-3 py-3 text-center border-b border-slate-200">Actions</th>
                 )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {usersList.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-800">{u.full_name}</td>
-                  <td className="px-4 py-3 text-slate-600">{u.email}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-full capitalize ${ROLE_COLORS[u.role] || 'bg-slate-100 text-slate-600'}`}>
+                  <td className="px-3 py-3 font-medium text-slate-800 truncate">{u.full_name}</td>
+                  <td className="px-3 py-3 text-slate-500 truncate text-xs">{u.email}</td>
+                  <td className="px-3 py-3">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize whitespace-nowrap ${ROLE_COLORS[u.role] || 'bg-slate-100 text-slate-600'}`}>
                       {u.role?.replace('_', ' ')}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{u.department_name || '—'}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${STATUS_COLORS[u.status] || STATUS_COLORS['ACTIVE']}`}>
+                  <td className="px-3 py-3">
+                    {isAdmin ? (
+                      <select
+                        value={u.department || ''}
+                        onChange={(e) => handleDeptChange(u, e.target.value)}
+                        className="w-full text-xs text-slate-600 bg-white border border-slate-200 hover:border-slate-300 focus:border-blue-400 rounded-md px-2 py-1 outline-none cursor-pointer transition-colors"
+                      >
+                        <option value="">— None —</option>
+                        {departments.map((d) => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-slate-600 text-xs">{u.department_name || '—'}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${STATUS_COLORS[u.status] || STATUS_COLORS['ACTIVE']}`}>
                       {u.status || (u.is_active ? 'ACTIVE' : 'DISABLED')}
                     </span>
                   </td>
                   {isAdmin && (
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
-                        {/* Role change */}
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-center gap-1.5 flex-nowrap">
                         <button
                           onClick={() => openRoleModal(u)}
-                          className="text-xs px-2.5 py-1 rounded font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                          className="text-xs px-2 py-1 rounded font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors whitespace-nowrap"
                         >
                           Change Role
                         </button>
-                        {/* Status toggle */}
-                        {u.status !== 'INVITED' && (
+                        {u.status !== 'INVITED' && u.id !== currentUser?.id && (
                           <button
                             onClick={() => handleStatusChange(u, u.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE')}
-                            className={`text-xs px-2.5 py-1 rounded font-medium transition-colors ${
+                            className={`text-xs px-2 py-1 rounded font-medium transition-colors whitespace-nowrap ${
                               u.status === 'ACTIVE'
                                 ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
                                 : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
@@ -207,11 +257,17 @@ function ManageUsersSection({ currentUser }) {
                             {u.status === 'ACTIVE' ? 'Disable' : 'Activate'}
                           </button>
                         )}
-                        {/* Remove */}
+                        <button
+                          onClick={() => { setPwModal({ open: true, user: u }); setPwValue(''); setPwShow(false); }}
+                          className="text-xs px-2 py-1 rounded font-medium bg-slate-50 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-colors whitespace-nowrap"
+                          title="Set Password"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </button>
                         {u.id !== currentUser?.id && (
                           <button
                             onClick={() => setRemoveModal({ open: true, user: u })}
-                            className="text-xs px-2.5 py-1 rounded font-medium bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
+                            className="text-xs px-2 py-1 rounded font-medium bg-slate-50 text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors whitespace-nowrap"
                           >
                             Remove
                           </button>
@@ -390,6 +446,62 @@ function ManageUsersSection({ currentUser }) {
               <button
                 onClick={() => setIsCreateOpen(false)}
                 className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-2 rounded text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin: set password for any user */}
+      {pwModal.open && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-[420px] max-w-[90vw] p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-800">Set New Password</h3>
+              <button onClick={() => setPwModal({ open: false, user: null })}>
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">
+              Setting a new password for{' '}
+              <span className="font-medium text-slate-700">{pwModal.user?.full_name}</span>.
+              No verification required — the user will need to use this new password on next login.
+            </p>
+            <div className="flex flex-col gap-1.5 mb-6">
+              <label className="text-sm font-medium text-slate-700">New Password</label>
+              <div className="relative">
+                <input
+                  type={pwShow ? 'text' : 'password'}
+                  value={pwValue}
+                  onChange={(e) => setPwValue(e.target.value)}
+                  placeholder="Min. 6 characters"
+                  className="w-full border border-slate-300 rounded-md p-2 pr-10 text-sm outline-none focus:border-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPwShow((s) => !s)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {pwShow ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {pwValue.length > 0 && pwValue.length < 6 && (
+                <p className="text-xs text-rose-500">Password must be at least 6 characters.</p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmAdminSetPassword}
+                disabled={actionLoading || pwValue.length < 6}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-5 py-2 rounded text-sm font-medium transition-colors"
+              >
+                {actionLoading ? 'Saving…' : 'Set Password'}
+              </button>
+              <button
+                onClick={() => setPwModal({ open: false, user: null })}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2 rounded text-sm font-medium transition-colors"
               >
                 Cancel
               </button>
@@ -602,16 +714,16 @@ function DepartmentsSection({ isAdmin }) {
     }
   };
 
-  const confirmRemove = async () => {
-    if (!deleteModal.dept) return;
+  const handleRemove = async () => {
+    const dept = deleteModal.dept;
+    if (!dept) return;
     setDeleteLoading(true);
     try {
-      await deptApi.remove(deleteModal.dept.id);
-      setDeptList((prev) => prev.filter((d) => d.id !== deleteModal.dept.id));
+      await deptApi.remove(dept.id);
+      setDeptList((prev) => prev.filter((d) => d.id !== dept.id));
       setDeleteModal({ open: false, dept: null });
     } catch (err) {
-      const msg = err.data?.detail || 'Failed to remove department.';
-      setError(msg);
+      setError(err.data?.detail || 'Failed to remove department.');
       setDeleteModal({ open: false, dept: null });
     } finally {
       setDeleteLoading(false);
@@ -730,7 +842,7 @@ function DepartmentsSection({ isAdmin }) {
         </div>
       )}
 
-      {/* Delete confirmation modal */}
+      {/* Delete department confirmation modal */}
       {deleteModal.open && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-[420px] max-w-[90vw] p-6">
@@ -740,22 +852,14 @@ function DepartmentsSection({ isAdmin }) {
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
-            <div className="flex items-start gap-3 mb-5">
-              <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
-                <Trash2 className="w-5 h-5 text-rose-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-slate-800 mb-1">
-                  Remove &ldquo;{deleteModal.dept?.name}&rdquo;?
-                </p>
-                <p className="text-sm text-slate-500">
-                  This action cannot be undone. Departments with active users assigned cannot be removed.
-                </p>
-              </div>
-            </div>
+            <p className="text-sm text-slate-500 mb-6">
+              Are you sure you want to remove{' '}
+              <span className="font-medium text-slate-700">"{deleteModal.dept?.name}"</span>?
+              This cannot be undone. The department must have no active users assigned.
+            </p>
             <div className="flex gap-3">
               <button
-                onClick={confirmRemove}
+                onClick={handleRemove}
                 disabled={deleteLoading}
                 className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white px-5 py-2 rounded text-sm font-medium transition-colors"
               >
@@ -771,6 +875,91 @@ function DepartmentsSection({ isAdmin }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Change Password ───────────────────────────────────────────────────────────
+
+function PwField({ label, value, visible, onChange, onToggle }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-sm font-medium text-slate-700">{label}</label>
+      <div className="relative">
+        <input
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          placeholder="••••••••"
+          className="w-full border border-slate-300 rounded-md p-2 pr-10 text-sm outline-none focus:border-blue-500"
+        />
+        <button type="button" onClick={onToggle} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+          {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ChangePasswordSection() {
+  const [form, setForm] = useState({ old_password: '', new_password: '', confirm_password: '' });
+  const [show, setShow] = useState({ old: false, new: false, confirm: false });
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState('');
+  const [error, setError] = useState('');
+
+  const toggleShow = (key) => setShow((s) => ({ ...s, [key]: !s[key] }));
+  const setField = (field) => (e) => { setForm((f) => ({ ...f, [field]: e.target.value })); setSuccess(''); setError(''); };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    if (form.new_password.length < 6) {
+      setError('New password must be at least 6 characters.');
+      return;
+    }
+    if (form.new_password !== form.confirm_password) {
+      setError('New passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await authApi.changePassword(form.old_password, form.new_password);
+      setSuccess(res.detail || 'Password changed successfully.');
+      setForm({ old_password: '', new_password: '', confirm_password: '' });
+    } catch (err) {
+      setError(err.data?.detail || 'Failed to change password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 max-w-sm">
+      <h3 className="text-base font-semibold text-slate-700 flex items-center gap-2 mb-4">
+        <KeyRound className="w-4 h-4" /> Change Your Password
+      </h3>
+      {error && (
+        <div className="mb-4 text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded px-3 py-2">{error}</div>
+      )}
+      {success && (
+        <div className="mb-4 text-sm text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">{success}</div>
+      )}
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <PwField label="Current Password" value={form.old_password} visible={show.old} onChange={setField('old_password')} onToggle={() => toggleShow('old')} />
+        <PwField label="New Password" value={form.new_password} visible={show.new} onChange={setField('new_password')} onToggle={() => toggleShow('new')} />
+        <PwField label="Confirm New Password" value={form.confirm_password} visible={show.confirm} onChange={setField('confirm_password')} onToggle={() => toggleShow('confirm')} />
+        <div>
+          <button
+            type="submit"
+            disabled={loading || !form.old_password || !form.new_password || !form.confirm_password}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-6 py-2 rounded text-sm font-medium transition-colors"
+          >
+            {loading ? 'Saving…' : 'Update Password'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -822,6 +1011,14 @@ export default function Settings() {
             onToggle={() => toggle('Department Settings')}
           >
             {openSection === 'Department Settings' && <DepartmentsSection isAdmin={isAdmin} />}
+          </Section>
+
+          <Section
+            title="Change Password"
+            isOpen={openSection === 'Change Password'}
+            onToggle={() => toggle('Change Password')}
+          >
+            {openSection === 'Change Password' && <ChangePasswordSection />}
           </Section>
 
           {STATIC_SECTIONS.map((item) => (

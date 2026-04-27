@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import UserListCreateView, UserDetailView, UserActivateView, UserDeactivateView, UserLookupView, UserDropdownListView
+from .views import UserListCreateView, UserDetailView, UserActivateView, UserDeactivateView, UserLookupView, UserDropdownListView, AdminChangePasswordView
 from .role_views import UserRoleChangeView, UserStatusChangeView, UserDeleteView
 
 urlpatterns = [
@@ -12,4 +12,5 @@ urlpatterns = [
     path('<uuid:pk>/role/', UserRoleChangeView.as_view(), name='user-role-change'),
     path('<uuid:pk>/status/', UserStatusChangeView.as_view(), name='user-status-change'),
     path('<uuid:pk>/remove/', UserDeleteView.as_view(), name='user-remove'),
+    path('<uuid:pk>/password/', AdminChangePasswordView.as_view(), name='user-admin-change-password'),
 ]

@@ -125,6 +125,13 @@ class UserStatusChangeView(APIView):
 
     def patch(self, request, pk):
         user = generics.get_object_or_404(User, pk=pk)
+
+        if user.pk == request.user.pk:
+            return Response(
+                {'detail': 'You cannot change your own account status.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         new_status = request.data.get('status', '').strip().upper()
 
         if new_status not in self.VALID_STATUSES:

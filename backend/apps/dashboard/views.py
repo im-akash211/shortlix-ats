@@ -223,9 +223,14 @@ class DashboardPendingActionsView(APIView):
     def get(self, request):
         user = request.user
 
-        pending_approvals = Requisition.objects.filter(
-            status='pending_approval', l1_approver=user
-        ).count()
+        if user.role == 'admin':
+            pending_approvals = Requisition.objects.filter(status='pending_approval').count()
+        elif user.role == 'hiring_manager':
+            pending_approvals = Requisition.objects.filter(status='pending_approval', hiring_manager=user).count()
+        elif user.role == 'recruiter':
+            pending_approvals = Requisition.objects.filter(status='pending_approval', created_by=user).count()
+        else:
+            pending_approvals = 0
 
         now = timezone.now()
         pending_feedback = Interview.objects.filter(

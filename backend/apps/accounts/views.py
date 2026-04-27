@@ -61,10 +61,11 @@ class UserDropdownListView(generics.ListAPIView):
 
 
 class UserListCreateView(generics.ListCreateAPIView):
-    queryset = User.objects.select_related('department').order_by('full_name')
+    queryset = User.objects.select_related('department').filter(is_active=True).order_by('full_name')
     search_fields = ['full_name', 'email']
     filterset_fields = ['role', 'is_active', 'department']
     ordering_fields = ['full_name', 'created_at']
+    pagination_class = None  # return all users — settings page needs the full list
 
     def get_permissions(self):
         if self.request.method == 'POST':
@@ -81,6 +82,54 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
     queryset = User.objects.select_related('department').all()
     serializer_class = UserSerializer
     permission_classes = [IsAdmin]
+
+
+class ChangePasswordView(APIView):
+    """POST /api/v1/auth/change-password/ — self-service, requires current password."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        old_password = request.data.get('old_password', '').strip()
+        new_password = request.data.get('new_password', '').strip()
+
+        if not old_password or not new_password:
+            return Response(
+                {'detail': 'Both old_password and new_password are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not request.user.check_password(old_password):
+            return Response(
+                {'detail': 'Current password is incorrect.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(new_password) < 6:
+            return Response(
+                {'detail': 'New password must be at least 6 characters.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        return Response({'detail': 'Password changed successfully.'})
+
+
+class AdminChangePasswordView(APIView):
+    """PATCH /api/v1/users/<pk>/password/ — admin only, no old-password verification."""
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, pk):
+        user = generics.get_object_or_404(User, pk=pk)
+        new_password = request.data.get('new_password', '').strip()
+
+        if len(new_password) < 6:
+            return Response(
+                {'detail': 'New password must be at least 6 characters.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+        return Response({'detail': 'Password changed successfully.'})
 
 
 class UserActivateView(APIView):

@@ -77,6 +77,11 @@ export const auth = {
       body: JSON.stringify({ refresh: getRefresh() }),
     }),
   me: () => request('/auth/me/'),
+  changePassword: (oldPassword, newPassword) =>
+    request('/auth/change-password/', {
+      method: 'POST',
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    }),
   saveSession: ({ access, refresh, user }) => {
     saveTokens({ access, refresh });
     if (user) localStorage.setItem('user', JSON.stringify(user));
@@ -347,7 +352,7 @@ export const referrals = {
 // ---- Users (Admin) ---- //
 export const users = {
   dropdown: () => request('/users/dropdown/'),
-  list: (params = {}) => request('/users/?' + new URLSearchParams({ page_size: 200, ...params })),
+  list: (params = {}) => request('/users/?' + new URLSearchParams(params)),
   lookup: (params = {}) => request('/users/lookup/?' + new URLSearchParams(params)),
   detail: (id) => request(`/users/${id}/`),
   create: (data) => request('/users/', { method: 'POST', body: JSON.stringify(data) }),
@@ -359,4 +364,6 @@ export const users = {
   changeStatus: (id, status) =>
     request(`/users/${id}/status/`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   remove: (id) => request(`/users/${id}/remove/`, { method: 'DELETE' }),
+  adminChangePassword: (id, newPassword) =>
+    request(`/users/${id}/password/`, { method: 'PATCH', body: JSON.stringify({ new_password: newPassword }) }),
 };
