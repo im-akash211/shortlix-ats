@@ -1,5 +1,4 @@
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Count, Q
@@ -10,7 +9,7 @@ from .serializers import (
 )
 from apps.candidates.models import CandidateJobMapping
 from apps.candidates.serializers import CandidateJobMappingSerializer
-from apps.core.permissions import IsAdmin
+from apps.core.permissions import CanEditJob, rbac_perm
 
 
 def log_job_history(job, event_type, changed_by, description, previous_value=None, new_value=None):
@@ -26,6 +25,7 @@ def log_job_history(job, event_type, changed_by, description, previous_value=Non
 
 class JobListView(generics.ListAPIView):
     serializer_class = JobListSerializer
+    permission_classes = [rbac_perm('VIEW_JOBS')]
     search_fields = ['title', 'job_code', 'location']
     filterset_fields = ['status', 'department', 'hiring_manager', 'location']
     ordering_fields = ['created_at', 'title']
@@ -81,6 +81,7 @@ class JobDetailView(generics.RetrieveUpdateAPIView):
         'department', 'hiring_manager', 'created_by', 'requisition', 'requisition__created_by'
     ).prefetch_related('collaborators__user', 'history__changed_by')
     serializer_class = JobDetailSerializer
+    permission_classes = [rbac_perm('VIEW_JOBS'), CanEditJob]
 
     def perform_update(self, serializer):
         instance = serializer.instance
@@ -130,6 +131,8 @@ class JobDetailView(generics.RetrieveUpdateAPIView):
 
 
 class JobDeleteView(APIView):
+    permission_classes = [rbac_perm('EDIT_JOBS')]
+
     def delete(self, request, pk):
         job = generics.get_object_or_404(Job, pk=pk)
         job.delete()
@@ -150,6 +153,7 @@ class JobPipelineView(APIView):
       - can_move_next: bool
       - latest_round: {round_name, round_status, round_result} (if in INTERVIEW)
     """
+    permission_classes = [rbac_perm('VIEW_JOBS')]
 
     def get(self, request, pk):
         from apps.candidates.models import STAGE_ORDER, PipelineStageHistory
@@ -239,6 +243,8 @@ def _get_latest_round(mapping):
 
 
 class JobPipelineStatsView(APIView):
+    permission_classes = [rbac_perm('VIEW_JOBS')]
+
     def get(self, request, pk):
         from apps.candidates.models import MACRO_STAGE_CHOICES
         job = generics.get_object_or_404(Job, pk=pk)
@@ -254,8 +260,8 @@ class JobCollaboratorListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsAuthenticated(), IsAdmin()]
-        return [IsAuthenticated()]
+            return [rbac_perm('EDIT_JOBS')()]
+        return [rbac_perm('VIEW_JOBS')()]
 
     def get_queryset(self):
         return JobCollaborator.objects.filter(
@@ -272,10 +278,12 @@ class JobCollaboratorListCreateView(generics.ListCreateAPIView):
             f'Collaborator added: {collab.user.full_name}',
             new_value={'user_id': str(collab.user.id), 'name': collab.user.full_name},
         )
+        from apps.notifications.utils import notify_collaborator_added
+        notify_collaborator_added(collab.job, collab.user, self.request.user)
 
 
 class JobCollaboratorDeleteView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [rbac_perm('EDIT_JOBS')]
 
     def delete(self, request, pk, user_id):
         try:
@@ -297,7 +305,7 @@ class JobCollaboratorDeleteView(APIView):
 
 class JobHistoryListView(generics.ListAPIView):
     serializer_class = JobHistorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('VIEW_JOBS')]
 
     def get_queryset(self):
         return JobHistory.objects.filter(
@@ -306,7 +314,7 @@ class JobHistoryListView(generics.ListAPIView):
 
 
 class JobExcelReportView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('VIEW_JOBS')]
 
     def get(self, request, pk):
         import openpyxl

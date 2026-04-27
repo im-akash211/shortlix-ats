@@ -127,6 +127,8 @@ class EmployeeReferralView(APIView):
             )
             for u in admins
         ])
+        from apps.notifications.utils import notify_referral_submitted
+        notify_referral_submitted(referral, list(admins))
 
         logger.info(
             'Employee referral saved (pending): %s referred for job %s by %s',
@@ -260,6 +262,8 @@ class ReferralApproveView(APIView):
                 )
                 for u in recruiters
             ])
+            from apps.notifications.utils import notify_referral_approved
+            notify_referral_approved(referral, list(recruiters))
 
         logger.info(
             'Referral %s approved by %s — candidate %s created/linked',
@@ -286,6 +290,8 @@ class ReferralDeclineView(APIView):
         referral.reviewed_by = request.user
         referral.reviewed_at = timezone.now()
         referral.save(update_fields=['status', 'reviewed_by', 'reviewed_at', 'updated_at'])
+        from apps.notifications.utils import notify_referral_declined
+        notify_referral_declined(referral)
 
         logger.info('Referral %s declined by %s', referral.id, request.user.email)
         return Response({'detail': 'Referral declined.'})

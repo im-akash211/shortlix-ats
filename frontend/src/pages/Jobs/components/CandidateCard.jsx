@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Share2, MessageCircle, Send, ChevronDown, ChevronUp, Bell, AlertTriangle } from 'lucide-react';
+import { Share2, MessageCircle, Send, ChevronDown, ChevronUp, Bell, AlertTriangle, ExternalLink } from 'lucide-react';
 import {
   SCREENING_STATUS_COLORS, SCREENING_STATUS_LABELS,
   ROUND_LABELS, ROUND_PROGRESSION,
   OFFER_STATUS_LABELS, DROP_REASON_LABELS,
   SHORTLIST_REASONS, APPLIED_REJECT_REASONS,
 } from '../constants';
+import { useAuth } from '../../../lib/authContext';
+import { hasPermission } from '../../../lib/permissions';
 
 export default function CandidateCard({
   c,
@@ -32,10 +34,14 @@ export default function CandidateCard({
   // comments
   commentsByCard, commentsOpenId, commentsLoadingId, commentInput, setCommentInput,
   commentSubmittingId, handleToggleComments, handleAddComment, handlePriorityChange,
+  // full-page pipeline extras
+  onViewDetails,
 }) {
   const [rejectConfirm, setRejectConfirm] = useState(false);
   const [pendingAction, setPendingAction] = useState(null); // { type: 'shortlist'|'reject', reason: '' }
   const [jumpTarget, setJumpTarget] = useState(null);
+  const { user } = useAuth();
+  const canViewCompensation = hasPermission(user, 'VIEW_COMPENSATION');
   const isActive = c.is_current_stage !== false;
   const macroStage = c.macro_stage;
   const isShareOpen = shareOpen === c.id;
@@ -50,7 +56,7 @@ export default function CandidateCard({
   return (
     <div key={c.id}>
       {/* Card */}
-      <div className={`border rounded-xl p-4 ${isActive ? 'bg-white hover:shadow-md transition-shadow border-slate-200' : 'bg-slate-50 opacity-50 border-slate-100'}`}>
+      <div className={`border rounded-xl p-4 ${isActive ? 'bg-white hover:shadow-md transition-shadow border-slate-200' : 'bg-slate-50/80 opacity-70 border-slate-100'}`}>
 
         {/* TOP: avatar + name + sub-info + badges + share */}
         <div className="flex items-start justify-between gap-2 mb-3">
@@ -124,7 +130,7 @@ export default function CandidateCard({
                 </div>
               );
             })()}
-            {macroStage === 'OFFERED' && c.offer_status && (
+            {canViewCompensation && macroStage === 'OFFERED' && c.offer_status && (
               <span className="text-[10px] font-semibold bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-full">
                 {OFFER_STATUS_LABELS[c.offer_status]}
               </span>
@@ -133,6 +139,15 @@ export default function CandidateCard({
               <span className="text-[10px] font-semibold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
                 {DROP_REASON_LABELS[c.drop_reason]}
               </span>
+            )}
+            {onViewDetails && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onViewDetails(c); }}
+                className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full transition-colors"
+              >
+                <ExternalLink className="w-2.5 h-2.5" /> View Details
+              </button>
             )}
             {isActive && (
               <>

@@ -166,13 +166,9 @@ export function useCandidateModals() {
 
   const handleMove = async () => {
     if (!moveJobId || !selectedCandidate) return;
-    const currentJobId = selectedCandidate.current_job?.id;
     try {
-      if (!currentJobId) {
-        await candidatesApi.assignJob(selectedCandidate.id, moveJobId);
-      } else {
-        await candidatesApi.moveJob(selectedCandidate.id, currentJobId, moveJobId);
-      }
+      // moveJob auto-detects the current job on the backend (from_job_id optional)
+      await candidatesApi.moveJob(selectedCandidate.id, null, moveJobId);
       closeModal();
       queryClient.invalidateQueries({ queryKey: ['candidates', 'list'] });
     } catch (err) {

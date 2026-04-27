@@ -97,6 +97,10 @@ export const dashboard = {
   funnel: (params = {}) => request('/dashboard/funnel/?' + new URLSearchParams(params)),
   pendingActions: () => request('/dashboard/pending-actions/'),
   filterOptions: () => request('/dashboard/filter-options/'),
+  reportExcelUrl: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return `${BASE}/dashboard/report/excel/${qs ? '?' + qs : ''}`;
+  },
 };
 
 // ---- Departments ---- //
@@ -187,7 +191,12 @@ export const candidates = {
     }),
   moveJob: (id, fromJobId, toJobId) =>
     request(`/candidates/${id}/move-job/`, {
-      method: 'POST', body: JSON.stringify({ from_job_id: fromJobId, to_job_id: toJobId }),
+      method: 'POST',
+      body: JSON.stringify(
+        fromJobId
+          ? { from_job_id: fromJobId, to_job_id: toJobId }
+          : { to_job_id: toJobId }
+      ),
     }),
   delete: (id) => request(`/candidates/${id}/delete/`, { method: 'DELETE' }),
   getComments: (candidateId, jobId) =>
