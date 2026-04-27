@@ -347,7 +347,7 @@ export const referrals = {
 // ---- Users (Admin) ---- //
 export const users = {
   dropdown: () => request('/users/dropdown/'),
-  list: (params = {}) => request('/users/?' + new URLSearchParams(params)),
+  list: (params = {}) => request('/users/?' + new URLSearchParams({ page_size: 200, ...params })),
   lookup: (params = {}) => request('/users/lookup/?' + new URLSearchParams(params)),
   detail: (id) => request(`/users/${id}/`),
   create: (data) => request('/users/', { method: 'POST', body: JSON.stringify(data) }),
