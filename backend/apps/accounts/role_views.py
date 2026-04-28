@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.core.permissions import IsAdmin
+from apps.core.permissions import IsAdmin, rbac_perm
 from apps.core.rbac import MANAGE_USERS
 from .models import AuditLog, Permission, Role, RolePermission, User
 from .serializers import RoleSerializer, UserSerializer
@@ -22,8 +22,8 @@ def _write_audit(actor, action, target_id='', metadata=None):
 # ── Role views ────────────────────────────────────────────────────────────────
 
 class RoleListView(generics.ListAPIView):
-    """GET /api/v1/roles/ — readable by any authenticated user."""
-    permission_classes = [IsAuthenticated]
+    """GET /api/v1/roles/ — admin only."""
+    permission_classes = [rbac_perm('MANAGE_USERS')]
     serializer_class = RoleSerializer
     queryset = Role.objects.prefetch_related(
         'role_permissions__permission'
