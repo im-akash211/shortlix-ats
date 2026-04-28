@@ -254,7 +254,7 @@ class DashboardExcelReportView(APIView):
         ws5['A1'].alignment = CENTER
         ws5.row_dimensions[1].height = 24
 
-        pending_approvals = Requisition.objects.filter(status='pending_approval', l1_approver=user).count()
+        pending_approvals = Requisition.objects.filter(status='pending_approval', hiring_manager=user).count()
         pending_feedback  = Interview.objects.filter(
             interviewer=user, status='scheduled', scheduled_at__lt=now
         ).count()

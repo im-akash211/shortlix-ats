@@ -345,7 +345,6 @@ class Command(BaseCommand):
                 min_qualification="Bachelor's Degree",
                 created_by=users["admin@ats.com"],
                 hiring_manager=hiring_managers.get(dept_name, users["amit.verma@ats.com"]),
-                l1_approver=users["admin@ats.com"],
                 status=status,
                 expected_start_date=date.today() + timedelta(days=random.randint(20, 60)),
             )

@@ -125,7 +125,7 @@ def notify(
 # ---------------------------------------------------------------------------
 
 def notify_requisition_submitted(req, submitter):
-    approver = req.l1_approver
+    approver = req.hiring_manager
     if not approver:
         return
     url = f'{BASE_URL}/requisitions'

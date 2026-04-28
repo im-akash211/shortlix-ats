@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '../lib/useDebounce';
 import { useSearchParams, useNavigate, useMatch } from 'react-router-dom';
 import { PageLoader } from '../components/LoadingDots';
-import { Search, MapPin, Filter, X, ChevronDown, CheckCircle2, MoreHorizontal, Clock, XCircle, Trash2, Edit2 } from 'lucide-react';
+import { Search, MapPin, Filter, X, ChevronDown, CheckCircle2, MoreHorizontal, Clock, XCircle, Trash2, Edit2, Loader2 } from 'lucide-react';
 import { requisitions as reqApi, departments as deptApi, users as usersApi, ai as aiApi } from '../lib/api';
 import RichTextEditor from '../components/requisition/RichTextEditor';
 import TagInput from '../components/requisition/TagInput';
@@ -293,8 +293,8 @@ export default function Requisitions({ user }) {
     if (createForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
     if (!createForm.experience_max || Number(createForm.experience_max) <= 0) errs.experience = 'Experience max must be greater than 0';
     else if (Number(createForm.experience_max) < Number(createForm.experience_min)) errs.experience = 'Max experience must be ≥ min';
-    if (!createForm.salary_min) errs.salary_min = 'Required';
-    if (!createForm.salary_max) errs.salary_max = 'Required';
+    if (!createForm.budget_min) errs.budget_min = 'Required';
+    if (!createForm.budget_max) errs.budget_max = 'Required';
     return errs;
   };
 
@@ -368,8 +368,8 @@ export default function Requisitions({ user }) {
     if (editForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
     if (!editForm.experience_max || Number(editForm.experience_max) <= 0) errs.experience = 'Experience max must be greater than 0';
     else if (Number(editForm.experience_max) < Number(editForm.experience_min)) errs.experience = 'Max experience must be ≥ min';
-    if (!editForm.salary_min) errs.salary_min = 'Required';
-    if (!editForm.salary_max) errs.salary_max = 'Required';
+    if (!editForm.budget_min) errs.budget_min = 'Required';
+    if (!editForm.budget_max) errs.budget_max = 'Required';
     if (Object.keys(errs).length > 0) { setEditErrors(errs); return; }
     setEditLoading(true);
     try {
@@ -549,7 +549,15 @@ export default function Requisitions({ user }) {
                           <MoreHorizontal className="w-5 h-5" />
                         </button>
                         {actionMenuId === req.id && (
-                          <div className="absolute right-4 top-10 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[160px] text-left">
+                          <div className="absolute right-4 top-10 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[180px] text-left">
+                            {req.status === 'draft' && (user?.role === 'admin' || req.created_by === user?.id) && (
+                              <button
+                                onClick={() => { handleAction('submit', req.id); setActionMenuId(null); }}
+                                className="w-full px-4 py-2 text-sm hover:bg-emerald-50 text-emerald-700 flex items-center gap-2"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Submit for Approval
+                              </button>
+                            )}
                             <button
                               onClick={() => openEdit(req)}
                               className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-blue-600 flex items-center gap-2"
@@ -831,8 +839,9 @@ export default function Requisitions({ user }) {
                   <button
                     onClick={handleCreate}
                     disabled={createLoading}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm"
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm"
                   >
+                    {createLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                     {createLoading ? 'Saving…' : 'Save'}
                   </button>
                 </div>
@@ -1071,7 +1080,8 @@ export default function Requisitions({ user }) {
               {/* Footer */}
               <div className="flex items-center justify-end gap-4 mt-8 pt-6 border-t border-gray-100">
                 <button onClick={handleCloseEdit} className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-8 py-2.5 rounded-md text-sm font-medium transition-colors">Cancel</button>
-                <button onClick={handleEditSave} disabled={editLoading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm">
+                <button onClick={handleEditSave} disabled={editLoading} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm">
+                  {editLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                   {editLoading ? 'Saving…' : 'Save Changes'}
                 </button>
               </div>
