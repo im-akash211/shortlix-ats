@@ -437,6 +437,11 @@ def notify_candidate_interview_stage(candidate, job):
 
 
 def notify_referral_submitted(referral, admins):
+    parsed = referral.parsed_data or {}
+    candidate_name = (
+        f"{(parsed.get('first_name') or '').strip()} {(parsed.get('last_name') or '').strip()}".strip()
+        or referral.original_filename
+    )
     url = f'{BASE_URL}/referrals'
     for admin in admins:
         body = _html_wrap(
@@ -444,16 +449,21 @@ def notify_referral_submitted(referral, admins):
             f'''<p style="color:#374151;">Hi {admin.full_name},</p>
             <p style="color:#374151;">A new referral has been submitted and requires your review:</p>
             <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-                <tr><td style="padding:8px;color:#6b7280;font-size:13px;">Candidate</td><td style="padding:8px;font-weight:600;color:#111827;">{referral.candidate_name}</td></tr>
+                <tr><td style="padding:8px;color:#6b7280;font-size:13px;">Candidate</td><td style="padding:8px;font-weight:600;color:#111827;">{candidate_name}</td></tr>
                 <tr style="background:#f9fafb;"><td style="padding:8px;color:#6b7280;font-size:13px;">Referred By</td><td style="padding:8px;font-weight:600;color:#111827;">{referral.employee_name} (ID: {referral.employee_id})</td></tr>
                 <tr><td style="padding:8px;color:#6b7280;font-size:13px;">Job</td><td style="padding:8px;font-weight:600;color:#111827;">{referral.job.title if referral.job else "—"}</td></tr>
             </table>''',
             cta_text='Review Referral', cta_url=url,
         )
-        _send_email('referral_submitted', admin.email, f'New Referral: {referral.candidate_name}', body)
+        _send_email('referral_submitted', admin.email, f'New Referral: {candidate_name}', body)
 
 
 def notify_referral_approved(referral, recruiters):
+    parsed = referral.parsed_data or {}
+    candidate_name = (
+        f"{(parsed.get('first_name') or '').strip()} {(parsed.get('last_name') or '').strip()}".strip()
+        or referral.original_filename
+    )
     url = f'{BASE_URL}/referrals'
     for recruiter in recruiters:
         body = _html_wrap(
@@ -461,25 +471,30 @@ def notify_referral_approved(referral, recruiters):
             f'''<p style="color:#374151;">Hi {recruiter.full_name},</p>
             <p style="color:#374151;">A referral has been approved and the candidate has been added to your pipeline:</p>
             <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-                <tr><td style="padding:8px;color:#6b7280;font-size:13px;">Candidate</td><td style="padding:8px;font-weight:600;color:#111827;">{referral.candidate_name}</td></tr>
+                <tr><td style="padding:8px;color:#6b7280;font-size:13px;">Candidate</td><td style="padding:8px;font-weight:600;color:#111827;">{candidate_name}</td></tr>
                 <tr style="background:#f9fafb;"><td style="padding:8px;color:#6b7280;font-size:13px;">Referred By</td><td style="padding:8px;font-weight:600;color:#111827;">{referral.employee_name}</td></tr>
                 <tr><td style="padding:8px;color:#6b7280;font-size:13px;">Job</td><td style="padding:8px;font-weight:600;color:#111827;">{referral.job.title if referral.job else "—"}</td></tr>
             </table>''',
             cta_text='View Pipeline', cta_url=url,
         )
-        _send_email('referral_approved', recruiter.email, f'Referral Approved: {referral.candidate_name}', body)
+        _send_email('referral_approved', recruiter.email, f'Referral Approved: {candidate_name}', body)
 
 
 def notify_referral_declined(referral):
     if not referral.employee_email:
         return
+    parsed = referral.parsed_data or {}
+    candidate_name = (
+        f"{(parsed.get('first_name') or '').strip()} {(parsed.get('last_name') or '').strip()}".strip()
+        or referral.original_filename
+    )
     body = _html_wrap(
         'Update on Your Referral',
         f'''<p style="color:#374151;">Dear {referral.employee_name},</p>
-        <p style="color:#374151;">Thank you for referring <strong>{referral.candidate_name}</strong> for the <strong>{referral.job.title if referral.job else "open position"}</strong> role.</p>
+        <p style="color:#374151;">Thank you for referring <strong>{candidate_name}</strong> for the <strong>{referral.job.title if referral.job else "open position"}</strong> role.</p>
         <p style="color:#374151;">After review, we are unable to move forward with this referral at this time. We appreciate your effort in helping us find great talent.</p>''',
     )
-    _send_email('referral_declined', referral.employee_email, f'Update on your referral — {referral.candidate_name}', body)
+    _send_email('referral_declined', referral.employee_email, f'Update on your referral — {candidate_name}', body)
 
 
 def notify_reminder_due(user, reminder, job, macro_stage):
