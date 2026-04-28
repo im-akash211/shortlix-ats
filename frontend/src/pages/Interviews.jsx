@@ -39,8 +39,19 @@ function formatSchedule(scheduledAt, endTime, durationMin) {
   return `${date}  ${startT} – ${endT}`;
 }
 
+function isUpcoming(iv) {
+  return iv.status === 'scheduled' && new Date(iv.scheduled_at) >= new Date();
+}
+
 function isPendingFeedback(iv) {
-  return iv.status === 'scheduled' && new Date(iv.scheduled_at) < new Date();
+  // Interview time has passed (status still 'scheduled') OR completed without feedback yet
+  if (iv.status === 'scheduled' && new Date(iv.scheduled_at) < new Date()) return true;
+  if (iv.status === 'completed' && !iv.has_feedback) return true;
+  return false;
+}
+
+function isCompleted(iv) {
+  return iv.status === 'completed' && iv.has_feedback;
 }
 
 // ─── Sort icon ──────────────────────────────────────────────────────────────
@@ -169,19 +180,19 @@ export default function Interviews() {
   // Summary counts
   const summary = {
     pending_confirmation: 0,
-    upcoming:        data.filter((iv) => iv.status === 'scheduled' && new Date(iv.scheduled_at) >= now).length,
+    upcoming:         data.filter(isUpcoming).length,
     pending_feedback: data.filter(isPendingFeedback).length,
-    completed:       data.filter((iv) => iv.status === 'completed').length,
+    completed:        data.filter(isCompleted).length,
   };
 
   // Filter-card selection
   let displayData = filteredData;
   if (activeFilter === 'upcoming')
-    displayData = filteredData.filter((iv) => iv.status === 'scheduled' && new Date(iv.scheduled_at) >= now);
+    displayData = filteredData.filter(isUpcoming);
   else if (activeFilter === 'pending_feedback')
     displayData = filteredData.filter(isPendingFeedback);
   else if (activeFilter === 'completed')
-    displayData = filteredData.filter((iv) => iv.status === 'completed');
+    displayData = filteredData.filter(isCompleted);
 
   // Client-side sort
   displayData = [...displayData].sort((a, b) => {

@@ -3,7 +3,8 @@ import logging
 import time
 from typing import List, Optional
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from google.api_core import exceptions
 from django.conf import settings
 from pydantic import BaseModel, Field, ValidationError
@@ -159,19 +160,16 @@ def parse_resume_with_llm(raw_text: str, max_retries: int = 3) -> dict:
         attempts += 1
 
         try:
-            genai.configure(api_key=current_key)
+            client = genai.Client(api_key=current_key)
 
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                system_instruction=(
-                    "You are an expert resume parser. "
-                    "Extract structured information from the provided resume text."
-                ),
-            )
-
-            response = model.generate_content(
-                f"Extract all data from this resume:\n\n{truncated_text}",
-                generation_config=genai.GenerationConfig(
+            response = client.models.generate_content(
+                model=model_name,
+                contents=f"Extract all data from this resume:\n\n{truncated_text}",
+                config=types.GenerateContentConfig(
+                    system_instruction=(
+                        "You are an expert resume parser. "
+                        "Extract structured information from the provided resume text."
+                    ),
                     temperature=0.1,
                     response_mime_type="application/json",
                     response_schema=_GEMINI_RESPONSE_SCHEMA,
