@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
-from apps.core.permissions import IsAdmin
+from apps.core.permissions import IsAdmin, rbac_perm
 from .models import User
 from .serializers import UserSerializer, UserCreateSerializer, UserDropdownSerializer, CustomTokenObtainPairSerializer
 
@@ -69,8 +69,8 @@ class UserListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsAdmin()]
-        return [IsAuthenticated()]
+            return [rbac_perm('MANAGE_USERS')()]
+        return [rbac_perm('MANAGE_USERS')()]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
