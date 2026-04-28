@@ -23,7 +23,8 @@ export default function Login() {
       const data = await auth.login(email, password);
       auth.saveSession(data);
       handleLogin(data.user);
-      navigate(ROUTES.DASHBOARD, { replace: true });
+      const landing = data.user.role === 'interviewer' ? ROUTES.INTERVIEWS : ROUTES.DASHBOARD;
+      navigate(landing, { replace: true });
     } catch (err) {
       setError(err.data?.detail || 'Invalid credentials. Please try again.');
     } finally {
@@ -94,7 +95,8 @@ export default function Login() {
             {[
               { email: 'admin@ats.com',        password: 'Admin@123', role: 'Admin' },
               { email: 'nikhil.bhatia@ats.com', password: 'Admin@123',  role: 'Recruiter' },
-              { email: 'vikash.sharma@ats.com',   password: 'Admin@123',  role: 'Hiring Manager' },
+              { email: 'vikash.sharma@ats.com',  password: 'Admin@123',  role: 'Hiring Manager' },
+              { email: 'rajat.mehra@ats.com',    password: 'Pass@123',   role: 'Interviewer' },
             ].map(acc => (
               <button
                 key={acc.email}
