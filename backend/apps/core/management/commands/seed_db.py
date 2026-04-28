@@ -272,12 +272,15 @@ class Command(BaseCommand):
         users = {}
         for spec in specs:
             password = spec.pop("password")
-            user = User(**spec)
-            user.set_password(password)
-            user.save()
-            users[user.email] = user
+            email = spec["email"]
+            user, created = User.objects.get_or_create(email=email, defaults=spec)
+            if created:
+                user.set_password(password)
+                user.save()
+            users[email] = user
 
-        self.stdout.write(f"  Created {len(users)} users.")
+        created_count = sum(1 for u in users.values() if u._state.adding is False)
+        self.stdout.write(f"  Upserted {len(users)} users (existing passwords preserved).")
         return users
 
     # ---------------------------------------------------------
