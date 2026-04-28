@@ -64,9 +64,11 @@ class InterviewListCreateView(generics.ListCreateAPIView):
 
         # Tab-specific overlay
         if tab == 'my':
-            qs = qs.filter(interviewer=user)
+            qs = qs.filter(Q(interviewer=user) | Q(mapping__job__hiring_manager=user)).distinct()
         elif tab == 'scheduled_by_me':
-            qs = qs.filter(created_by=user)
+            qs = qs.filter(
+                Q(created_by=user) | Q(mapping__job__collaborators__user=user)
+            ).distinct()
         elif tab == 'hm_interviews':
             qs = qs.filter(mapping__job__hiring_manager=user)
 

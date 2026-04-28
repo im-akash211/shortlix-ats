@@ -3,7 +3,8 @@ import logging
 from typing import List, Optional, Union
 from decimal import Decimal
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from google.api_core import exceptions
 from django.conf import settings
 from pydantic import BaseModel, Field, ValidationError
@@ -172,18 +173,15 @@ def generate_requisition_content(
 
     for key in keys:
         try:
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                system_instruction=(
-                    "You are an expert technical recruiter and job description writer. "
-                    "Return structured, professional recruitment content as valid JSON."
-                ),
-            )
-            
-            response = model.generate_content(
-                PROMPT,
-                generation_config=genai.GenerationConfig(
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=PROMPT,
+                config=types.GenerateContentConfig(
+                    system_instruction=(
+                        "You are an expert technical recruiter and job description writer. "
+                        "Return structured, professional recruitment content as valid JSON."
+                    ),
                     temperature=0.35,
                     response_mime_type="application/json",
                     response_schema=_GEMINI_SCHEMA,

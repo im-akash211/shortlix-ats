@@ -7,7 +7,8 @@ for that job on a scale of 0–100. Returns (score: float, reason: str).
 import json
 import logging
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from django.conf import settings
 from django.utils import timezone
 
@@ -84,11 +85,11 @@ Respond with ONLY valid JSON in this exact format:
 
     for key in api_keys:
         try:
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
                     temperature=0.2,
                     response_mime_type="application/json",
                 ),
