@@ -26,6 +26,9 @@ const Referrals = lazy(() => import('./pages/Referrals'));
 
 function PermissionRoute({ permission, children }) {
   const { user } = useAuth();
+  // User exists but permissions haven't loaded yet (stale localStorage session
+  // from before RBAC was deployed) — show skeleton, not a false 403.
+  if (user && !Array.isArray(user.permissions)) return <PageSkeleton />;
   if (!hasPermission(user, permission)) return <ForbiddenPage />;
   return children;
 }
