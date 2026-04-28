@@ -7,7 +7,7 @@ from .serializers import DepartmentSerializer, SubVerticalSerializer
 
 
 class DepartmentListCreateView(generics.ListCreateAPIView):
-    queryset = Department.objects.prefetch_related('sub_verticals').all()
+    queryset = Department.objects.prefetch_related('sub_verticals').filter(is_active=True)
     serializer_class = DepartmentSerializer
 
     def get_permissions(self):
@@ -17,7 +17,7 @@ class DepartmentListCreateView(generics.ListCreateAPIView):
 
 
 class DepartmentDetailView(generics.RetrieveUpdateAPIView):
-    queryset = Department.objects.all()
+    queryset = Department.objects.filter(is_active=True)
     serializer_class = DepartmentSerializer
 
     def get_permissions(self):

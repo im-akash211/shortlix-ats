@@ -35,7 +35,7 @@ class GenerateRequisitionContentView(APIView):
         department     = (request.data.get("department") or "").strip()
         req_title      = (request.data.get("requisition_title") or "").strip()
         sub_vertical_1 = (request.data.get("sub_vertical_1") or "").strip()
-        sub_vertical_2 = (request.data.get("sub_vertical_2") or "").strip()
+        designation    = (request.data.get("designation") or "").strip()
         experience_min = request.data.get("experience_min", None)
         experience_max = request.data.get("experience_max", None)
 
@@ -52,7 +52,7 @@ class GenerateRequisitionContentView(APIView):
                 department=department,
                 requisition_title=req_title,
                 sub_vertical_1=sub_vertical_1,
-                sub_vertical_2=sub_vertical_2,
+                designation=designation,
                 experience_min=experience_min,
                 experience_max=experience_max,
             )

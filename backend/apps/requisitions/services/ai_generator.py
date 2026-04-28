@@ -63,7 +63,7 @@ def generate_requisition_content(
     department: str,
     requisition_title: str,
     sub_vertical_1: str = "",
-    sub_vertical_2: str = "",
+    designation: str = "",
     experience_min: Optional[Union[Decimal, float, int]] = 0,
     experience_max: Optional[Union[Decimal, float, int]] = 0,
 ) -> dict:
@@ -97,11 +97,10 @@ def generate_requisition_content(
         f"Role Title: {requisition_title}",
         f"Target Experience Level: {exp_min} to {exp_max} years",
     ]
+    if designation:
+        context_lines.append(f"Designation: {designation}")
     if sub_vertical_1:
         context_lines.append(f"Sub-vertical / Practice Area 1: {sub_vertical_1}")
-    if sub_vertical_2:
-        context_lines.append(f"Sub-vertical / Practice Area 2: {sub_vertical_2}")
-    
     context_str = "\n".join(context_lines)
 
     # Updated PROMPT with specific instructions for the experience range
@@ -153,11 +152,11 @@ def generate_requisition_content(
     Return ONLY a valid JSON object with the following structure:
 
     ```json
-    {
+    {{
     "job_description": "HTML string",
     "required_skills": [],
     "preferred_skills": []
-    }
+    }}
     ```
 
     ### FINAL VALIDATION CHECK:
