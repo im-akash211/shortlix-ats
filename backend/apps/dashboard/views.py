@@ -218,7 +218,7 @@ class DashboardExcelReportView(APIView):
         jobs_detail = (
             jobs_qs
             .select_related('department')
-            .prefetch_related('candidatejobmapping_set')
+            .prefetch_related('candidate_mappings')
             .order_by('job_code')
         )
         for r, job in enumerate(jobs_detail, 2):
@@ -254,7 +254,7 @@ class DashboardExcelReportView(APIView):
         ws5['A1'].alignment = CENTER
         ws5.row_dimensions[1].height = 24
 
-        pending_approvals = Requisition.objects.filter(status='pending_approval', l1_approver=user).count()
+        pending_approvals = Requisition.objects.filter(status='pending_approval').count() if has_permission(user, 'APPROVE_REQUISITIONS') else 0
         pending_feedback  = Interview.objects.filter(
             interviewer=user, status='scheduled', scheduled_at__lt=now
         ).count()
@@ -497,11 +497,9 @@ class DashboardPendingActionsView(APIView):
     def get(self, request):
         user = request.user
 
-        if user.role == 'admin':
+        if has_permission(user, 'APPROVE_REQUISITIONS'):
             pending_approvals = Requisition.objects.filter(status='pending_approval').count()
-        elif user.role == 'hiring_manager':
-            pending_approvals = Requisition.objects.filter(status='pending_approval', hiring_manager=user).count()
-        elif user.role == 'recruiter':
+        elif has_permission(user, 'MANAGE_REQUISITIONS'):
             pending_approvals = Requisition.objects.filter(status='pending_approval', created_by=user).count()
         else:
             pending_approvals = 0

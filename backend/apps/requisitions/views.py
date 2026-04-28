@@ -95,7 +95,7 @@ class RequisitionListCreateView(generics.ListCreateAPIView):
 
 class RequisitionDetailView(generics.RetrieveUpdateAPIView):
     queryset = Requisition.objects.select_related(
-        'department', 'hiring_manager', 'l1_approver', 'created_by'
+        'department', 'hiring_manager', 'created_by'
     ).prefetch_related('approval_logs')
     serializer_class = RequisitionDetailSerializer
 
