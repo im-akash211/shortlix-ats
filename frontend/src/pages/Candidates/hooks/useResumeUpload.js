@@ -188,6 +188,7 @@ export function useResumeUpload({ setActiveModal }) {
       const payload = {
         ...reviewForm,
         experience_years: reviewForm.experience_years !== '' ? Number(reviewForm.experience_years) : null,
+        expected_ctc_lakhs: reviewForm.expected_ctc_lakhs !== '' ? Number(reviewForm.expected_ctc_lakhs) : null,
       };
       await resumesApi.review(reviewIngestion.id, payload);
       setReviewSaved(true);
@@ -208,6 +209,7 @@ export function useResumeUpload({ setActiveModal }) {
       const payload = {
         ...reviewForm,
         experience_years: reviewForm.experience_years !== '' ? Number(reviewForm.experience_years) : null,
+        expected_ctc_lakhs: reviewForm.expected_ctc_lakhs !== '' ? Number(reviewForm.expected_ctc_lakhs) : null,
       };
       await resumesApi.review(reviewIngestion.id, payload);
 

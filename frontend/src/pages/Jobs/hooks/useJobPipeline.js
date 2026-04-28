@@ -80,7 +80,7 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
     if (tab === 'Interview')   return allCandidates.filter(c => ['INTERVIEW', 'OFFERED', 'JOINED'].includes(c.macro_stage)).length;
     if (tab === 'Offered')     return allCandidates.filter(c => ['OFFERED', 'JOINED'].includes(c.macro_stage)).length;
     if (tab === 'Joined')      return allCandidates.filter(c => c.macro_stage === 'JOINED').length;
-    if (tab === 'Dropped')     return allCandidates.filter(c => c.macro_stage === 'DROPPED').length;
+    if (tab === 'Dropped')     return allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED').length;
     return 0;
   };
 

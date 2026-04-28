@@ -513,12 +513,20 @@ export default function CandidateCard({
                   </button>
                 )
               )}
-              {/* Reject button — Applied/Shortlisted: opens reason picker; hidden when picker already open */}
-              {!['INTERVIEW', 'JOINED', 'DROPPED'].includes(macroStage) && !pendingAction && (
+              {/* Reject button — Applied/Shortlisted only (NOT offered); opens reason picker */}
+              {!['INTERVIEW', 'OFFERED', 'JOINED', 'DROPPED'].includes(macroStage) && !pendingAction && (
                 <button
                   onClick={(e) => { e.stopPropagation(); setPendingAction({ type: 'reject', reason: '' }); }}
                   className="text-xs text-rose-500 hover:text-rose-700 px-2.5 py-1.5 border border-rose-100 hover:border-rose-200 rounded-lg transition-colors">
                   Reject
+                </button>
+              )}
+              {/* Drop button — Offered/Acceptance Pending only (candidate-initiated drop) */}
+              {macroStage === 'OFFERED' && !pendingAction && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDropReason('CANDIDATE_DROP'); setDropModalCandidate(c); }}
+                  className="text-xs text-rose-500 hover:text-rose-700 px-2.5 py-1.5 border border-rose-100 hover:border-rose-200 rounded-lg transition-colors">
+                  Drop
                 </button>
               )}
             </div>

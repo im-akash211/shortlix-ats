@@ -408,8 +408,8 @@ export default function Requisitions({ user }) {
 
   const _applyAiResult = (result) => {
     setField('job_description', result.job_description || '');
-    if (result.required_skills?.length) setField('skills_required', result.required_skills);
-    if (result.preferred_skills?.length) setField('skills_desirable', result.preferred_skills);
+    if (result.skills_required?.length) setField('skills_required', result.skills_required);
+    if (result.skills_desirable?.length) setField('skills_desirable', result.skills_desirable);
   };
 
   const _callAiGenerate = async () => {

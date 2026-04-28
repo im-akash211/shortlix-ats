@@ -12,6 +12,7 @@ class CompetencyRatingSerializer(serializers.ModelSerializer):
 class InterviewFeedbackSerializer(serializers.ModelSerializer):
     competency_ratings = CompetencyRatingSerializer(many=True, required=False)
     interviewer_name = serializers.CharField(source='interviewer.full_name', read_only=True)
+    overall_rating = serializers.IntegerField(required=True, min_value=1, max_value=5)
 
     class Meta:
         model = InterviewFeedback
@@ -24,9 +25,26 @@ class InterviewFeedbackSerializer(serializers.ModelSerializer):
             'competency_ratings',
         ]
         read_only_fields = ['id', 'interview', 'interviewer', 'submitted_at', 'updated_at']
+        extra_kwargs = {
+            'decision': {'required': True},
+            'recommendation': {'required': False},
+            'strengths': {'required': False},
+            'weaknesses': {'required': False},
+            'concerns': {'required': False},
+            'comments': {'required': False},
+        }
+
+    def _derive_recommendation(self, validated_data):
+        """Auto-fill legacy recommendation field from decision if not provided."""
+        if not validated_data.get('recommendation'):
+            decision = validated_data.get('decision', '')
+            validated_data['recommendation'] = {
+                'PASS': 'proceed', 'FAIL': 'reject', 'ON_HOLD': 'hold',
+            }.get(decision, 'proceed')
 
     def create(self, validated_data):
         ratings_data = validated_data.pop('competency_ratings', [])
+        self._derive_recommendation(validated_data)
         feedback = InterviewFeedback.objects.create(**validated_data)
         for rating_data in ratings_data:
             CompetencyRating.objects.create(feedback=feedback, **rating_data)
@@ -34,6 +52,7 @@ class InterviewFeedbackSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         ratings_data = validated_data.pop('competency_ratings', None)
+        self._derive_recommendation(validated_data)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()

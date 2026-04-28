@@ -327,7 +327,7 @@ class Command(BaseCommand):
             req = Requisition.objects.create(
                 title=title,
                 department=departments[dept_name],
-                location=random.choice(["Gurgaon", "Noida", "Bangalore", "Remote", "Hyderabad"]),
+                location=random.choice(["Gurgaon", "Noida", "Remote"]),
                 designation=title,
                 priority=random.choice(["medium", "high", "critical"]),
                 employment_type="permanent",
@@ -337,11 +337,8 @@ class Command(BaseCommand):
                 experience_max=random.randint(6, 12),
                 job_description=f"We are looking for a {title} to join our {dept_name} team. "
                                 f"You will own key product/tech outcomes and collaborate closely with cross-functional teams.",
-                roles_responsibilities="Ownership of deliverables, stakeholder communication, technical execution.",
                 skills_required=skills[:4],
                 skills_desirable=skills[4:],
-                skills_to_evaluate=["Problem Solving", "Communication", "Technical Depth"],
-                tags=["tech", dept_name.lower().replace(" ", "-")],
                 min_qualification="Bachelor's Degree",
                 created_by=users["admin@ats.com"],
                 hiring_manager=hiring_managers.get(dept_name, users["amit.verma@ats.com"]),

@@ -56,8 +56,10 @@ export default function InterviewFeedbackSection({ interview, feedback, canCreat
     comments: '',
   });
 
-  const computedStatus = interview.computed_status;
-  const isCompleted = computedStatus === 'COMPLETED';
+  const endTime = interview.end_time
+    ? new Date(interview.end_time)
+    : new Date(new Date(interview.scheduled_at).getTime() + (interview.duration_minutes || 60) * 60000);
+  const isCompleted = endTime < new Date() || interview.computed_status === 'COMPLETED';
 
   if (!isCompleted) return null;
 
@@ -94,6 +96,10 @@ export default function InterviewFeedbackSection({ interview, feedback, canCreat
   };
 
   const handleSubmit = async () => {
+    if (!form.decision) {
+      alert('Please select a decision (Pass / Fail / On Hold).');
+      return;
+    }
     if (!form.overall_rating) {
       alert('Please provide a rating.');
       return;

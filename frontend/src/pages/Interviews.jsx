@@ -19,15 +19,16 @@ const STATUS_BADGE = {
   COMPLETED: { label: 'Completed', bg: 'bg-emerald-100', text: 'text-emerald-700' },
   ON_HOLD:   { label: 'On Hold',   bg: 'bg-amber-100',   text: 'text-amber-700'   },
   CANCELLED: { label: 'Cancelled', bg: 'bg-slate-100',   text: 'text-slate-500'   },
-  MISSED:    { label: 'Missed',    bg: 'bg-orange-100',  text: 'text-orange-700'  },
 };
 
 function computedDisplayStatus(iv) {
   if (iv.status === 'cancelled') return 'CANCELLED';
-  const cs = iv.computed_status || 'SCHEDULED';
-  const timePassed = new Date(iv.scheduled_at) < new Date();
-  if (cs === 'SCHEDULED' && timePassed) return 'MISSED';
-  return cs;
+  // Auto-complete on frontend too: if end time has passed, show Completed
+  const endTime = iv.end_time
+    ? new Date(iv.end_time)
+    : new Date(new Date(iv.scheduled_at).getTime() + (iv.duration_minutes || 60) * 60000);
+  if (endTime < new Date()) return 'COMPLETED';
+  return iv.computed_status || 'SCHEDULED';
 }
 
 function formatSchedule(scheduledAt, endTime, durationMin) {
@@ -39,19 +40,25 @@ function formatSchedule(scheduledAt, endTime, durationMin) {
   return `${date}  ${startT} – ${endT}`;
 }
 
+function getEndTime(iv) {
+  return iv.end_time
+    ? new Date(iv.end_time)
+    : new Date(new Date(iv.scheduled_at).getTime() + (iv.duration_minutes || 60) * 60000);
+}
+
 function isUpcoming(iv) {
-  return iv.status === 'scheduled' && new Date(iv.scheduled_at) >= new Date();
+  if (iv.status === 'cancelled') return false;
+  return getEndTime(iv) >= new Date();
 }
 
 function isPendingFeedback(iv) {
-  // Interview time has passed (status still 'scheduled') OR completed without feedback yet
-  if (iv.status === 'scheduled' && new Date(iv.scheduled_at) < new Date()) return true;
-  if (iv.status === 'completed' && !iv.has_feedback) return true;
-  return false;
+  if (iv.status === 'cancelled') return false;
+  // Time has passed but no feedback yet
+  return getEndTime(iv) < new Date() && !iv.has_feedback;
 }
 
 function isCompleted(iv) {
-  return iv.status === 'completed' && iv.has_feedback;
+  return getEndTime(iv) < new Date() && !!iv.has_feedback;
 }
 
 // ─── Sort icon ──────────────────────────────────────────────────────────────

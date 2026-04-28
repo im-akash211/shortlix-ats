@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Calendar, X } from 'lucide-react';
+import { CheckCircle2, Calendar, X } from 'lucide-react';
 import { interviews as interviewsApi } from '../../lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -7,10 +7,13 @@ export default function InterviewActions({ interview, role, hasFeedback, onCance
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(null);
 
-  const cs = interview.computed_status;
+  const endTime = interview.end_time
+    ? new Date(interview.end_time)
+    : new Date(new Date(interview.scheduled_at).getTime() + (interview.duration_minutes || 60) * 60000);
+  const autoCompleted = endTime < new Date();
+  const cs = autoCompleted ? 'COMPLETED' : (interview.computed_status || 'SCHEDULED');
   const isScheduled = cs === 'SCHEDULED';
   const isCompleted = cs === 'COMPLETED';
-  const isTimePassed = interview.status === 'scheduled' && new Date(interview.scheduled_at) < new Date();
 
   const canManage = role === 'admin' || role === 'recruiter';
   const canCancel = role === 'admin';
@@ -37,14 +40,6 @@ export default function InterviewActions({ interview, role, hasFeedback, onCance
 
   return (
     <div className="px-5 py-3 border-b border-slate-100 flex flex-wrap gap-2">
-      {/* Time-passed warning */}
-      {isTimePassed && isScheduled && (
-        <div className="w-full flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700 font-medium mb-1">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          Interview time has passed — please mark as completed
-        </div>
-      )}
-
       {isScheduled && (
         <>
           <button

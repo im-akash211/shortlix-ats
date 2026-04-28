@@ -103,12 +103,13 @@ class Interview(models.Model):
     @property
     def computed_status(self):
         """
-        If the round is still SCHEDULED but the interview time has passed,
-        surface it as COMPLETED so the UI can show the correct state without
-        a manual status-update step.
+        Auto-complete: if the interview end time has passed, always return COMPLETED.
+        Explicit ON_HOLD overrides the time check.
         """
+        if self.round_status == 'ON_HOLD':
+            return 'ON_HOLD'
         effective_end = self.computed_end_time
-        if self.round_status == 'SCHEDULED' and effective_end and effective_end < timezone.now():
+        if effective_end and effective_end < timezone.now():
             return 'COMPLETED'
         if self.round_status:
             return self.round_status
@@ -129,9 +130,9 @@ class InterviewFeedback(models.Model):
     # created_by is the person who submitted the feedback (same as interviewer for backward compat)
     interviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     overall_rating = models.PositiveSmallIntegerField()
-    recommendation = models.CharField(max_length=10, choices=RECOMMENDATION_CHOICES)
-    # decision: structured PASS/FAIL/ON_HOLD aligned with pipeline outcome
-    decision = models.CharField(max_length=10, choices=DECISION_CHOICES, null=True, blank=True)
+    recommendation = models.CharField(max_length=10, choices=RECOMMENDATION_CHOICES, blank=True, default='')
+    # decision: the only mandatory field — PASS/FAIL/ON_HOLD
+    decision = models.CharField(max_length=10, choices=DECISION_CHOICES)
     strengths = models.TextField(blank=True)
     weaknesses = models.TextField(blank=True)
     # concerns is an alias for weaknesses to match the spec field name

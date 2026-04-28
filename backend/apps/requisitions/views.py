@@ -25,7 +25,7 @@ class GenerateRequisitionContentView(APIView):
         "experience_max":    "<optional>"
       }
 
-    Returns: { job_description, required_skills, preferred_skills }
+    Returns: { job_description, skills_required, skills_desirable }
     One Gemini call generates all three fields simultaneously.
     """
 

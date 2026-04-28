@@ -120,7 +120,8 @@ export default function PipelineView({
       {pipelineTab === 'Offered' && (() => {
         const pendingCount = allCandidates.filter(c => c.macro_stage === 'OFFERED').length;
         const joinedCount  = allCandidates.filter(c => c.macro_stage === 'JOINED').length;
-        const droppedCount = allCandidates.filter(c => c.macro_stage === 'DROPPED').length;
+        // Only count candidates dropped AFTER being offered (not pre-offer rejections)
+        const droppedCount = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED').length;
         return (
           <div className="px-4 py-2.5 border-b border-slate-100 shrink-0 flex items-center gap-2 overflow-x-auto">
             <button
@@ -158,7 +159,8 @@ export default function PipelineView({
             let filtered = [];
             if (offeredFilter === 'PENDING') filtered = allCandidates.filter(c => c.macro_stage === 'OFFERED');
             else if (offeredFilter === 'JOINED') filtered = allCandidates.filter(c => c.macro_stage === 'JOINED');
-            else if (offeredFilter === 'DROPPED') filtered = allCandidates.filter(c => c.macro_stage === 'DROPPED');
+            // Only show post-offer drops (CANDIDATE_DROP / NO_SHOW), not pre-offer recruiter rejections
+            else if (offeredFilter === 'DROPPED') filtered = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED');
 
             if (filtered.length === 0) {
               return (
@@ -181,9 +183,15 @@ export default function PipelineView({
             const stagePool = allCandidates.filter(c => c.macro_stage === currentStage);
 
             // Derive dimmed candidates directly from allCandidates (no separate API call needed)
+            // Recruiter-rejected candidates (DROPPED + drop_reason=REJECTED) are shown in a separate
+            // "Rejected" section, NOT in the "progressed" dimmed section.
+            const preOfferRejected = (pipelineTab === 'Applied' || pipelineTab === 'Shortlisted' || pipelineTab === 'Interview')
+              ? allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason === 'REJECTED')
+              : [];
+
             let localDimmed = [];
             if (pipelineTab === 'Applied') {
-              localDimmed = allCandidates.filter(c => c.macro_stage !== 'APPLIED');
+              localDimmed = allCandidates.filter(c => c.macro_stage !== 'APPLIED' && !(c.macro_stage === 'DROPPED' && c.drop_reason === 'REJECTED'));
             } else if (pipelineTab === 'Shortlisted') {
               localDimmed = allCandidates.filter(c => ['INTERVIEW', 'OFFERED', 'JOINED'].includes(c.macro_stage));
             } else if (pipelineTab === 'Interview') {
@@ -208,7 +216,7 @@ export default function PipelineView({
               });
 
             const isEmpty = activeCandidates.length === 0 && rejectedCandidates.length === 0
-              && localDimmed.length === 0;
+              && preOfferRejected.length === 0 && localDimmed.length === 0;
 
             if (isEmpty) {
               return (
@@ -234,6 +242,21 @@ export default function PipelineView({
                       <div className="flex-1 border-t border-dashed border-rose-200" />
                     </div>
                     {rejectedCandidates.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+                  </>
+                )}
+
+                {/* ── Rejected section (Applied / Shortlisted / Interview tabs) ── */}
+                {preOfferRejected.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 py-2 mt-1">
+                      <div className="flex-1 border-t border-dashed border-rose-200" />
+                      <span className="text-xs font-semibold text-rose-400 shrink-0 flex items-center gap-1.5">
+                        <span className="inline-block w-2 h-2 rounded-full bg-rose-400" />
+                        Rejected ({preOfferRejected.length})
+                      </span>
+                      <div className="flex-1 border-t border-dashed border-rose-200" />
+                    </div>
+                    {preOfferRejected.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
                   </>
                 )}
 

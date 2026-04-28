@@ -4,11 +4,14 @@ a production Candidate record and links the original resume file.
 """
 
 import logging
+import re
 
 from django.db import transaction
 
 from apps.candidates.models import Candidate, ResumeFile
 from apps.resumes.models import ResumeIngestion
+
+_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,12 @@ def create_candidate_from_ingestion(ingestion: ResumeIngestion, created_by) -> C
         raise CandidateCreationError(
             "Email address is required to create a candidate. "
             "Please add an email in the review form."
+        )
+
+    if not _EMAIL_RE.match(email):
+        raise CandidateCreationError(
+            f"'{email}' is not a valid email address. "
+            "Please correct the email in the review form before converting."
         )
 
     # Guard against duplicate email (should have been caught by dedup, but be safe)

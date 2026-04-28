@@ -262,6 +262,12 @@ class CandidateChangeStageView(APIView):
                         {'error': 'drop_reason is required when moving to DROPPED'},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+                # After an offer is made, only the candidate can drop — recruiter rejection is not allowed
+                if old_stage == 'OFFERED' and drop_reason == 'REJECTED':
+                    return Response(
+                        {'error': 'Cannot use REJECTED reason after an offer has been made. Use CANDIDATE_DROP or NO_SHOW.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 mapping.drop_reason = drop_reason
                 mapping.offer_status = None
 

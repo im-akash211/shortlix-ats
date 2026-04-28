@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 class GeneratedRequisitionContent(BaseModel):
     job_description: str
-    required_skills: List[str] = Field(default_factory=list)
-    preferred_skills: List[str] = Field(default_factory=list)
+    skills_required: List[str] = Field(default_factory=list)
+    skills_desirable: List[str] = Field(default_factory=list)
 
 
 # ── Gemini-compatible response schema dict ─────────────────────────────────────
@@ -32,12 +32,12 @@ _GEMINI_SCHEMA = {
                 "Include: role summary, why join, and key qualifications / expectations."
             ),
         },
-        "required_skills": {
+        "skills_required": {
             "type": "array",
             "items": {"type": "string"},
             "description": "6-10 mandatory technical and soft skills (short phrases, no HTML).",
         },
-        "preferred_skills": {
+        "skills_desirable": {
             "type": "array",
             "items": {"type": "string"},
             "description": "4-6 nice-to-have or bonus skills (short phrases, no HTML).",
@@ -45,8 +45,8 @@ _GEMINI_SCHEMA = {
     },
     "required": [
         "job_description",
-        "required_skills",
-        "preferred_skills",
+        "skills_required",
+        "skills_desirable",
     ],
 }
 
@@ -141,8 +141,8 @@ def generate_requisition_content(
         - 3–4 paragraphs including: Role overview, Business impact, and Culture/value proposition.
         - Include 6–8 bullet points for responsibilities using active verbs (Own, Drive, Build, Mentor).
         - Include a clear, role-aligned qualifications section.
-    - **required_skills (List):** 5–7 must-have skills aligned with {sub_vertical_1}. Avoid generic skills.
-    - **preferred_skills (List):** 3–5 good-to-have skills (certifications, tools, or soft skills like product thinking).
+    - **skills_required (List):** 5–7 must-have skills aligned with {sub_vertical_1}. Avoid generic skills.
+    - **skills_desirable (List):** 3–5 good-to-have skills (certifications, tools, or soft skills like product thinking).
 
     ### QUALITY & SAFETY GUIDELINES:
     - Do NOT fabricate company claims or unrealistic benefits.
@@ -155,8 +155,8 @@ def generate_requisition_content(
     ```json
     {{
     "job_description": "HTML string",
-    "required_skills": [],
-    "preferred_skills": []
+    "skills_required": [],
+    "skills_desirable": []
     }}
     ```
 

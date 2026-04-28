@@ -12,7 +12,6 @@ const STATUS_BADGE = {
   COMPLETED: { label: 'Completed', bg: 'bg-emerald-100', text: 'text-emerald-700' },
   ON_HOLD:   { label: 'On Hold',   bg: 'bg-amber-100',   text: 'text-amber-700'   },
   CANCELLED: { label: 'Cancelled', bg: 'bg-slate-100',   text: 'text-slate-500'   },
-  MISSED:    { label: 'Missed',    bg: 'bg-orange-100',  text: 'text-orange-700'  },
 };
 
 function formatSchedule(scheduledAt, endTime, durationMin) {
@@ -24,22 +23,20 @@ function formatSchedule(scheduledAt, endTime, durationMin) {
   return `${date}  ${startT} – ${endT}`;
 }
 
-function getMissed(iv) {
-  return (
-    iv.computed_status === 'SCHEDULED' &&
-    new Date(iv.scheduled_at) < new Date() &&
-    iv.status !== 'cancelled'
-  );
+function resolveStatus(iv) {
+  if (iv.status === 'cancelled') return 'CANCELLED';
+  // Auto-complete: if scheduled time has passed, treat as completed regardless of stored status
+  const endTime = iv.end_time
+    ? new Date(iv.end_time)
+    : new Date(new Date(iv.scheduled_at).getTime() + (iv.duration_minutes || 60) * 60000);
+  if (endTime < new Date()) return 'COMPLETED';
+  return iv.computed_status || 'SCHEDULED';
 }
 
 export default function InterviewHeader({ interview, onClose, canEdit, onEditClick }) {
   const navigate = useNavigate();
 
-  const cs = interview.status === 'cancelled'
-    ? 'CANCELLED'
-    : getMissed(interview)
-    ? 'MISSED'
-    : (interview.computed_status || 'SCHEDULED');
+  const cs = resolveStatus(interview);
 
   const badge = STATUS_BADGE[cs] || STATUS_BADGE.SCHEDULED;
   const roundLabel = ROUND_LABELS[interview.round_name] || interview.round_label;
