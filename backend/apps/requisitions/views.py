@@ -32,12 +32,14 @@ class GenerateRequisitionContentView(APIView):
     permission_classes = [rbac_perm('MANAGE_REQUISITIONS')]
 
     def post(self, request):
-        department     = (request.data.get("department") or "").strip()
-        req_title      = (request.data.get("requisition_title") or "").strip()
-        sub_vertical_1 = (request.data.get("sub_vertical_1") or "").strip()
-        designation    = (request.data.get("designation") or "").strip()
-        experience_min = request.data.get("experience_min", None)
-        experience_max = request.data.get("experience_max", None)
+        department       = (request.data.get("department") or "").strip()
+        req_title        = (request.data.get("requisition_title") or "").strip()
+        sub_vertical_1   = (request.data.get("sub_vertical_1") or "").strip()
+        designation      = (request.data.get("designation") or "").strip()
+        experience_min   = request.data.get("experience_min", None)
+        experience_max   = request.data.get("experience_max", None)
+        skills_required  = request.data.get("skills_required") or []
+        skills_desirable = request.data.get("skills_desirable") or []
 
         if not department or not req_title:
             return Response(
@@ -55,9 +57,18 @@ class GenerateRequisitionContentView(APIView):
                 designation=designation,
                 experience_min=experience_min,
                 experience_max=experience_max,
+                skills_required=skills_required or None,
+                skills_desirable=skills_desirable or None,
             )
         except AIGenerationError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            err_str = str(exc).lower()
+            if 'unavailable' in err_str or '503' in err_str or 'high demand' in err_str:
+                msg = 'The AI service is temporarily unavailable due to high demand. Please try again in a moment.'
+            elif 'exhausted' in err_str or 'rate' in err_str or 'quota' in err_str:
+                msg = 'AI generation rate limit reached. Please try again in a few seconds.'
+            else:
+                msg = 'AI generation failed. Your existing content has been preserved. Please try again.'
+            return Response({"detail": msg}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         return Response(result, status=status.HTTP_200_OK)
 
@@ -80,8 +91,9 @@ class RequisitionListCreateView(generics.ListCreateAPIView):
             return qs.filter(created_by=user)
         if has_permission(user, 'MANAGE_USERS'):
             return qs
+        # Hiring managers: only requisitions where they are designated as the hiring manager
         if has_permission(user, 'APPROVE_REQUISITIONS') and not has_permission(user, 'MANAGE_REQUISITIONS'):
-            return qs.filter(department=user.department)
+            return qs.filter(hiring_manager=user)
         return qs.filter(created_by=user)
 
     def get_serializer_class(self):

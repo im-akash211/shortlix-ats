@@ -170,6 +170,7 @@ export default function JobPipelinePage() {
     getMoveToOptions: pipeline.getMoveToOptions,
     handleMoveToInterview: pipeline.handleMoveToInterview,
     handleMakeOffer: pipeline.handleMakeOffer,
+    handleMarkOfferAccepted: pipeline.handleMarkOfferAccepted,
     handleMarkJoined: pipeline.handleMarkJoined,
     handleRestoreToShortlist: pipeline.handleRestoreToShortlist, restoringId: pipeline.restoringId,
     handleInterviewReject: pipeline.handleInterviewReject,
@@ -330,6 +331,20 @@ export default function JobPipelinePage() {
         setUploadResult={jobResume.setUploadResult}
         setUploadFile={jobResume.setUploadFile}
         setUploadError={jobResume.setUploadError}
+        targetJob={job}
+        onApplyExisting={(candidate) => {
+          jobResume.closeUploadModal();
+          candidatesLibApi.assignJob(candidate.id, job.id)
+            .then(() => {
+              pipeline.setPipelineTab('Applied');
+              pipeline.refreshAllCandidates(job.id);
+            })
+            .catch((err) => {
+              if (err.status === 409 && err.data?.conflict) {
+                setAssignConflict({ candidate, currentJob: err.data.current_job });
+              }
+            });
+        }}
       />
       <ReviewResumeModal
         isOpen={jobResumeActiveModal === 'review'}

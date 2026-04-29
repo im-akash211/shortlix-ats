@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 from decimal import Decimal
 
 from google import genai
-from google.genai import types
+from google.genai import types, errors as genai_errors
 from google.api_core import exceptions
 from django.conf import settings
 from pydantic import BaseModel, Field, ValidationError
@@ -67,6 +67,8 @@ def generate_requisition_content(
     designation: str = "",
     experience_min: Optional[Union[Decimal, float, int]] = 0,
     experience_max: Optional[Union[Decimal, float, int]] = 0,
+    skills_required: Optional[List[str]] = None,
+    skills_desirable: Optional[List[str]] = None,
 ) -> dict:
     """
     Generate job description, required skills, and preferred skills in a
@@ -102,6 +104,10 @@ def generate_requisition_content(
         context_lines.append(f"Designation: {designation}")
     if sub_vertical_1:
         context_lines.append(f"Sub-vertical / Practice Area 1: {sub_vertical_1}")
+    if skills_required:
+        context_lines.append(f"USER-PROVIDED Mandatory Skills (MUST be returned verbatim in skills_required): {', '.join(skills_required)}")
+    if skills_desirable:
+        context_lines.append(f"USER-PROVIDED Desirable Skills (MUST be returned verbatim in skills_desirable): {', '.join(skills_desirable)}")
     context_str = "\n".join(context_lines)
 
     # Updated PROMPT with specific instructions for the experience range
@@ -141,8 +147,8 @@ def generate_requisition_content(
         - 3–4 paragraphs including: Role overview, Business impact, and Culture/value proposition.
         - Include 6–8 bullet points for responsibilities using active verbs (Own, Drive, Build, Mentor).
         - Include a clear, role-aligned qualifications section.
-    - **skills_required (List):** 5–7 must-have skills aligned with {sub_vertical_1}. Avoid generic skills.
-    - **skills_desirable (List):** 3–5 good-to-have skills (certifications, tools, or soft skills like product thinking).
+    - **skills_required (List):** If "USER-PROVIDED Mandatory Skills" are present in the context, return them EXACTLY as-is (same wording, same order). Do NOT replace or rename any user-provided skill. Only append additional skills if fewer than 5 were provided. Otherwise generate 5–7 must-have skills aligned with {sub_vertical_1}.
+    - **skills_desirable (List):** If "USER-PROVIDED Desirable Skills" are present in the context, return them EXACTLY as-is. Only append additional skills if fewer than 3 were provided. Otherwise generate 3–5 good-to-have skills (certifications, tools, or soft skills like product thinking).
 
     ### QUALITY & SAFETY GUIDELINES:
     - Do NOT fabricate company claims or unrealistic benefits.
@@ -203,6 +209,10 @@ def generate_requisition_content(
 
         except exceptions.ResourceExhausted as exc:
             logger.warning("Gemini rate limit on key %s…", key[:8])
+            last_exc = exc
+            continue
+        except genai_errors.ServerError as exc:
+            logger.warning("Gemini service unavailable on key %s: %s", key[:8], exc)
             last_exc = exc
             continue
         except (json.JSONDecodeError, ValidationError) as exc:

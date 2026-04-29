@@ -19,6 +19,9 @@ export default function UploadResumeModal({
   setUploadResult,
   setUploadFile,
   setUploadError,
+  // Optional job context — when uploading from a job's "Add Candidate" button
+  targetJob = null,
+  onApplyExisting = null,
 }) {
   const navigate = useNavigate();
   return (
@@ -124,6 +127,14 @@ export default function UploadResumeModal({
                   </div>
                   <ExternalLink className="w-4 h-4 text-amber-500 group-hover:text-amber-700 shrink-0" />
                 </button>
+                {targetJob && onApplyExisting && (
+                  <button
+                    onClick={() => onApplyExisting(existingCandidate)}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                  >
+                    Apply to {targetJob.job_code} — {targetJob.title}
+                  </button>
+                )}
               </div>
             )}
 

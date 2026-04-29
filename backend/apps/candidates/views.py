@@ -215,7 +215,7 @@ class CandidateChangeStageView(APIView):
         new_stage = request.data.get('macro_stage')
         if not new_stage:
             # Handle updates to auxiliary fields if macro_stage is not provided
-            if 'priority' in request.data or 'next_interview_date' in request.data or 'interview_status' in request.data:
+            if 'priority' in request.data or 'next_interview_date' in request.data or 'interview_status' in request.data or 'offer_status' in request.data:
                 with transaction.atomic():
                     mapping = CandidateJobMapping.objects.select_for_update().get(
                         candidate_id=pk, job_id=job_id
@@ -227,6 +227,13 @@ class CandidateChangeStageView(APIView):
                     if 'interview_status' in request.data:
                         val = request.data['interview_status']
                         mapping.interview_status = 'REJECTED' if val == 'REJECTED' else None
+                    if 'offer_status' in request.data:
+                        if mapping.macro_stage != 'OFFERED':
+                            return Response(
+                                {'error': 'offer_status can only be updated when candidate is in OFFERED stage.'},
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+                        mapping.offer_status = request.data['offer_status']
                     mapping.save()
                 interview_status_val = request.data.get('interview_status')
                 if interview_status_val == 'REJECTED':
@@ -269,7 +276,15 @@ class CandidateChangeStageView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
                 mapping.drop_reason = drop_reason
-                mapping.offer_status = None
+                if drop_reason == 'REJECTED':
+                    mapping.rejected_from_stage = old_stage
+                    mapping.offer_status = None
+                else:
+                    # Preserve offer_status when dropping from OFFERED so we can show
+                    # "dropped before/after accepting" in the UI
+                    mapping.rejected_from_stage = ''
+                    if old_stage != 'OFFERED':
+                        mapping.offer_status = None
 
             elif new_stage == 'OFFERED':
                 mapping.offer_status = request.data.get('offer_status', 'OFFER_SENT')
@@ -285,6 +300,7 @@ class CandidateChangeStageView(APIView):
             else:
                 mapping.drop_reason = None
                 mapping.offer_status = None
+                mapping.rejected_from_stage = ''
 
             # Optional fields
             if 'priority' in request.data:
@@ -419,9 +435,10 @@ class JumpToRoundView(APIView):
 
 
 class CandidateMoveJobView(APIView):
-    permission_classes = [rbac_perm('MANAGE_CANDIDATES')]
+    permission_classes = [rbac_perm('MANAGE_USERS')]  # admin-only: moving a candidate across jobs
 
     def post(self, request, pk):
+        from django.utils import timezone
         from_job_id = request.data.get('from_job_id')
         to_job_id = request.data.get('to_job_id')
         if not to_job_id:
@@ -429,20 +446,28 @@ class CandidateMoveJobView(APIView):
         with transaction.atomic():
             if from_job_id:
                 old_mapping = generics.get_object_or_404(
-                    CandidateJobMapping, candidate_id=pk, job_id=from_job_id
+                    CandidateJobMapping, candidate_id=pk, job_id=from_job_id, is_archived=False
                 )
             else:
-                old_mapping = CandidateJobMapping.objects.filter(candidate_id=pk).first()
-            from_label = str(old_mapping.job_id) if old_mapping else 'unknown'
+                old_mapping = CandidateJobMapping.objects.filter(
+                    candidate_id=pk, is_archived=False
+                ).first()
+
+            # Archive the old mapping — preserve all stage history (stage_logs)
             if old_mapping:
-                old_mapping.delete()
+                old_mapping.is_archived = True
+                old_mapping.archived_at = timezone.now()
+                old_mapping.save(update_fields=['is_archived', 'archived_at'])
+
             new_mapping = CandidateJobMapping.objects.create(
                 candidate_id=pk, job_id=to_job_id,
-                moved_by=request.user, macro_stage='APPLIED'
+                moved_by=request.user, macro_stage='APPLIED',
+                previous_mapping=old_mapping,
             )
             PipelineStageHistory.objects.create(
                 mapping=new_mapping, from_macro_stage='', to_macro_stage='APPLIED',
-                moved_by=request.user, remarks=f'Moved from job {from_label}'
+                moved_by=request.user,
+                remarks=f'Moved from job {old_mapping.job.job_code if old_mapping else "unknown"}',
             )
         return Response(CandidateJobMappingSerializer(new_mapping).data, status=status.HTTP_201_CREATED)
 

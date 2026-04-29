@@ -229,16 +229,33 @@ class CandidateJobMapping(models.Model):
 
     action_reason = models.CharField(max_length=255, blank=True)
 
+    # Tracks which stage a recruiter rejection came from (APPLIED / SHORTLISTED); used
+    # to show the rejected card only in that stage's tab, not every tab.
+    rejected_from_stage = models.CharField(max_length=15, blank=True)
+
+    # Cross-job move history — when a candidate is moved to a new job, the old mapping
+    # is archived (is_archived=True) and the new mapping links back to it via previous_mapping.
+    is_archived = models.BooleanField(default=False, db_index=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    previous_mapping = models.OneToOneField(
+        'self', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='next_mapping',
+    )
+
     moved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True)
     stage_updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['candidate', 'job'], name='unique_candidate_job'),
+            # Only one active (non-archived) mapping per candidate-job pair
+            models.UniqueConstraint(
+                fields=['candidate', 'job'],
+                condition=models.Q(is_archived=False),
+                name='unique_active_candidate_job',
+            ),
         ]
         indexes = [
-            # Composite index for pipeline column queries filtering on (job_id, macro_stage)
             models.Index(fields=['job', 'macro_stage'], name='cjm_job_macro_stage_idx'),
         ]
         ordering = ['-created_at']

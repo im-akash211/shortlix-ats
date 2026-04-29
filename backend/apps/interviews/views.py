@@ -1,4 +1,7 @@
+import logging
 from rest_framework import generics, status
+
+logger = logging.getLogger(__name__)
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -131,8 +134,11 @@ class InterviewListCreateView(generics.ListCreateAPIView):
             mapping.current_interview_round = interview.round_name
             mapping.moved_by = user
             mapping.save(update_fields=['interview_status', 'current_interview_round', 'moved_by', 'stage_updated_at'])
-        from apps.notifications.utils import notify_interview_scheduled
-        notify_interview_scheduled(interview, is_reschedule=is_reschedule)
+        try:
+            from apps.notifications.utils import notify_interview_scheduled
+            notify_interview_scheduled(interview, is_reschedule=is_reschedule)
+        except Exception as exc:
+            logger.warning('Interview notification failed (non-fatal): %s', exc)
 
 
 # ---------------------------------------------------------------------------

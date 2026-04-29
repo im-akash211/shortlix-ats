@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Share2, MessageCircle, Send, ChevronDown, ChevronUp, Bell, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Share2, MessageCircle, Send, ChevronDown, ChevronUp, Bell, AlertTriangle, ExternalLink, History } from 'lucide-react';
+import PreviousJobHistoryModal from './PreviousJobHistoryModal';
 import {
   SCREENING_STATUS_COLORS, SCREENING_STATUS_LABELS,
   ROUND_LABELS, ROUND_PROGRESSION,
@@ -22,6 +23,7 @@ export default function CandidateCard({
   handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,
   handleMoveToInterview,
   handleMakeOffer,
+  handleMarkOfferAccepted,
   handleMarkJoined,
   handleRestoreToShortlist, restoringId,
   handleInterviewReject,
@@ -38,7 +40,8 @@ export default function CandidateCard({
   onViewDetails,
 }) {
   const [rejectConfirm, setRejectConfirm] = useState(false);
-  const [pendingAction, setPendingAction] = useState(null); // { type: 'shortlist'|'reject', reason: '' }
+  const [pendingAction, setPendingAction] = useState(null); // { type: 'shortlist'|'reject', reasons: [] }
+  const [showHistory, setShowHistory] = useState(false);
   const [jumpTarget, setJumpTarget] = useState(null);
   const { user } = useAuth();
   const canViewCompensation = hasPermission(user, 'VIEW_COMPENSATION');
@@ -54,6 +57,7 @@ export default function CandidateCard({
   const isUpcoming = interviewDate && interviewDate > new Date();
 
   return (
+    <>
     <div key={c.id}>
       {/* Card */}
       <div className={`border rounded-xl p-4 ${isActive ? 'bg-white hover:shadow-md transition-shadow border-slate-200' : 'bg-slate-50/80 opacity-70 border-slate-100'}`}>
@@ -88,6 +92,16 @@ export default function CandidateCard({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {c.previous_mapping && (
+              <button
+                type="button"
+                title="This candidate has history from a previous job — click to view"
+                onClick={(e) => { e.stopPropagation(); setShowHistory(true); }}
+                className="flex items-center gap-1 text-[10px] font-semibold text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-full transition-colors"
+              >
+                <History className="w-2.5 h-2.5" /> Prev. job
+              </button>
+            )}
             <select
               value={c.priority || 'LOW'}
               onClick={(e) => e.stopPropagation()}
@@ -138,6 +152,7 @@ export default function CandidateCard({
             {macroStage === 'DROPPED' && c.drop_reason && (
               <span className="text-[10px] font-semibold bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">
                 {DROP_REASON_LABELS[c.drop_reason]}
+                {c.offer_status === 'OFFER_ACCEPTED' && ' · after accepting'}
               </span>
             )}
             {onViewDetails && (
@@ -244,13 +259,17 @@ export default function CandidateCard({
             <span>Updated {new Date(c.stage_updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
           )}
           {c.action_reason && (macroStage === 'SHORTLISTED' || macroStage === 'DROPPED') && (
-            <span className={`flex items-center gap-1 font-medium px-2 py-0.5 rounded-full text-[10px] ${
-              macroStage === 'SHORTLISTED'
-                ? 'bg-blue-50 text-blue-600 border border-blue-100'
-                : 'bg-rose-50 text-rose-600 border border-rose-100'
-            }`}>
-              {macroStage === 'SHORTLISTED' ? '✓' : '✕'} {c.action_reason}
-            </span>
+            <div className="flex flex-wrap gap-1">
+              {c.action_reason.split(', ').map((r, i) => (
+                <span key={i} className={`flex items-center gap-1 font-medium px-2 py-0.5 rounded-full text-[10px] ${
+                  macroStage === 'SHORTLISTED'
+                    ? 'bg-blue-50 text-blue-600 border border-blue-100'
+                    : 'bg-rose-50 text-rose-600 border border-rose-100'
+                }`}>
+                  {macroStage === 'SHORTLISTED' ? '✓' : '✕'} {r.trim()}
+                </span>
+              ))}
+            </div>
           )}
         </div>
 
@@ -263,33 +282,41 @@ export default function CandidateCard({
                 <div className="flex-1 flex flex-col gap-2 animate-in fade-in duration-150" onClick={e => e.stopPropagation()}>
                   <p className="text-[11px] font-semibold text-slate-600">
                     {pendingAction.type === 'shortlist' ? 'Why are you shortlisting?' : 'Why are you rejecting?'}
+                    <span className="font-normal text-slate-400 ml-1">(select all that apply)</span>
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {(pendingAction.type === 'shortlist' ? SHORTLIST_REASONS : APPLIED_REJECT_REASONS).map(r => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setPendingAction(p => ({ ...p, reason: r }))}
-                        className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
-                          pendingAction.reason === r
-                            ? pendingAction.type === 'shortlist'
-                              ? 'bg-blue-600 text-white border-blue-600'
-                              : 'bg-rose-600 text-white border-rose-600'
-                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
-                        }`}>
-                        {r}
-                      </button>
-                    ))}
+                    {(pendingAction.type === 'shortlist' ? SHORTLIST_REASONS : APPLIED_REJECT_REASONS).map(r => {
+                      const selected = pendingAction.reasons.includes(r);
+                      return (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setPendingAction(p => ({
+                            ...p,
+                            reasons: selected ? p.reasons.filter(x => x !== r) : [...p.reasons, r],
+                          }))}
+                          className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                            selected
+                              ? pendingAction.type === 'shortlist'
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-rose-600 text-white border-rose-600'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                          }`}>
+                          {r}
+                        </button>
+                      );
+                    })}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <button
                       type="button"
-                      disabled={!pendingAction.reason || shortlistingId === c.id}
+                      disabled={pendingAction.reasons.length === 0 || shortlistingId === c.id}
                       onClick={() => {
-                        const { type, reason } = pendingAction;
+                        const { type, reasons } = pendingAction;
+                        const reasonStr = reasons.join(', ');
                         setPendingAction(null);
-                        if (type === 'shortlist') handleShortlist(c, reason);
-                        else handleAppliedReject(c, reason);
+                        if (type === 'shortlist') handleShortlist(c, reasonStr);
+                        else handleAppliedReject(c, reasonStr);
                       }}
                       className={`text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-40 transition-colors text-white ${
                         pendingAction.type === 'shortlist' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-rose-600 hover:bg-rose-700'
@@ -307,7 +334,7 @@ export default function CandidateCard({
               ) : (
                 <>
                   <button type="button"
-                    onClick={(e) => { e.stopPropagation(); setPendingAction({ type: 'shortlist', reason: '' }); }}
+                    onClick={(e) => { e.stopPropagation(); setPendingAction({ type: 'shortlist', reasons: [] }); }}
                     disabled={shortlistingId === c.id}
                     className="text-xs font-semibold bg-blue-600 text-white rounded-lg px-3 py-1.5 hover:bg-blue-700 disabled:opacity-50 transition-colors">
                     {shortlistingId === c.id ? '...' : 'Shortlist'}
@@ -330,7 +357,13 @@ export default function CandidateCard({
                 {shortlistingId === c.id ? '...' : 'Move to Interview'}
               </button>
             )}
-            {macroStage === 'OFFERED' && (
+            {macroStage === 'OFFERED' && c.offer_status !== 'OFFER_ACCEPTED' && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); handleMarkOfferAccepted(c); }} disabled={shortlistingId === c.id}
+                className="text-xs font-semibold bg-teal-600 text-white rounded-lg px-3 py-1.5 hover:bg-teal-700 disabled:opacity-50 transition-colors">
+                {shortlistingId === c.id ? '...' : 'Mark Offer Accepted'}
+              </button>
+            )}
+            {macroStage === 'OFFERED' && c.offer_status === 'OFFER_ACCEPTED' && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleMarkJoined(c); }} disabled={shortlistingId === c.id}
                 className="text-xs font-semibold bg-emerald-600 text-white rounded-lg px-3 py-1.5 hover:bg-emerald-700 disabled:opacity-50 transition-colors">
                 {shortlistingId === c.id ? '...' : 'Mark Joined'}
@@ -516,7 +549,7 @@ export default function CandidateCard({
               {/* Reject button — Applied/Shortlisted only (NOT offered); opens reason picker */}
               {!['INTERVIEW', 'OFFERED', 'JOINED', 'DROPPED'].includes(macroStage) && !pendingAction && (
                 <button
-                  onClick={(e) => { e.stopPropagation(); setPendingAction({ type: 'reject', reason: '' }); }}
+                  onClick={(e) => { e.stopPropagation(); setPendingAction({ type: 'reject', reasons: [] }); }}
                   className="text-xs text-rose-500 hover:text-rose-700 px-2.5 py-1.5 border border-rose-100 hover:border-rose-200 rounded-lg transition-colors">
                   Reject
                 </button>
@@ -600,5 +633,13 @@ export default function CandidateCard({
 
       </div>
     </div>
+
+    {showHistory && c.previous_mapping && (
+      <PreviousJobHistoryModal
+        mapping={c}
+        onClose={() => setShowHistory(false)}
+      />
+    )}
+    </>
   );
 }

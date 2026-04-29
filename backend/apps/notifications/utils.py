@@ -66,9 +66,14 @@ def _send_email(event_key, to_email, subject, html_body):
         msg.attach_alternative(html_body, 'text/html')
         msg.send()
         _log(event_key, to_email, subject, 'sent')
-    except Exception as e:
+    except BaseException as e:
+        # Catch BaseException so SystemExit/KeyboardInterrupt from SMTP failures
+        # don't kill the gunicorn worker or abort the request.
         logger.error('Email failed [%s] to %s: %s', event_key, to_email, e)
-        _log(event_key, to_email, subject, 'failed', str(e))
+        try:
+            _log(event_key, to_email, subject, 'failed', str(e))
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------

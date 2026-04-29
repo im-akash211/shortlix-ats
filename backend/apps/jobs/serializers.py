@@ -2,6 +2,18 @@ from rest_framework import serializers
 from django.db.models import Count, Q
 from .models import Job, JobCollaborator, JobHistory, ALLOWED_TRANSITIONS
 
+SIGNAL_LABELS = {
+    'iit_grad':             'IIT Grad',
+    'nit_grad':             'NIT Grad',
+    'iim_grad':             'IIM Grad',
+    'top_institute':        'Top Institute',
+    'unicorn_exp':          'Unicorn Exp',
+    'top_internet_product': 'Top Internet Product',
+    'top_software_product': 'Top Software Product',
+    'top_it_services_mnc':  'Top IT Services MNC',
+    'top_consulting_mnc':   'Top Consulting MNC',
+}
+
 
 class JobCollaboratorSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.full_name', read_only=True)
@@ -34,7 +46,6 @@ class JobListSerializer(serializers.ModelSerializer):
     hiring_manager_name = serializers.CharField(source='hiring_manager.full_name', read_only=True)
     purpose = serializers.CharField(source='requisition.purpose', read_only=True, default='')
     purpose_code = serializers.CharField(source='requisition.purpose_code', read_only=True, default='')
-    # These fields are populated by annotations in JobListView.get_queryset() — no per-row DB queries.
     applies_count = serializers.IntegerField(read_only=True)
     shortlists_count = serializers.IntegerField(read_only=True)
     interviews_count = serializers.IntegerField(read_only=True)
@@ -43,22 +54,31 @@ class JobListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Job
-        fields = ['id', 'job_code', 'title', 'department', 'department_name',
-                  'hiring_manager', 'hiring_manager_name', 'location', 'status',
-                  'experience_min', 'experience_max', 'created_at', 'purpose', 'purpose_code',
-                  'applies_count', 'shortlists_count', 'interviews_count', 'offers_count', 'joined_count']
+        fields = [
+            'id', 'job_code', 'title', 'department', 'department_name',
+            'hiring_manager', 'hiring_manager_name', 'location', 'status',
+            'experience_min', 'experience_max', 'created_at', 'purpose', 'purpose_code',
+            'applies_count', 'shortlists_count', 'interviews_count', 'offers_count', 'joined_count',
+        ]
 
 
 class JobDetailSerializer(serializers.ModelSerializer):
-    department_name = serializers.CharField(source='department.name', read_only=True)
+    # Denormalised read-only fields
+    department_name     = serializers.CharField(source='department.name', read_only=True)
     hiring_manager_name = serializers.CharField(source='hiring_manager.full_name', read_only=True)
-    created_by_name = serializers.SerializerMethodField()
-    collaborators = JobCollaboratorSerializer(many=True, read_only=True)
-    pipeline_stats = serializers.SerializerMethodField()
-    history = serializers.SerializerMethodField()
-    recruiters_working = serializers.SerializerMethodField()
-    tat_days = serializers.SerializerMethodField()
-    budget = serializers.SerializerMethodField()
+    sub_vertical_1_name = serializers.CharField(source='sub_vertical_1.name', read_only=True, default=None)
+    sub_vertical_2_name = serializers.CharField(source='sub_vertical_2.name', read_only=True, default=None)
+    created_by_name     = serializers.SerializerMethodField()
+    # Requisition context (read-only)
+    purpose             = serializers.CharField(source='requisition.purpose', read_only=True, default='')
+    purpose_code        = serializers.CharField(source='requisition.purpose_code', read_only=True, default='')
+    # Relations
+    collaborators       = JobCollaboratorSerializer(many=True, read_only=True)
+    # Computed
+    pipeline_stats      = serializers.SerializerMethodField()
+    history             = serializers.SerializerMethodField()
+    recruiters_working  = serializers.SerializerMethodField()
+    candidate_signals   = serializers.SerializerMethodField()
 
     class Meta:
         model = Job
@@ -78,7 +98,7 @@ class JobDetailSerializer(serializers.ModelSerializer):
     def get_pipeline_stats(self, obj):
         from apps.candidates.models import MACRO_STAGE_CHOICES
         stats = {}
-        for stage_key, _label in MACRO_STAGE_CHOICES:
+        for stage_key, _ in MACRO_STAGE_CHOICES:
             stats[stage_key.lower()] = obj.candidate_mappings.filter(macro_stage=stage_key).count()
         stats['total'] = obj.candidate_mappings.count()
         return stats
@@ -90,50 +110,27 @@ class JobDetailSerializer(serializers.ModelSerializer):
     def get_recruiters_working(self, obj):
         result = []
         if obj.created_by and obj.created_by.role == 'recruiter':
-            result.append({
-                'id': str(obj.created_by.id),
-                'name': obj.created_by.full_name,
-                'email': obj.created_by.email,
-            })
+            result.append({'id': str(obj.created_by.id), 'name': obj.created_by.full_name, 'email': obj.created_by.email})
         for c in obj.collaborators.select_related('user').all():
             if c.user.role == 'recruiter' and not any(r['id'] == str(c.user.id) for r in result):
-                result.append({
-                    'id': str(c.user.id),
-                    'name': c.user.full_name,
-                    'email': c.user.email,
-                })
+                result.append({'id': str(c.user.id), 'name': c.user.full_name, 'email': c.user.email})
         return result
 
     def get_created_by_name(self, obj):
         if obj.created_by:
             return obj.created_by.full_name
-        # Fallback for jobs created before the created_by field was populated:
-        # the requisition always has a non-null created_by.
         try:
             return obj.requisition.created_by.full_name
         except Exception:
             return None
 
-    def get_tat_days(self, obj):
-        try:
-            return obj.requisition.tat_days
-        except Exception:
-            return None
-
-    def get_budget(self, obj):
-        request = self.context.get('request')
-        if request and hasattr(request.user, 'role') and request.user.role in ('admin', 'recruiter'):
-            try:
-                val = obj.requisition.budget
-                return str(val) if val is not None else None
-            except Exception:
-                return None
-        return None
+    def get_candidate_signals(self, obj):
+        return [label for key, label in SIGNAL_LABELS.items() if getattr(obj, key, False)]
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        # budget is already conditionally None from get_budget — clean up null entry for non-privileged roles
         request = self.context.get('request')
         if request and hasattr(request.user, 'role') and request.user.role not in ('admin', 'recruiter'):
-            data.pop('budget', None)
+            data.pop('budget_min', None)
+            data.pop('budget_max', None)
         return data

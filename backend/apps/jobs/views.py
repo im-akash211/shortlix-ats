@@ -163,7 +163,7 @@ class JobPipelineView(APIView):
         stage_param = request.query_params.get('stage', '').strip()
         include_progressed = request.query_params.get('include_progressed', 'false').lower() == 'true'
 
-        base_qs = CandidateJobMapping.objects.filter(job=job).select_related(
+        base_qs = CandidateJobMapping.objects.filter(job=job, is_archived=False).select_related(
             'candidate', 'job'
         ).prefetch_related('interviews')
 

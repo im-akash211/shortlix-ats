@@ -3,6 +3,7 @@ import { useDebounce } from '../../lib/useDebounce';
 import { PageLoader } from '../../components/LoadingDots';
 import { Search, Upload, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, X } from 'lucide-react';
 import { useAuth } from '../../lib/authContext';
+import { hasPermission } from '../../lib/permissions';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useCandidates } from './hooks/useCandidates';
@@ -25,6 +26,7 @@ import { SOURCE_LABELS, STAGE_LABELS } from './constants';
 
 export default function CandidatesPage() {
   const { user } = useAuth();
+  const isAdmin = hasPermission(user, 'MANAGE_USERS');
   const queryClient = useQueryClient();
 
   const {
@@ -253,6 +255,7 @@ export default function CandidatesPage() {
                       openDeleteConfirm={modals.openDeleteConfirm}
                       openResume={modals.openResume}
                       shareOpen={share.shareOpen}
+                      isAdmin={isAdmin}
                     />
                   ))}
                   {candidates.length === 0 && !loading && (
@@ -326,6 +329,7 @@ export default function CandidatesPage() {
         setMoveJobId={modals.setMoveJobId}
         allJobs={allJobs}
         handleMove={modals.handleMove}
+        selectedCandidate={modals.selectedCandidate}
       />
 
       <DeleteConfirmModal

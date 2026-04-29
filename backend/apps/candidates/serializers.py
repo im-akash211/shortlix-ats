@@ -36,11 +36,28 @@ class PipelineStageHistorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PipelineStageHistory
+        fields = ['id', 'from_macro_stage', 'to_macro_stage', 'moved_by_name', 'remarks', 'created_at']
+
+
+class ArchivedMappingSerializer(serializers.ModelSerializer):
+    """Minimal serializer for a previous (archived) job mapping, used nested inside the active one."""
+    job_code  = serializers.CharField(source='job.job_code', read_only=True)
+    job_title = serializers.CharField(source='job.title', read_only=True)
+    # Stage logs in chronological order so the UI can render a timeline
+    stage_logs = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CandidateJobMapping
         fields = [
-            'id', 'from_macro_stage', 'to_macro_stage',
-            'moved_by', 'moved_by_name', 'remarks', 'created_at',
+            'id', 'job', 'job_code', 'job_title',
+            'macro_stage', 'drop_reason', 'interview_status', 'action_reason',
+            'created_at', 'archived_at',
+            'stage_logs',
         ]
-        read_only_fields = ['id', 'created_at']
+
+    def get_stage_logs(self, obj):
+        logs = obj.stage_logs.select_related('moved_by').order_by('created_at')
+        return PipelineStageHistorySerializer(logs, many=True).data
 
 
 class CandidateJobMappingSerializer(serializers.ModelSerializer):
@@ -65,17 +82,19 @@ class CandidateJobMappingSerializer(serializers.ModelSerializer):
     candidate_designation = serializers.CharField(source='candidate.designation', read_only=True)
     job_title = serializers.CharField(source='job.title', read_only=True)
     job_code = serializers.CharField(source='job.job_code', read_only=True)
+    previous_mapping = ArchivedMappingSerializer(read_only=True)
 
     class Meta:
         model = CandidateJobMapping
         fields = [
             'id', 'candidate', 'job',
-            # New macro stage fields
+            # Core pipeline stage
             'macro_stage', 'offer_status', 'drop_reason',
             'current_interview_round', 'next_interview_date', 'priority',
             'screening_status',
             'interview_status',
             'action_reason',
+            'rejected_from_stage',
             # Audit
             'moved_by', 'stage_updated_at', 'created_at',
             # Denormalised candidate fields
@@ -86,6 +105,8 @@ class CandidateJobMappingSerializer(serializers.ModelSerializer):
             'job_title', 'job_code',
             # AI match
             'ai_match_score', 'ai_match_reason', 'ai_match_computed_at',
+            # Cross-job move history
+            'previous_mapping',
         ]
         read_only_fields = ['id', 'moved_by', 'stage_updated_at', 'created_at']
 

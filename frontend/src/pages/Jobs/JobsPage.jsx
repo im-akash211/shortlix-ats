@@ -346,6 +346,19 @@ export default function JobsPage() {
         setUploadResult={jobResume.setUploadResult}
         setUploadFile={jobResume.setUploadFile}
         setUploadError={jobResume.setUploadError}
+        targetJob={viewingJob}
+        onApplyExisting={(candidate) => {
+          jobResume.closeUploadModal();
+          candidatesLibApi.assignJob(candidate.id, viewingJob.id)
+            .then(() => {
+              pipeline.refreshAllCandidates(viewingJob.id);
+            })
+            .catch((err) => {
+              if (err.status === 409 && err.data?.conflict) {
+                setAssignConflict({ candidate, currentJob: err.data.current_job });
+              }
+            });
+        }}
       />
       <ReviewResumeModal
         isOpen={jobResumeActiveModal === 'review'}

@@ -145,6 +145,18 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
     }
   };
 
+  const handleMarkOfferAccepted = async (c) => {
+    setShortlistingId(c.id);
+    try {
+      await candidatesApi.changeStage(c.candidate, c.job, { offer_status: 'OFFER_ACCEPTED' });
+      await refreshAllCandidates(viewingJob.id);
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to mark offer as accepted');
+    } finally {
+      setShortlistingId(null);
+    }
+  };
+
   const handleMarkJoined = async (c) => {
     setShortlistingId(c.id);
     try {
@@ -389,6 +401,7 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
     handleAppliedReject,
     handleMoveToInterview,
     handleMakeOffer,
+    handleMarkOfferAccepted,
     handleMarkJoined,
     handleDropConfirm,
     handleNextRound,

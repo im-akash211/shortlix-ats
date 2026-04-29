@@ -23,6 +23,7 @@ export default function PipelineView({
   handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,
   handleMoveToInterview,
   handleMakeOffer,
+  handleMarkOfferAccepted,
   handleMarkJoined,
   handleRestoreToShortlist, restoringId,
   handleInterviewReject,
@@ -47,6 +48,7 @@ export default function PipelineView({
     handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,
     handleMoveToInterview,
     handleMakeOffer,
+    handleMarkOfferAccepted,
     handleMarkJoined,
     handleRestoreToShortlist, restoringId,
     handleInterviewReject,
@@ -118,10 +120,10 @@ export default function PipelineView({
         </div>
       )}
       {pipelineTab === 'Offered' && (() => {
-        const pendingCount = allCandidates.filter(c => c.macro_stage === 'OFFERED').length;
-        const joinedCount  = allCandidates.filter(c => c.macro_stage === 'JOINED').length;
-        // Only count candidates dropped AFTER being offered (not pre-offer rejections)
-        const droppedCount = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED').length;
+        const pendingCount  = allCandidates.filter(c => c.macro_stage === 'OFFERED' && c.offer_status !== 'OFFER_ACCEPTED').length;
+        const acceptedCount = allCandidates.filter(c => c.macro_stage === 'OFFERED' && c.offer_status === 'OFFER_ACCEPTED').length;
+        const joinedCount   = allCandidates.filter(c => c.macro_stage === 'JOINED').length;
+        const droppedCount  = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED').length;
         return (
           <div className="px-4 py-2.5 border-b border-slate-100 shrink-0 flex items-center gap-2 overflow-x-auto">
             <button
@@ -130,6 +132,13 @@ export default function PipelineView({
             >
               Acceptance Pending
               <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${offeredFilter === 'PENDING' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`}>{pendingCount}</span>
+            </button>
+            <button
+              onClick={() => setOfferedFilter('ACCEPTED')}
+              className={`text-[10px] font-bold px-3 py-1 rounded-full transition-colors whitespace-nowrap flex items-center gap-1.5 ${offeredFilter === 'ACCEPTED' ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+            >
+              Offer Accepted
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${offeredFilter === 'ACCEPTED' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`}>{acceptedCount}</span>
             </button>
             <button
               onClick={() => setOfferedFilter('JOINED')}
@@ -156,25 +165,62 @@ export default function PipelineView({
         ) : pipelineTab === 'Offered' ? (
           /* Offered tab: Filtered by sub-tab */
           (() => {
-            let filtered = [];
-            if (offeredFilter === 'PENDING') filtered = allCandidates.filter(c => c.macro_stage === 'OFFERED');
-            else if (offeredFilter === 'JOINED') filtered = allCandidates.filter(c => c.macro_stage === 'JOINED');
-            // Only show post-offer drops (CANDIDATE_DROP / NO_SHOW), not pre-offer recruiter rejections
-            else if (offeredFilter === 'DROPPED') filtered = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED');
+            if (offeredFilter === 'PENDING') {
+              const filtered = allCandidates.filter(c => c.macro_stage === 'OFFERED' && c.offer_status !== 'OFFER_ACCEPTED');
+              if (filtered.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-slate-400"><Users className="w-10 h-10 mb-2" /><p className="text-sm">No candidates pending acceptance</p></div>;
+              return <div className="flex flex-col gap-4 pb-4">{filtered.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}</div>;
+            }
 
-            if (filtered.length === 0) {
+            if (offeredFilter === 'ACCEPTED') {
+              const filtered = allCandidates.filter(c => c.macro_stage === 'OFFERED' && c.offer_status === 'OFFER_ACCEPTED');
+              if (filtered.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-slate-400"><Users className="w-10 h-10 mb-2" /><p className="text-sm">No candidates have accepted the offer yet</p></div>;
+              return <div className="flex flex-col gap-4 pb-4">{filtered.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}</div>;
+            }
+
+            if (offeredFilter === 'JOINED') {
+              const filtered = allCandidates.filter(c => c.macro_stage === 'JOINED');
+              if (filtered.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-slate-400"><Users className="w-10 h-10 mb-2" /><p className="text-sm">No candidates have joined yet</p></div>;
+              return <div className="flex flex-col gap-4 pb-4">{filtered.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}</div>;
+            }
+
+            if (offeredFilter === 'DROPPED') {
+              // All post-offer drops — split into before accepting vs after accepting
+              const droppedBeforeAccept = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED' && c.offer_status !== 'OFFER_ACCEPTED');
+              const droppedAfterAccept  = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED' && c.offer_status === 'OFFER_ACCEPTED');
+              if (droppedBeforeAccept.length === 0 && droppedAfterAccept.length === 0) {
+                return <div className="flex flex-col items-center justify-center py-16 text-slate-400"><Users className="w-10 h-10 mb-2" /><p className="text-sm">No dropped candidates</p></div>;
+              }
               return (
-                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                  <Users className="w-10 h-10 mb-2" />
-                  <p className="text-sm">No candidates found in this section</p>
+                <div className="flex flex-col gap-3 pb-4">
+                  {droppedBeforeAccept.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2 py-1">
+                        <div className="flex-1 border-t border-dashed border-rose-200" />
+                        <span className="text-[10px] font-semibold text-rose-400 shrink-0 px-2 bg-rose-50 rounded-full border border-rose-100">
+                          Dropped before accepting ({droppedBeforeAccept.length})
+                        </span>
+                        <div className="flex-1 border-t border-dashed border-rose-200" />
+                      </div>
+                      {droppedBeforeAccept.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+                    </>
+                  )}
+                  {droppedAfterAccept.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2 py-1 mt-1">
+                        <div className="flex-1 border-t border-dashed border-rose-300" />
+                        <span className="text-[10px] font-semibold text-rose-500 shrink-0 px-2 bg-rose-50 rounded-full border border-rose-200">
+                          Dropped after accepting ({droppedAfterAccept.length})
+                        </span>
+                        <div className="flex-1 border-t border-dashed border-rose-300" />
+                      </div>
+                      {droppedAfterAccept.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+                    </>
+                  )}
                 </div>
               );
             }
-            return (
-              <div className="flex flex-col gap-4 pb-4">
-                {filtered.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
-              </div>
-            );
+
+            return null;
           })()
         ) : (
           /* Applied / Shortlisted / Interview tabs */
@@ -182,11 +228,15 @@ export default function PipelineView({
             const currentStage = STAGE_TAB_MAP[pipelineTab];
             const stagePool = allCandidates.filter(c => c.macro_stage === currentStage);
 
-            // Derive dimmed candidates directly from allCandidates (no separate API call needed)
-            // Recruiter-rejected candidates (DROPPED + drop_reason=REJECTED) are shown in a separate
-            // "Rejected" section, NOT in the "progressed" dimmed section.
-            const preOfferRejected = (pipelineTab === 'Applied' || pipelineTab === 'Shortlisted' || pipelineTab === 'Interview')
-              ? allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason === 'REJECTED')
+            // Recruiter-rejected candidates are shown only in the tab matching their
+            // rejected_from_stage so they don't bleed across all tabs.
+            const stageKey = STAGE_TAB_MAP[pipelineTab]; // e.g. 'APPLIED', 'SHORTLISTED'
+            const preOfferRejected = (pipelineTab === 'Applied' || pipelineTab === 'Shortlisted')
+              ? allCandidates.filter(c =>
+                  c.macro_stage === 'DROPPED' &&
+                  c.drop_reason === 'REJECTED' &&
+                  c.rejected_from_stage === stageKey
+                )
               : [];
 
             let localDimmed = [];
