@@ -129,6 +129,39 @@ class JobDetailView(generics.RetrieveUpdateAPIView):
         if old_jd != updated.job_description:
             log_job_history(updated, 'jd_updated', user, 'Job description updated')
 
+        # Activity logging for important field changes (non-fatal, additive only)
+        _LOGGED_CHANGES = [
+            (old_status != updated.status, 'status_changed', 'Status',
+             old_status.capitalize(), updated.status.capitalize()),
+            (old_title != updated.title, 'title_updated', 'Title', old_title, updated.title),
+            (old_hm_id != str(updated.hiring_manager_id), 'hiring_manager_changed', 'Hiring Manager', '', ''),
+            (old_jd != updated.job_description, 'jd_updated', 'Job Description', '', ''),
+        ]
+        try:
+            from apps.activity.utils import log_activity
+            _actor_name = user.full_name or user.email
+            for changed, _action, _field_label, _prev, _new in _LOGGED_CHANGES:
+                if changed:
+                    _sentence = f'{_actor_name} updated {_field_label} for {updated.title}'
+                    log_activity(
+                        actor=user,
+                        action='job_updated',
+                        entity_type='job',
+                        entity_id=updated.id,
+                        sentence=_sentence,
+                        metadata={
+                            'job_id': str(updated.id),
+                            'job_title': updated.title,
+                            'job_code': updated.job_code or '',
+                            'field_name': _action,
+                            'field_label': _field_label,
+                            'previous_value': _prev,
+                            'new_value': _new,
+                        },
+                    )
+        except Exception:
+            pass
+
 
 class JobDeleteView(APIView):
     permission_classes = [rbac_perm('EDIT_JOBS')]
@@ -164,8 +197,13 @@ class JobPipelineView(APIView):
         include_progressed = request.query_params.get('include_progressed', 'false').lower() == 'true'
 
         base_qs = CandidateJobMapping.objects.filter(job=job, is_archived=False).select_related(
-            'candidate', 'job'
-        ).prefetch_related('interviews')
+            'candidate', 'job',
+            'previous_mapping__job__department', 'previous_mapping__job__hiring_manager',
+        ).prefetch_related(
+            'interviews',
+            'previous_mapping__interviews',
+            'previous_mapping__stage_logs__moved_by',
+        )
 
         # Priority sort order helper
         PRIORITY_ORDER = {'HIGH': 0, 'MEDIUM': 1, 'LOW': 2}

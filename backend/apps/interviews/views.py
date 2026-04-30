@@ -140,6 +140,37 @@ class InterviewListCreateView(generics.ListCreateAPIView):
         except Exception as exc:
             logger.warning('Interview notification failed (non-fatal): %s', exc)
 
+        try:
+            from apps.activity.utils import log_activity
+            _mapping = interview.mapping
+            _candidate = _mapping.candidate
+            _job = _mapping.job
+            _actor_name = user.full_name or user.email
+            _c_name = _candidate.full_name or _candidate.email
+            _action = 'interview_rescheduled' if is_reschedule else 'interview_scheduled'
+            _verb = 'rescheduled' if is_reschedule else 'scheduled'
+            _interviewer = interview.interviewer
+            log_activity(
+                actor=user,
+                action=_action,
+                entity_type='interview',
+                entity_id=interview.id,
+                sentence=f'{_actor_name} {_verb} {interview.round_label} for {_c_name} ({_job.title})',
+                metadata={
+                    'candidate_id': str(_candidate.id),
+                    'candidate_name': _c_name,
+                    'job_id': str(_job.id),
+                    'job_title': _job.title,
+                    'interview_id': str(interview.id),
+                    'round_name': interview.round_name or '',
+                    'round_label': interview.round_label or '',
+                    'scheduled_at': interview.scheduled_at.isoformat() if interview.scheduled_at else '',
+                    'interviewer_name': (_interviewer.full_name or _interviewer.email) if _interviewer else '',
+                },
+            )
+        except Exception:
+            pass
+
 
 # ---------------------------------------------------------------------------
 # Interview Detail / Update
@@ -165,12 +196,47 @@ class InterviewDetailView(generics.RetrieveUpdateAPIView):
         if interview.computed_status == 'COMPLETED' and not has_permission(request.user, 'MANAGE_USERS'):
             raise PermissionDenied('Completed interviews cannot be modified.')
 
+        # Capture old scheduled_at before update for dedup check
+        _old_scheduled_at = interview.scheduled_at
+
         response = super().update(request, *args, **kwargs)
         # Notify as reschedule if scheduled_at changed
         if 'scheduled_at' in request.data:
             interview.refresh_from_db()
             from apps.notifications.utils import notify_interview_scheduled
             notify_interview_scheduled(interview, is_reschedule=True)
+
+            # Activity log only when the time actually changed
+            if interview.scheduled_at != _old_scheduled_at:
+                try:
+                    from apps.activity.utils import log_activity
+                    _mapping = interview.mapping
+                    _candidate = _mapping.candidate
+                    _job = _mapping.job
+                    _actor_name = request.user.full_name or request.user.email
+                    _c_name = _candidate.full_name or _candidate.email
+                    _interviewer = interview.interviewer
+                    log_activity(
+                        actor=request.user,
+                        action='interview_rescheduled',
+                        entity_type='interview',
+                        entity_id=interview.id,
+                        sentence=f'{_actor_name} rescheduled {interview.round_label} for {_c_name} ({_job.title})',
+                        metadata={
+                            'candidate_id': str(_candidate.id),
+                            'candidate_name': _c_name,
+                            'job_id': str(_job.id),
+                            'job_title': _job.title,
+                            'interview_id': str(interview.id),
+                            'round_name': interview.round_name or '',
+                            'round_label': interview.round_label or '',
+                            'scheduled_at': interview.scheduled_at.isoformat() if interview.scheduled_at else '',
+                            'interviewer_name': (_interviewer.full_name or _interviewer.email) if _interviewer else '',
+                        },
+                    )
+                except Exception:
+                    pass
+
         return response
 
 
@@ -220,7 +286,36 @@ class InterviewFeedbackCreateView(generics.CreateAPIView):
         interview.status = 'completed'
         interview.round_status = 'COMPLETED'
         interview.save(update_fields=['status', 'round_status'])
-        serializer.save(interview=interview, interviewer=user)
+        feedback = serializer.save(interview=interview, interviewer=user)
+
+        try:
+            from apps.activity.utils import log_activity, DECISION_DISPLAY
+            _mapping = interview.mapping
+            _candidate = _mapping.candidate
+            _job = _mapping.job
+            _actor_name = user.full_name or user.email
+            _c_name = _candidate.full_name or _candidate.email
+            _decision = feedback.decision or ''
+            _decision_display = DECISION_DISPLAY.get(_decision, _decision)
+            log_activity(
+                actor=user,
+                action='interview_feedback_submitted',
+                entity_type='interview',
+                entity_id=interview.id,
+                sentence=f"{_actor_name} submitted feedback for {_c_name}'s {interview.round_label} — {_decision_display}",
+                metadata={
+                    'candidate_id': str(_candidate.id),
+                    'candidate_name': _c_name,
+                    'job_id': str(_job.id),
+                    'job_title': _job.title,
+                    'interview_id': str(interview.id),
+                    'round_label': interview.round_label or '',
+                    'decision': _decision,
+                    'overall_rating': feedback.overall_rating,
+                },
+            )
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +419,32 @@ class SetRoundResultView(APIView):
                 response_data['suggest_move_to_offered'] = True
                 from apps.notifications.utils import notify_candidate_round_passed
                 notify_candidate_round_passed(mapping.candidate, mapping.job, interview)
+
+        try:
+            from apps.activity.utils import log_activity, RESULT_DISPLAY
+            _candidate = mapping.candidate
+            _job = mapping.job
+            _actor_name = request.user.full_name or request.user.email
+            _c_name = _candidate.full_name or _candidate.email
+            _result_display = RESULT_DISPLAY.get(round_result, round_result)
+            log_activity(
+                actor=request.user,
+                action='round_result_set',
+                entity_type='interview',
+                entity_id=interview.id,
+                sentence=f"{_actor_name} marked {_c_name}'s {interview.round_label} as {_result_display}",
+                metadata={
+                    'candidate_id': str(_candidate.id),
+                    'candidate_name': _c_name,
+                    'job_id': str(_job.id),
+                    'job_title': _job.title,
+                    'interview_id': str(interview.id),
+                    'round_label': interview.round_label or '',
+                    'round_result': round_result,
+                },
+            )
+        except Exception:
+            pass
 
         return Response(response_data)
 

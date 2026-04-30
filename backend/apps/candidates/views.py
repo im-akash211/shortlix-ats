@@ -261,6 +261,15 @@ class CandidateChangeStageView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # Restore from DROPPED must go back to exactly where the candidate was rejected
+            if old_stage == 'DROPPED' and mapping.rejected_from_stage:
+                if new_stage != mapping.rejected_from_stage:
+                    return Response(
+                        {'error': f'Candidate was rejected from {mapping.rejected_from_stage}. '
+                                  f'Restore must go back to {mapping.rejected_from_stage}.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
             # Stage-specific validations
             if new_stage == 'DROPPED':
                 drop_reason = request.data.get('drop_reason')
@@ -289,6 +298,7 @@ class CandidateChangeStageView(APIView):
             elif new_stage == 'OFFERED':
                 mapping.offer_status = request.data.get('offer_status', 'OFFER_SENT')
                 mapping.drop_reason = None
+                mapping.rejected_from_stage = ''
 
             elif new_stage == 'INTERVIEW':
                 # Only set R1 if not already in interview (prevent overwriting current round)
@@ -296,6 +306,7 @@ class CandidateChangeStageView(APIView):
                     mapping.current_interview_round = 'R1'
                 mapping.drop_reason = None
                 mapping.offer_status = None
+                mapping.rejected_from_stage = ''
 
             else:
                 mapping.drop_reason = None
@@ -321,6 +332,54 @@ class CandidateChangeStageView(APIView):
                 moved_by=request.user,
                 remarks=request.data.get('remarks', ''),
             )
+
+        # Activity logging (non-fatal, additive only)
+        try:
+            from apps.activity.utils import log_activity, STAGE_DISPLAY
+            _candidate = mapping.candidate
+            _job = mapping.job
+            _actor_name = request.user.full_name or request.user.email
+            _c_name = _candidate.full_name or _candidate.email
+            if new_stage == 'DROPPED':
+                _sentence = f'{_actor_name} rejected {_c_name} from {_job.title}'
+                log_activity(
+                    actor=request.user,
+                    action='candidate_rejected',
+                    entity_type='candidate',
+                    entity_id=_candidate.id,
+                    sentence=_sentence,
+                    metadata={
+                        'candidate_id': str(_candidate.id),
+                        'candidate_name': _c_name,
+                        'job_id': str(_job.id),
+                        'job_title': _job.title,
+                        'drop_reason': mapping.drop_reason or '',
+                        'mapping_id': str(mapping.id),
+                    },
+                )
+            else:
+                _from = STAGE_DISPLAY.get(old_stage, old_stage)
+                _to = STAGE_DISPLAY.get(new_stage, new_stage)
+                _sentence = f'{_actor_name} moved {_c_name} from {_from} to {_to} for {_job.title}'
+                log_activity(
+                    actor=request.user,
+                    action='stage_changed',
+                    entity_type='candidate',
+                    entity_id=_candidate.id,
+                    sentence=_sentence,
+                    metadata={
+                        'candidate_id': str(_candidate.id),
+                        'candidate_name': _c_name,
+                        'job_id': str(_job.id),
+                        'job_title': _job.title,
+                        'from_stage': old_stage,
+                        'to_stage': new_stage,
+                        'mapping_id': str(mapping.id),
+                        'remarks': request.data.get('remarks', ''),
+                    },
+                )
+        except Exception:
+            pass
 
         from apps.notifications.utils import (
             notify_candidate_shortlisted, notify_candidate_offered,
@@ -469,6 +528,33 @@ class CandidateMoveJobView(APIView):
                 moved_by=request.user,
                 remarks=f'Moved from job {old_mapping.job.job_code if old_mapping else "unknown"}',
             )
+
+        # Activity logging (non-fatal, additive only)
+        try:
+            from apps.activity.utils import log_activity
+            _candidate = new_mapping.candidate
+            _new_job = new_mapping.job
+            _actor_name = request.user.full_name or request.user.email
+            _c_name = _candidate.full_name or _candidate.email
+            _old_job_title = old_mapping.job.title if old_mapping else 'Unknown'
+            log_activity(
+                actor=request.user,
+                action='candidate_moved_job',
+                entity_type='candidate',
+                entity_id=_candidate.id,
+                sentence=f'{_actor_name} moved {_c_name} from {_old_job_title} to {_new_job.title}',
+                metadata={
+                    'candidate_id': str(_candidate.id),
+                    'candidate_name': _c_name,
+                    'old_job_id': str(old_mapping.job.id) if old_mapping else '',
+                    'old_job_title': _old_job_title,
+                    'new_job_id': str(_new_job.id),
+                    'new_job_title': _new_job.title,
+                },
+            )
+        except Exception:
+            pass
+
         return Response(CandidateJobMappingSerializer(new_mapping).data, status=status.HTTP_201_CREATED)
 
 

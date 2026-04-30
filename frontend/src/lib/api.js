@@ -376,3 +376,8 @@ export const users = {
   adminChangePassword: (id, newPassword) =>
     request(`/users/${id}/password/`, { method: 'PATCH', body: JSON.stringify({ new_password: newPassword }) }),
 };
+
+// ---- Activity Log (Admin only) ---- //
+export const activity = {
+  list: (params = {}) => request('/activity/?' + new URLSearchParams(params)),
+};

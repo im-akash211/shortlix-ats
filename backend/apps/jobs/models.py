@@ -151,3 +151,26 @@ def log_job_created(sender, instance, created, **kwargs):
             changed_by=instance.created_by,
             description='Job created',
         )
+        try:
+            from apps.activity.utils import log_activity
+            _actor = instance.created_by
+            _actor_name = (_actor.full_name or _actor.email) if _actor else 'System'
+            _dept = instance.department.name if instance.department_id else ''
+            _hm = instance.hiring_manager
+            _hm_name = (_hm.full_name or _hm.email) if _hm else ''
+            log_activity(
+                actor=_actor,
+                action='job_created',
+                entity_type='job',
+                entity_id=instance.id,
+                sentence=f'{_actor_name} created job {instance.title} ({instance.job_code or ""})',
+                metadata={
+                    'job_id': str(instance.id),
+                    'job_title': instance.title,
+                    'job_code': instance.job_code or '',
+                    'department': _dept,
+                    'hiring_manager_name': _hm_name,
+                },
+            )
+        except Exception:
+            pass

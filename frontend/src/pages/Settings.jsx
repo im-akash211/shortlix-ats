@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronDown, ChevronUp, Users, Plus, X, Shield, Building2, Pencil, Trash2, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { users as usersApi, departments as deptApi, roles as rolesApi, auth as authApi } from '../lib/api';
 import { useAuth } from '../lib/authContext';
+import ActivityMonitorSection from './Settings/ActivityMonitorSection';
 
 // ── Shared helpers ─────────────────────────────────────────────────────────────
 
@@ -1020,6 +1021,16 @@ export default function Settings() {
           >
             {openSection === 'Change Password' && <ChangePasswordSection />}
           </Section>
+
+          {isAdmin && (
+            <Section
+              title="Activity Monitor"
+              isOpen={openSection === 'Activity Monitor'}
+              onToggle={() => toggle('Activity Monitor')}
+            >
+              {openSection === 'Activity Monitor' && <ActivityMonitorSection />}
+            </Section>
+          )}
 
           {STATIC_SECTIONS.map((item) => (
             <Section

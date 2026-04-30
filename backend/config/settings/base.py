@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     'apps.accounts', 'apps.departments', 'apps.requisitions',
     'apps.jobs', 'apps.candidates', 'apps.interviews',
     'apps.dashboard', 'apps.core', 'apps.resumes', 'apps.notifications',
+    'apps.activity',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
