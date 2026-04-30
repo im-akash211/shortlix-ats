@@ -70,7 +70,7 @@ VALID_TRANSITIONS = {
     'INTERVIEW':   ['INTERVIEW', 'OFFERED', 'DROPPED'],
     'OFFERED':     ['JOINED', 'DROPPED'],
     'JOINED':      [],
-    'DROPPED':     ['SHORTLISTED'],
+    'DROPPED':     ['APPLIED', 'SHORTLISTED', 'INTERVIEW', 'OFFERED'],
 }
 
 

@@ -41,23 +41,38 @@ class PipelineStageHistorySerializer(serializers.ModelSerializer):
 
 class ArchivedMappingSerializer(serializers.ModelSerializer):
     """Minimal serializer for a previous (archived) job mapping, used nested inside the active one."""
-    job_code  = serializers.CharField(source='job.job_code', read_only=True)
-    job_title = serializers.CharField(source='job.title', read_only=True)
-    # Stage logs in chronological order so the UI can render a timeline
-    stage_logs = serializers.SerializerMethodField()
+    job_code             = serializers.CharField(source='job.job_code', read_only=True)
+    job_title            = serializers.CharField(source='job.title', read_only=True)
+    department_name      = serializers.CharField(source='job.department.name', read_only=True)
+    hiring_manager_name  = serializers.CharField(source='job.hiring_manager.full_name', read_only=True)
+    stage_logs           = serializers.SerializerMethodField()
+    latest_round         = serializers.SerializerMethodField()
 
     class Meta:
         model = CandidateJobMapping
         fields = [
-            'id', 'job', 'job_code', 'job_title',
+            'id', 'job', 'job_code', 'job_title', 'department_name', 'hiring_manager_name',
             'macro_stage', 'drop_reason', 'interview_status', 'action_reason',
+            'current_interview_round',
             'created_at', 'archived_at',
-            'stage_logs',
+            'stage_logs', 'latest_round',
         ]
 
     def get_stage_logs(self, obj):
         logs = obj.stage_logs.select_related('moved_by').order_by('created_at')
         return PipelineStageHistorySerializer(logs, many=True).data
+
+    def get_latest_round(self, obj):
+        interview = obj.interviews.order_by('-created_at').first()
+        if not interview:
+            return None
+        return {
+            'id': str(interview.id),
+            'round_name': interview.round_name,
+            'round_status': interview.round_status,
+            'round_result': interview.round_result,
+            'scheduled_at': interview.scheduled_at.isoformat() if interview.scheduled_at else None,
+        }
 
 
 class CandidateJobMappingSerializer(serializers.ModelSerializer):

@@ -92,16 +92,6 @@ export default function CandidateCard({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {c.previous_mapping && (
-              <button
-                type="button"
-                title="This candidate has history from a previous job — click to view"
-                onClick={(e) => { e.stopPropagation(); setShowHistory(true); }}
-                className="flex items-center gap-1 text-[10px] font-semibold text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-full transition-colors"
-              >
-                <History className="w-2.5 h-2.5" /> Prev. job
-              </button>
-            )}
             <select
               value={c.priority || 'LOW'}
               onClick={(e) => e.stopPropagation()}
@@ -155,13 +145,23 @@ export default function CandidateCard({
                 {c.offer_status === 'OFFER_ACCEPTED' && ' · after accepting'}
               </span>
             )}
+            {c.previous_mapping && (
+              <button
+                type="button"
+                title="This candidate has history from a previous job — click to view"
+                onClick={(e) => { e.stopPropagation(); setShowHistory(true); }}
+                className="inline-flex items-center gap-1 leading-none text-[10px] font-semibold text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-full transition-colors"
+              >
+                <History className="w-2.5 h-2.5 shrink-0" /><span>↔ Moved</span>
+              </button>
+            )}
             {onViewDetails && (
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onViewDetails(c); }}
-                className="flex items-center gap-1 text-[10px] font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full transition-colors"
+                className="inline-flex items-center gap-1 leading-none text-[10px] font-semibold text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full transition-colors"
               >
-                <ExternalLink className="w-2.5 h-2.5" /> View Details
+                <ExternalLink className="w-2.5 h-2.5 shrink-0" /><span>Details</span>
               </button>
             )}
             {isActive && (
@@ -225,7 +225,8 @@ export default function CandidateCard({
           </div>
         </div>
 
-        {/* ROW 2: Skills & Tags */}
+
+        {/* ROW 3: Skills & Tags */}
         {(c.candidate_skills?.length > 0 || c.candidate_tags?.length > 0) && (
           <div className="flex flex-col gap-1.5 mb-2.5">
             {c.candidate_skills?.length > 0 && (
@@ -247,7 +248,7 @@ export default function CandidateCard({
           </div>
         )}
 
-        {/* ROW 3: Metadata strip */}
+        {/* ROW 4: Metadata strip */}
         <div className="flex items-center gap-3 text-[11px] text-slate-400 mb-3 flex-wrap">
           {interviewDate && (
             <span className={`flex items-center gap-1 ${isUpcoming ? 'text-purple-600 font-medium' : ''}`}>
@@ -273,7 +274,7 @@ export default function CandidateCard({
           )}
         </div>
 
-        {/* ROW 4: Actions */}
+        {/* ROW 5: Actions */}
         {isActive && (
           <div className="flex items-center gap-2 pt-2.5 border-t border-slate-100">
             {macroStage === 'APPLIED' && (

@@ -207,6 +207,7 @@ export default function Requisitions({ user }) {
     placeholderData: (previousData) => previousData,
   });
   const loading = reqIsLoading || reqIsPlaceholder;
+  const showStale = reqIsPlaceholder;
 
   const data  = reqQueryData ? (reqQueryData.results || reqQueryData) : [];
   const total = reqQueryData?.count ?? data.length;
@@ -529,7 +530,7 @@ export default function Requisitions({ user }) {
       <div className="p-6 flex flex-col gap-6 h-full overflow-hidden">
         <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col min-h-0">
           <div className="flex items-center justify-between px-6 border-b border-slate-200">
-            <div className="flex gap-6">
+            <div className="flex gap-6 items-center">
               {['My Requisitions', 'All Requisitions'].map((tab) => (
                 <button
                   key={tab}
@@ -539,37 +540,45 @@ export default function Requisitions({ user }) {
                   {tab}
                 </button>
               ))}
+              <span className="text-xs text-slate-500 font-medium px-2 py-1 bg-slate-100 rounded-full">{total}</span>
             </div>
-            <button
-              onClick={() => navigate(ROUTES.REQUISITIONS.NEW)}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium transition-colors shadow-sm"
-            >
-              Create Requisition
-            </button>
-          </div>
-
-          <div className="p-4 border-b border-slate-200 bg-white flex items-center gap-4">
-            <div className="flex items-center border border-slate-300 rounded-md overflow-hidden bg-white w-96 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && setSearch(searchInput)}
-                  placeholder="Search Keywords"
-                  className="w-full px-3 py-2 text-sm outline-none"
-                />
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <div className="flex items-center gap-3">
+              <div className="flex items-center border border-slate-300 rounded-md overflow-hidden bg-white w-64 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && setSearch(searchInput)}
+                    placeholder="Search keywords…"
+                    className="w-full px-3 py-2 text-sm outline-none"
+                  />
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                </div>
               </div>
+              <button
+                onClick={() => navigate(ROUTES.REQUISITIONS.NEW)}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm whitespace-nowrap"
+              >
+                Create Requisition
+              </button>
             </div>
-            <span className="text-xs text-slate-500">{total} requisitions</span>
           </div>
 
-          <div className="overflow-auto flex-1">
-            {loading ? (
+          <div className="overflow-auto flex-1 overscroll-none bg-white">
+            {(reqIsLoading || showStale) ? (
               <PageLoader label="Loading requisitions…" />
             ) : (
-              <table className="w-full text-sm text-left border-collapse">
+              <table className="w-full text-sm text-left border-collapse table-fixed border-0">
+                <colgroup>
+                  <col className="w-[18%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[10%]" />
+                </colgroup>
                 <thead className="bg-slate-50 text-slate-700 font-semibold sticky top-0 z-10 shadow-sm">
                   <tr>
                     <th className="px-4 py-3 border-b border-slate-200">Requisition</th>
@@ -581,9 +590,9 @@ export default function Requisitions({ user }) {
                     <th className="px-4 py-3 border-b border-slate-200 text-center">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {data.map((req) => (
-                    <tr key={req.id} className="hover:bg-blue-50/50 transition-colors">
+                    <tr key={req.id} className="border-b border-slate-100 last:border-b-0 hover:bg-blue-50/50 transition-colors">
                       <td className="px-4 py-4 align-top">
                         <div className="flex flex-col gap-1">
                           <span className="font-semibold text-slate-800 text-sm hover:text-blue-600 cursor-pointer">{req.title}</span>
@@ -603,9 +612,9 @@ export default function Requisitions({ user }) {
                           </span>
                         ) : '—'}
                       </td>
-                      <td className="px-4 py-4 align-top text-slate-600">{req.department_name}</td>
+                      <td className="px-4 py-4 align-top text-slate-600 truncate max-w-0">{req.department_name}</td>
                       <td className="px-4 py-4 align-top text-slate-600">{new Date(req.created_at).toLocaleDateString('en-GB')}</td>
-                      <td className="px-4 py-4 align-top text-slate-600">{req.hiring_manager_name}</td>
+                      <td className="px-4 py-4 align-top text-slate-600 truncate max-w-0">{req.hiring_manager_name}</td>
                       <td className="px-4 py-4 align-top text-center relative">
                         <button
                           onClick={() => setActionMenuId(actionMenuId === req.id ? null : req.id)}

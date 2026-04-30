@@ -329,7 +329,6 @@ export default function CandidatesPage() {
         setMoveJobId={modals.setMoveJobId}
         allJobs={allJobs}
         handleMove={modals.handleMove}
-        selectedCandidate={modals.selectedCandidate}
       />
 
       <DeleteConfirmModal

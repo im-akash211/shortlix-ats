@@ -138,7 +138,7 @@ export default function JobDetailPanel({
               {[...Array(5)].map((_, i) => <div key={i} className="h-4 bg-slate-100 rounded" />)}
             </div>
           ) : jobDetail ? (
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col">
               {/* Card header */}
               <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
                 <div className="flex items-start gap-3">
@@ -163,20 +163,18 @@ export default function JobDetailPanel({
 
                 {/* ── Basic Info ── */}
                 <SectionHeader>Basic Info</SectionHeader>
-                <InfoRow label="Job Code">{jobDetail.job_code}</InfoRow>
-                <InfoRow label="Job Title">{jobDetail.title}</InfoRow>
                 <InfoRow label="Department">{jobDetail.department_name || '—'}</InfoRow>
                 {has(jobDetail.sub_vertical_1_name) && <InfoRow label="Sub Vertical 1">{jobDetail.sub_vertical_1_name}</InfoRow>}
                 {has(jobDetail.sub_vertical_2_name) && <InfoRow label="Sub Vertical 2">{jobDetail.sub_vertical_2_name}</InfoRow>}
                 {has(jobDetail.designation) && <InfoRow label="Designation">{jobDetail.designation}</InfoRow>}
                 {has(jobDetail.project_name) && <InfoRow label="Project">{jobDetail.project_name}</InfoRow>}
                 {has(jobDetail.client_name) && <InfoRow label="Client">{jobDetail.client_name}</InfoRow>}
-                {has(jobDetail.purpose) && (
+                {/* {has(jobDetail.purpose) && (
                   <InfoRow label="Purpose">
                     <span className="capitalize">{jobDetail.purpose}</span>
                     {has(jobDetail.purpose_code) && <span className="ml-2 text-xs text-slate-400">({jobDetail.purpose_code})</span>}
                   </InfoRow>
-                )}
+                )} */}
 
                 {/* ── Requirements ── */}
                 <SectionHeader>Requirements</SectionHeader>
@@ -211,7 +209,6 @@ export default function JobDetailPanel({
 
                 {/* ── Job Details ── */}
                 <SectionHeader>Job Details</SectionHeader>
-                <InfoRow label="Status"><StatusBadge status={jobDetail.status} /></InfoRow>
                 {has(jobDetail.employment_type) && (
                   <InfoRow label="Employment Type">{EMPLOYMENT_TYPE_LABELS[jobDetail.employment_type] || jobDetail.employment_type}</InfoRow>
                 )}
@@ -221,7 +218,6 @@ export default function JobDetailPanel({
                 {has(jobDetail.work_mode) && (
                   <InfoRow label="Work Mode">{WORK_MODE_LABELS[jobDetail.work_mode] || jobDetail.work_mode}</InfoRow>
                 )}
-                <InfoRow label="Location">{jobDetail.location || '—'}</InfoRow>
 
                 {/* ── Hiring Info ── */}
                 <SectionHeader>Hiring Info</SectionHeader>

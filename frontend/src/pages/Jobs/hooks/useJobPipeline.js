@@ -302,10 +302,11 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
   };
 
   const handleRestoreToShortlist = async (c) => {
+    const restoreStage = c.rejected_from_stage || 'SHORTLISTED';
     setRestoringId(c.id);
     try {
       await candidatesApi.changeStage(c.candidate, c.job, {
-        macro_stage: 'SHORTLISTED',
+        macro_stage: restoreStage,
         remarks: 'Restored from Dropped',
       });
       await refreshAllCandidates(viewingJob.id);
