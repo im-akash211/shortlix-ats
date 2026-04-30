@@ -80,7 +80,7 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
     if (tab === 'Interview')   return allCandidates.filter(c => ['INTERVIEW', 'OFFERED', 'JOINED'].includes(c.macro_stage)).length;
     if (tab === 'Offered')     return allCandidates.filter(c => ['OFFERED', 'JOINED'].includes(c.macro_stage)).length;
     if (tab === 'Joined')      return allCandidates.filter(c => c.macro_stage === 'JOINED').length;
-    if (tab === 'Dropped')     return allCandidates.filter(c => c.macro_stage === 'DROPPED').length;
+    if (tab === 'Dropped')     return allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED').length;
     return 0;
   };
 
@@ -140,6 +140,18 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
       await doStageChange(c, { macro_stage: 'OFFERED', offer_status: 'OFFER_SENT' });
     } catch (err) {
       alert(err.data?.error || err.data?.detail || 'Failed to make offer');
+    } finally {
+      setShortlistingId(null);
+    }
+  };
+
+  const handleMarkOfferAccepted = async (c) => {
+    setShortlistingId(c.id);
+    try {
+      await candidatesApi.changeStage(c.candidate, c.job, { offer_status: 'OFFER_ACCEPTED' });
+      await refreshAllCandidates(viewingJob.id);
+    } catch (err) {
+      alert(err.data?.error || err.data?.detail || 'Failed to mark offer as accepted');
     } finally {
       setShortlistingId(null);
     }
@@ -290,10 +302,11 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
   };
 
   const handleRestoreToShortlist = async (c) => {
+    const restoreStage = c.rejected_from_stage || 'SHORTLISTED';
     setRestoringId(c.id);
     try {
       await candidatesApi.changeStage(c.candidate, c.job, {
-        macro_stage: 'SHORTLISTED',
+        macro_stage: restoreStage,
         remarks: 'Restored from Dropped',
       });
       await refreshAllCandidates(viewingJob.id);
@@ -389,6 +402,7 @@ export function useJobPipeline({ viewingJob, isPipelinePanelOpen }) {
     handleAppliedReject,
     handleMoveToInterview,
     handleMakeOffer,
+    handleMarkOfferAccepted,
     handleMarkJoined,
     handleDropConfirm,
     handleNextRound,

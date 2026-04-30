@@ -1,6 +1,7 @@
 import uuid
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class FeedbackTemplate(models.Model):
@@ -76,7 +77,9 @@ class Interview(models.Model):
     feedback_template = models.ForeignKey(
         FeedbackTemplate, null=True, blank=True, on_delete=models.SET_NULL
     )
+    end_time = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='scheduled')
+    last_feedback_reminder_sent = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='scheduled_interviews'
     )
@@ -88,21 +91,55 @@ class Interview(models.Model):
     def __str__(self):
         return f"Interview {self.round_label} - {self.mapping.candidate.full_name}"
 
+    @property
+    def computed_end_time(self):
+        if self.end_time:
+            return self.end_time
+        if self.scheduled_at and self.duration_minutes:
+            from datetime import timedelta
+            return self.scheduled_at + timedelta(minutes=self.duration_minutes)
+        return None
+
+    @property
+    def computed_status(self):
+        """
+        Auto-complete: if the interview end time has passed, always return COMPLETED.
+        Explicit ON_HOLD overrides the time check.
+        """
+        if self.round_status == 'ON_HOLD':
+            return 'ON_HOLD'
+        effective_end = self.computed_end_time
+        if effective_end and effective_end < timezone.now():
+            return 'COMPLETED'
+        if self.round_status:
+            return self.round_status
+        # Fall back to legacy status field
+        return self.status.upper() if self.status else 'SCHEDULED'
+
 
 class InterviewFeedback(models.Model):
     RECOMMENDATION_CHOICES = [
         ('proceed', 'Proceed'), ('hold', 'Hold'), ('reject', 'Reject'),
     ]
+    DECISION_CHOICES = [
+        ('PASS', 'Pass'), ('FAIL', 'Fail'), ('ON_HOLD', 'On Hold'),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     interview = models.OneToOneField(Interview, on_delete=models.CASCADE, related_name='feedback')
+    # created_by is the person who submitted the feedback (same as interviewer for backward compat)
     interviewer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     overall_rating = models.PositiveSmallIntegerField()
-    recommendation = models.CharField(max_length=10, choices=RECOMMENDATION_CHOICES)
+    recommendation = models.CharField(max_length=10, choices=RECOMMENDATION_CHOICES, blank=True, default='')
+    # decision: the only mandatory field — PASS/FAIL/ON_HOLD
+    decision = models.CharField(max_length=10, choices=DECISION_CHOICES)
     strengths = models.TextField(blank=True)
     weaknesses = models.TextField(blank=True)
+    # concerns is an alias for weaknesses to match the spec field name
+    concerns = models.TextField(blank=True)
     comments = models.TextField(blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class CompetencyRating(models.Model):

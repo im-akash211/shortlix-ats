@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '../lib/useDebounce';
 import { useSearchParams, useNavigate, useMatch } from 'react-router-dom';
 import { PageLoader } from '../components/LoadingDots';
-import { Search, MapPin, Filter, X, ChevronDown, CheckCircle2, MoreHorizontal, Clock, XCircle, Trash2, Edit2 } from 'lucide-react';
+import { Search, MapPin, Filter, X, ChevronDown, CheckCircle2, MoreHorizontal, Clock, XCircle, Trash2, Edit2, Loader2 } from 'lucide-react';
 import { requisitions as reqApi, departments as deptApi, users as usersApi, ai as aiApi } from '../lib/api';
 import RichTextEditor from '../components/requisition/RichTextEditor';
 import TagInput from '../components/requisition/TagInput';
@@ -39,36 +39,41 @@ const INITIAL_FORM = {
   purpose: '',
   client_name: '',
   positions_count: 1,
-  experience_min: 0,
-  experience_max: 3,
+  experience_min: '',
+  experience_max: '',
   job_description: '',
-  roles_responsibilities: '',
   skills_required: [],
   skills_desirable: [],
-  skills_to_evaluate: [],
-  tags: [],
   min_qualification: '',
   expected_start_date: '',
   tat_days: '',
   budget_min: '',
   budget_max: '',
-  salary_min: '',
-  salary_max: '',
   work_mode: '',
-  reference_number: '',
   project_name: '',
   hiring_manager: '',
-  l1_approver: '',
   iit_grad: false,
   nit_grad: false,
   iim_grad: false,
   top_institute: false,
-  female_diversity: false,
+
   unicorn_exp: false,
   top_internet_product: false,
   top_software_product: false,
   top_it_services_mnc: false,
   top_consulting_mnc: false,
+};
+
+const MANDATORY_FIELD_LABELS = {
+  title:           'Requisition Title',
+  department:      'Department',
+  location:        'Location',
+  work_mode:       'Work Mode',
+  purpose:         'Purpose',
+  job_description: 'Requisition Description',
+  skills_required: 'Mandatory Skills (min. 3)',
+  experience:      'Years of Experience',
+  hiring_manager:  'Hiring Manager',
 };
 
 function FieldLabel({ children, required }) {
@@ -148,6 +153,7 @@ export default function Requisitions({ user }) {
   const [createForm, setCreateForm] = useState(INITIAL_FORM);
   const [createLoading, setCreateLoading] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const [validationModal, setValidationModal] = useState(null); // { errors: {} }
   const [actionMenuId, setActionMenuId] = useState(null);
 
   // Edit requisition state — isEditOpen is URL-driven (see above)
@@ -157,6 +163,9 @@ export default function Requisitions({ user }) {
   const [editErrors, setEditErrors] = useState({});
   const [editSubVerticals1, setEditSubVerticals1] = useState([]);
   const [editSubVerticals2, setEditSubVerticals2] = useState([]);
+  const [editAiGenerating, setEditAiGenerating] = useState(false);
+  const [editAiGenerated, setEditAiGenerated] = useState(false);
+  const [editAiError, setEditAiError] = useState(null);
 
   // Delete requisition state
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -164,6 +173,25 @@ export default function Requisitions({ user }) {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const setField = (key, val) => setCreateForm((f) => ({ ...f, [key]: val }));
+
+  // Convert empty strings to null for numeric and FK fields so the backend doesn't
+  // receive "" for DecimalField / IntegerField / ForeignKey columns.
+  const sanitizePayload = (form) => {
+    const nullIfEmpty = [
+      'sub_vertical_1', 'sub_vertical_2',
+      'experience_min', 'experience_max',
+      'positions_count', 'tat_days',
+      'budget_min', 'budget_max',
+      'hiring_manager',
+    ];
+    const result = { ...form };
+    nullIfEmpty.forEach((key) => {
+      if (result[key] === '' || result[key] === undefined) result[key] = null;
+    });
+    if (!result.expected_start_date) result.expected_start_date = null;
+    if (!result.client_name) result.client_name = '';
+    return result;
+  };
 
   // Phase B+C: list cached per tab+search combination; placeholderData keeps previous results
   // visible while new filtered data loads — no blank-table flash on filter change.
@@ -179,6 +207,7 @@ export default function Requisitions({ user }) {
     placeholderData: (previousData) => previousData,
   });
   const loading = reqIsLoading || reqIsPlaceholder;
+  const showStale = reqIsPlaceholder;
 
   const data  = reqQueryData ? (reqQueryData.results || reqQueryData) : [];
   const total = reqQueryData?.count ?? data.length;
@@ -195,7 +224,7 @@ export default function Requisitions({ user }) {
     queryKey: ['users', 'dropdown'],
     queryFn: () => usersApi.dropdown(),
     staleTime: Infinity,
-    select: (res) => res.results || res,
+    select: (res) => (res.results || res).filter((u) => u.role === 'hiring_manager'),
   });
 
   // Sync edit URL route → load requisition data into edit form
@@ -219,31 +248,24 @@ export default function Requisitions({ user }) {
           purpose:             detail.purpose || '',
           client_name:         detail.client_name || '',
           positions_count:     detail.positions_count || 1,
-          experience_min:      detail.experience_min ?? 0,
-          experience_max:      detail.experience_max ?? 2,
+          experience_min:      detail.experience_min ?? '',
+          experience_max:      detail.experience_max ?? '',
           job_description:     detail.job_description || '',
-          roles_responsibilities: detail.roles_responsibilities || '',
           skills_required:     detail.skills_required || [],
           skills_desirable:    detail.skills_desirable || [],
-          skills_to_evaluate:  detail.skills_to_evaluate || [],
-          tags:                detail.tags || [],
           min_qualification:   detail.min_qualification || '',
           expected_start_date: detail.expected_start_date || '',
           tat_days:            detail.tat_days ?? '',
           budget_min:          detail.budget_min ?? '',
           budget_max:          detail.budget_max ?? '',
-          salary_min:          detail.salary_min ?? '',
-          salary_max:          detail.salary_max ?? '',
           work_mode:           detail.work_mode || '',
-          reference_number:    detail.reference_number || '',
           project_name:        detail.project_name || '',
           hiring_manager:      detail.hiring_manager || '',
-          l1_approver:         detail.l1_approver || '',
           iit_grad:            detail.iit_grad || false,
           nit_grad:            detail.nit_grad || false,
           iim_grad:            detail.iim_grad || false,
           top_institute:       detail.top_institute || false,
-          female_diversity:    detail.female_diversity || false,
+
           unicorn_exp:         detail.unicorn_exp || false,
           top_internet_product:  detail.top_internet_product || false,
           top_software_product:  detail.top_software_product || false,
@@ -302,13 +324,13 @@ export default function Requisitions({ user }) {
     if (!createForm.department) errs.department = 'Required';
     if (!createForm.location) errs.location = 'Required';
     if (!createForm.work_mode) errs.work_mode = 'Required';
+    if (!createForm.purpose) errs.purpose = 'Required';
     const jdText = (createForm.job_description || '').replace(/<[^>]*>/g, '').trim();
     if (!jdText) errs.job_description = 'Required';
     if (createForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
     if (!createForm.experience_max || Number(createForm.experience_max) <= 0) errs.experience = 'Experience max must be greater than 0';
     else if (Number(createForm.experience_max) < Number(createForm.experience_min)) errs.experience = 'Max experience must be ≥ min';
-    if (!createForm.salary_min) errs.salary_min = 'Required';
-    if (!createForm.salary_max) errs.salary_max = 'Required';
+    if (!createForm.hiring_manager) errs.hiring_manager = 'Required';
     return errs;
   };
 
@@ -316,11 +338,12 @@ export default function Requisitions({ user }) {
     const errs = validateForm();
     if (Object.keys(errs).length > 0) {
       setFormErrors(errs);
+      setValidationModal({ errors: errs });
       return;
     }
     setCreateLoading(true);
     try {
-      const payload = { ...createForm, expected_start_date: createForm.expected_start_date || null };
+      const payload = sanitizePayload(createForm);
       await reqApi.create(payload);
       handleCloseCreate();
       queryClient.invalidateQueries({ queryKey: ['requisitions', 'list'] });
@@ -369,6 +392,9 @@ export default function Requisitions({ user }) {
     setEditErrors({});
     setEditSubVerticals1([]);
     setEditSubVerticals2([]);
+    setEditAiGenerating(false);
+    setEditAiGenerated(false);
+    setEditAiError(null);
   };
 
   const setEditField = (key, val) => setEditForm((f) => ({ ...f, [key]: val }));
@@ -379,16 +405,18 @@ export default function Requisitions({ user }) {
     if (!editForm.department) errs.department = 'Required';
     if (!editForm.location) errs.location = 'Required';
     if (!editForm.work_mode) errs.work_mode = 'Required';
+    if (!editForm.purpose) errs.purpose = 'Required';
+    const editJdText = (editForm.job_description || '').replace(/<[^>]*>/g, '').trim();
+    if (!editJdText) errs.job_description = 'Required';
     if (editForm.skills_required.length < 3) errs.skills_required = 'Please add at least 3 mandatory skills';
     if (!editForm.experience_max || Number(editForm.experience_max) <= 0) errs.experience = 'Experience max must be greater than 0';
     else if (Number(editForm.experience_max) < Number(editForm.experience_min)) errs.experience = 'Max experience must be ≥ min';
-    if (!editForm.salary_min) errs.salary_min = 'Required';
-    if (!editForm.salary_max) errs.salary_max = 'Required';
-    if (Object.keys(errs).length > 0) { setEditErrors(errs); return; }
+    if (!editForm.hiring_manager) errs.hiring_manager = 'Required';
+    if (Object.keys(errs).length > 0) { setEditErrors(errs); setValidationModal({ errors: errs }); return; }
     setEditLoading(true);
     try {
       const targetId = editingReq?.id || editMatch?.params?.id;
-      await reqApi.update(targetId, editForm);
+      await reqApi.update(targetId, sanitizePayload(editForm));
       handleCloseEdit();
       queryClient.invalidateQueries({ queryKey: ['requisitions', 'list'] });
     } catch (err) {
@@ -420,16 +448,13 @@ export default function Requisitions({ user }) {
     }
   };
 
-  const _applyAiResult = (result) => {
-    setField('job_description', result.job_description || '');
-    if (result.required_skills?.length) setField('skills_required', result.required_skills);
-    if (result.preferred_skills?.length) setField('skills_desirable', result.preferred_skills);
-  };
-
   const _callAiGenerate = async () => {
-    const deptName  = departments.find((d) => String(d.id) === String(createForm.department))?.name || createForm.department;
-    const sv1Name   = subVerticals1.find((sv) => String(sv.id) === String(createForm.sub_vertical_1))?.name || '';
-    const sv2Name   = subVerticals2.find((sv) => String(sv.id) === String(createForm.sub_vertical_2))?.name || '';
+    const deptName = departments.find((d) => String(d.id) === String(createForm.department))?.name || createForm.department;
+    const sv1Name  = subVerticals1.find((sv) => String(sv.id) === String(createForm.sub_vertical_1))?.name || '';
+    // Case 1: both empty → AI generates skills + JD. Case 2: any filled → use as context, don't overwrite.
+    const hasExistingSkills = createForm.skills_required.length > 0 || createForm.skills_desirable.length > 0;
+    const isFirstGeneration = !aiGenerated;
+    const shouldOverwriteSkills = isFirstGeneration && !hasExistingSkills;
 
     setAiGenerating(true);
     setAiError(null);
@@ -438,13 +463,19 @@ export default function Requisitions({ user }) {
         department:        deptName,
         requisition_title: createForm.title,
         sub_vertical_1:    sv1Name,
-        sub_vertical_2:    sv2Name,
+        designation:       createForm.designation,
         experience_min:    createForm.experience_min,
         experience_max:    createForm.experience_max,
+        skills_required:   createForm.skills_required,
+        skills_desirable:  createForm.skills_desirable,
       });
       setAiCache(result);
       setAiGenerated(true);
-      _applyAiResult(result);
+      setField('job_description', result.job_description || '');
+      if (shouldOverwriteSkills) {
+        if (result.skills_required?.length) setField('skills_required', result.skills_required);
+        if (result.skills_desirable?.length) setField('skills_desirable', result.skills_desirable);
+      }
     } catch (err) {
       setAiError(err.data?.detail || err.message || 'AI generation failed. Please try again.');
     } finally {
@@ -452,20 +483,41 @@ export default function Requisitions({ user }) {
     }
   };
 
-  const handleGenerateJd = async () => {
-    if (aiCache) { _applyAiResult(aiCache); return; }
-    await _callAiGenerate();
-  };
-
-  const handleGenerateRoles = async () => {
-    if (aiCache) { _applyAiResult(aiCache); return; }
-    await _callAiGenerate();
-  };
-
   const handleRegenerateAll = async () => {
-    setAiCache(null);
-    setAiGenerated(false);
     await _callAiGenerate();
+  };
+
+  const _callEditAiGenerate = async () => {
+    const deptName = departments.find((d) => String(d.id) === String(editForm.department))?.name || editForm.department;
+    const sv1Name  = editSubVerticals1.find((sv) => String(sv.id) === String(editForm.sub_vertical_1))?.name || '';
+    const hasExistingSkills = editForm.skills_required.length > 0 || editForm.skills_desirable.length > 0;
+    const isFirstGeneration = !editAiGenerated;
+    const shouldOverwriteSkills = isFirstGeneration && !hasExistingSkills;
+
+    setEditAiGenerating(true);
+    setEditAiError(null);
+    try {
+      const result = await aiApi.generateRequisitionContent({
+        department:        deptName,
+        requisition_title: editForm.title,
+        sub_vertical_1:    sv1Name,
+        designation:       editForm.designation,
+        experience_min:    editForm.experience_min,
+        experience_max:    editForm.experience_max,
+        skills_required:   editForm.skills_required,
+        skills_desirable:  editForm.skills_desirable,
+      });
+      setEditAiGenerated(true);
+      setEditField('job_description', result.job_description || '');
+      if (shouldOverwriteSkills) {
+        if (result.skills_required?.length) setEditField('skills_required', result.skills_required);
+        if (result.skills_desirable?.length) setEditField('skills_desirable', result.skills_desirable);
+      }
+    } catch (err) {
+      setEditAiError(err.data?.detail || err.message || 'AI generation failed. Please try again.');
+    } finally {
+      setEditAiGenerating(false);
+    }
   };
 
   return (
@@ -478,7 +530,7 @@ export default function Requisitions({ user }) {
       <div className="p-6 flex flex-col gap-6 h-full overflow-hidden">
         <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col min-h-0">
           <div className="flex items-center justify-between px-6 border-b border-slate-200">
-            <div className="flex gap-6">
+            <div className="flex gap-6 items-center">
               {['My Requisitions', 'All Requisitions'].map((tab) => (
                 <button
                   key={tab}
@@ -488,37 +540,45 @@ export default function Requisitions({ user }) {
                   {tab}
                 </button>
               ))}
+              <span className="text-xs text-slate-500 font-medium px-2 py-1 bg-slate-100 rounded-full">{total}</span>
             </div>
-            <button
-              onClick={() => navigate(ROUTES.REQUISITIONS.NEW)}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium transition-colors shadow-sm"
-            >
-              Create Requisition
-            </button>
-          </div>
-
-          <div className="p-4 border-b border-slate-200 bg-white flex items-center gap-4">
-            <div className="flex items-center border border-slate-300 rounded-md overflow-hidden bg-white w-96 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && setSearch(searchInput)}
-                  placeholder="Search Keywords"
-                  className="w-full px-3 py-2 text-sm outline-none"
-                />
-                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <div className="flex items-center gap-3">
+              <div className="flex items-center border border-slate-300 rounded-md overflow-hidden bg-white w-64 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && setSearch(searchInput)}
+                    placeholder="Search keywords…"
+                    className="w-full px-3 py-2 text-sm outline-none"
+                  />
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                </div>
               </div>
+              <button
+                onClick={() => navigate(ROUTES.REQUISITIONS.NEW)}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors shadow-sm whitespace-nowrap"
+              >
+                Create Requisition
+              </button>
             </div>
-            <span className="text-xs text-slate-500">{total} requisitions</span>
           </div>
 
-          <div className="overflow-auto flex-1">
-            {loading ? (
+          <div className="overflow-auto flex-1 overscroll-none bg-white">
+            {(reqIsLoading || showStale) ? (
               <PageLoader label="Loading requisitions…" />
             ) : (
-              <table className="w-full text-sm text-left border-collapse">
+              <table className="w-full text-sm text-left border-collapse table-fixed border-0">
+                <colgroup>
+                  <col className="w-[18%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[10%]" />
+                </colgroup>
                 <thead className="bg-slate-50 text-slate-700 font-semibold sticky top-0 z-10 shadow-sm">
                   <tr>
                     <th className="px-4 py-3 border-b border-slate-200">Requisition</th>
@@ -530,9 +590,9 @@ export default function Requisitions({ user }) {
                     <th className="px-4 py-3 border-b border-slate-200 text-center">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {data.map((req) => (
-                    <tr key={req.id} className="hover:bg-blue-50/50 transition-colors">
+                    <tr key={req.id} className="border-b border-slate-100 last:border-b-0 hover:bg-blue-50/50 transition-colors">
                       <td className="px-4 py-4 align-top">
                         <div className="flex flex-col gap-1">
                           <span className="font-semibold text-slate-800 text-sm hover:text-blue-600 cursor-pointer">{req.title}</span>
@@ -552,9 +612,9 @@ export default function Requisitions({ user }) {
                           </span>
                         ) : '—'}
                       </td>
-                      <td className="px-4 py-4 align-top text-slate-600">{req.department_name}</td>
+                      <td className="px-4 py-4 align-top text-slate-600 truncate max-w-0">{req.department_name}</td>
                       <td className="px-4 py-4 align-top text-slate-600">{new Date(req.created_at).toLocaleDateString('en-GB')}</td>
-                      <td className="px-4 py-4 align-top text-slate-600">{req.hiring_manager_name}</td>
+                      <td className="px-4 py-4 align-top text-slate-600 truncate max-w-0">{req.hiring_manager_name}</td>
                       <td className="px-4 py-4 align-top text-center relative">
                         <button
                           onClick={() => setActionMenuId(actionMenuId === req.id ? null : req.id)}
@@ -563,7 +623,15 @@ export default function Requisitions({ user }) {
                           <MoreHorizontal className="w-5 h-5" />
                         </button>
                         {actionMenuId === req.id && (
-                          <div className="absolute right-4 top-10 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[160px] text-left">
+                          <div className="absolute right-4 top-10 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[180px] text-left">
+                            {req.status === 'draft' && (user?.role === 'admin' || req.created_by === user?.id) && (
+                              <button
+                                onClick={() => { handleAction('submit', req.id); setActionMenuId(null); }}
+                                className="w-full px-4 py-2 text-sm hover:bg-emerald-50 text-emerald-700 flex items-center gap-2"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Submit for Approval
+                              </button>
+                            )}
                             <button
                               onClick={() => openEdit(req)}
                               className="w-full px-4 py-2 text-sm hover:bg-slate-50 text-blue-600 flex items-center gap-2"
@@ -609,6 +677,11 @@ export default function Requisitions({ user }) {
           {/* Scrollable body */}
           <div className="flex-1 overflow-auto p-6">
             <div className="max-w-5xl mx-auto bg-white border border-gray-200 rounded-xl shadow-sm p-8">
+              {Object.keys(formErrors).length > 0 && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+                  Please fill in all required fields before saving.
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-x-8 gap-y-6">
 
                 {/* Row 1: Requisition Title | Department */}
@@ -634,27 +707,60 @@ export default function Requisitions({ user }) {
 
                 {/* Row 2: Sub Vertical | Qualifications */}
                 <div className="flex flex-col gap-1">
+                  <FieldLabel>Qualifications:</FieldLabel>
+                  <TextField value={createForm.min_qualification} onChange={(e) => setField('min_qualification', e.target.value)} placeholder="e.g. B.Tech / MBA" />
+                </div>
+
+                <div className="flex flex-col gap-1">
                   <FieldLabel>Sub Vertical:</FieldLabel>
-                  <SelectField
-                    value={createForm.sub_vertical_1}
-                    onChange={(e) => setField('sub_vertical_1', e.target.value)}
-                    disabled={!createForm.department}
-                  >
+                  <SelectField value={createForm.sub_vertical_1} onChange={(e) => setField('sub_vertical_1', e.target.value)} disabled={!createForm.department}>
                     <option value="">Select an option</option>
                     {subVerticals1.map((sv) => <option key={sv.id} value={sv.id}>{sv.name}</option>)}
                   </SelectField>
                 </div>
 
+                {/* Row 3: Designation | Years of Experience — ABOVE description */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel>Qualifications:</FieldLabel>
-                  <TextField
-                    value={createForm.min_qualification}
-                    onChange={(e) => setField('min_qualification', e.target.value)}
-                    placeholder=""
-                  />
+                  <FieldLabel>Designation:</FieldLabel>
+                  <TextField value={createForm.designation} onChange={(e) => setField('designation', e.target.value)} placeholder="e.g. Senior Engineer" />
                 </div>
 
-                {/* Row 3: Requisition Description (full width) */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Years of Experience:</FieldLabel>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={createForm.experience_min}
+                      onChange={(e) => setField('experience_min', e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
+                    />
+                    <span className="text-gray-500 text-sm shrink-0">to</span>
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={createForm.experience_max}
+                      onChange={(e) => setField('experience_max', e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
+                    />
+                    <span className="text-gray-500 text-sm shrink-0">Yrs</span>
+                  </div>
+                  <FieldError msg={formErrors.experience} />
+                </div>
+
+                {/* Mandatory Skills | Desirable Skills — above JD to serve as AI generation context */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Mandatory Skills:</FieldLabel>
+                  <TagInput value={createForm.skills_required} onChange={(val) => setField('skills_required', val)} placeholder="Add at least 3 comma-separated skills." error={formErrors.skills_required} />
+                  <FieldError msg={formErrors.skills_required} />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Desirable Skills:</FieldLabel>
+                  <TagInput value={createForm.skills_desirable} onChange={(val) => setField('skills_desirable', val)} placeholder="Nice-to-have skills." />
+                </div>
+
+                {/* Row 4: Requisition Description — AI uses skills above as context */}
                 <div className="col-span-2 flex flex-col gap-1">
                   <RichTextEditor
                     label="Requisition Description:"
@@ -665,10 +771,15 @@ export default function Requisitions({ user }) {
                     generating={aiGenerating}
                     aiGenerated={aiGenerated}
                   />
+                  {aiError && (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2 mt-1">
+                      {aiError} Your existing content has been preserved.
+                    </p>
+                  )}
                   <FieldError msg={formErrors.job_description} />
                 </div>
 
-                {/* Row 4: Priority | Type of Employment */}
+                {/* Row 5: Priority | Employment Type */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Priority:</FieldLabel>
                   <SelectField value={createForm.priority} onChange={(e) => setField('priority', e.target.value)}>
@@ -681,25 +792,23 @@ export default function Requisitions({ user }) {
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Type of Employment:</FieldLabel>
                   <SelectField value={createForm.employment_type} onChange={(e) => setField('employment_type', e.target.value)}>
-                    <option value="">--Select--</option>
                     <option value="permanent">Permanent</option>
                     <option value="contract">Contract</option>
                     <option value="internship">Internship</option>
                   </SelectField>
                 </div>
 
-                {/* Row 5: Requisition Type | Client's Name */}
+                {/* Row 6: Requisition Type | Purpose */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Requisition Type:</FieldLabel>
                   <SelectField value={createForm.requisition_type} onChange={(e) => setField('requisition_type', e.target.value)}>
-                    <option value="">--Select--</option>
                     <option value="new">New</option>
                     <option value="backfill">Backfill</option>
                   </SelectField>
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel>Purpose:</FieldLabel>
+                  <FieldLabel required>Purpose:</FieldLabel>
                   <SelectField value={createForm.purpose} onChange={(e) => { setField('purpose', e.target.value); if (e.target.value !== 'client') setField('client_name', ''); }} error={formErrors.purpose}>
                     <option value="">--Select--</option>
                     <option value="internal">Internal</option>
@@ -708,132 +817,30 @@ export default function Requisitions({ user }) {
                   <FieldError msg={formErrors.purpose} />
                 </div>
 
+                {/* Client name — only when purpose=client */}
                 {createForm.purpose === 'client' && (
-                  <div className="flex flex-col gap-1">
-                    <FieldLabel required>Client's Name:</FieldLabel>
-                    <TextField
-                      value={createForm.client_name}
-                      onChange={(e) => setField('client_name', e.target.value)}
-                      placeholder="Enter client name"
-                      error={formErrors.client_name}
-                    />
-                    <FieldError msg={formErrors.client_name} />
-                  </div>
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <FieldLabel required>Client's Name:</FieldLabel>
+                      <TextField value={createForm.client_name} onChange={(e) => setField('client_name', e.target.value)} placeholder="Enter client name" error={formErrors.client_name} />
+                      <FieldError msg={formErrors.client_name} />
+                    </div>
+                    <div />
+                  </>
                 )}
 
-                {/* Row 6: Location */}
+                {/* Row 7: Location | Work Mode */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Location:</FieldLabel>
-                  <select
-                    value={createForm.location}
-                    onChange={(e) => setField('location', e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  >
-                    <option value="">Select location...</option>
+                  <SelectField value={createForm.location} onChange={(e) => setField('location', e.target.value)} error={formErrors.location}>
+                    <option value="">Select location…</option>
                     <option value="Gurgaon">Gurgaon</option>
                     <option value="Noida">Noida</option>
                     <option value="Remote">Remote</option>
-                  </select>
+                  </SelectField>
                   <FieldError msg={formErrors.location} />
                 </div>
 
-                {/* Row 7: blank | Years of Experience */}
-                <div />
-
-                <div className="flex flex-col gap-1">
-                  <FieldLabel required>Years Of Experience:</FieldLabel>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={createForm.experience_min}
-                      onChange={(e) => setField('experience_min', e.target.value)}
-                      className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
-                    />
-                    <span className="text-gray-500 text-sm shrink-0">to</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={createForm.experience_max}
-                      onChange={(e) => setField('experience_max', e.target.value)}
-                      className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
-                    />
-                    <span className="text-gray-500 text-sm shrink-0">Years</span>
-                  </div>
-                  <FieldError msg={formErrors.experience} />
-                </div>
-
-                {/* Row 8: Designation | Open Positions */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Designation:</FieldLabel>
-                  <TextField
-                    value={createForm.designation}
-                    onChange={(e) => setField('designation', e.target.value)}
-                    placeholder="Designation"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Open Positions:</FieldLabel>
-                  <TextField
-                    type="number"
-                    min="1"
-                    value={createForm.positions_count}
-                    onChange={(e) => setField('positions_count', e.target.value)}
-                    placeholder="No of positions required"
-                  />
-                </div>
-
-                {/* Row 9: Expected Start Date | Reference Number */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Expected Start date:</FieldLabel>
-                  <TextField
-                    type="date"
-                    value={createForm.expected_start_date}
-                    onChange={(e) => setField('expected_start_date', e.target.value)}
-                    placeholder="Click to Set Date"
-                  />
-                </div>
-
-                {/* TAT (Turn Around Time) */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>TAT (Days):</FieldLabel>
-                  <TextField
-                    type="number"
-                    min="1"
-                    value={createForm.tat_days}
-                    onChange={(e) => setField('tat_days', e.target.value)}
-                    placeholder="e.g. 30"
-                  />
-                </div>
-
-                {/* Budget */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
-                  <div className="flex gap-2 items-center">
-                    <TextField
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={createForm.budget_min}
-                      onChange={(e) => setField('budget_min', e.target.value)}
-                      placeholder="Min"
-                    />
-                    <span className="text-slate-400 shrink-0">–</span>
-                    <TextField
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={createForm.budget_max}
-                      onChange={(e) => setField('budget_max', e.target.value)}
-                      placeholder="Max"
-                    />
-                  </div>
-                </div>
-
-                {/* Work Mode */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Work Mode:</FieldLabel>
                   <SelectField value={createForm.work_mode} onChange={(e) => setField('work_mode', e.target.value)} error={formErrors.work_mode}>
@@ -845,62 +852,37 @@ export default function Requisitions({ user }) {
                   <FieldError msg={formErrors.work_mode} />
                 </div>
 
-                {/* Salary Range */}
+                {/* Row 8: Open Positions | Expected Start Date */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Salary Range (₹ LPA):</FieldLabel>
+                  <FieldLabel>Open Positions:</FieldLabel>
+                  <TextField type="number" min="1" value={createForm.positions_count} onChange={(e) => setField('positions_count', e.target.value)} placeholder="No. of positions" />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Expected Start Date:</FieldLabel>
+                  <TextField type="date" value={createForm.expected_start_date} onChange={(e) => setField('expected_start_date', e.target.value)} />
+                </div>
+
+                {/* Row 9: TAT | Budget */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>TAT (Days):</FieldLabel>
+                  <TextField type="number" min="1" value={createForm.tat_days} onChange={(e) => setField('tat_days', e.target.value)} placeholder="e.g. 30" />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
                   <div className="flex gap-2 items-center">
-                    <TextField
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={createForm.salary_min}
-                      onChange={(e) => setField('salary_min', e.target.value)}
-                      placeholder="Min"
-                      error={formErrors.salary_min}
-                    />
+                    <TextField type="number" min="0" step="0.01" value={createForm.budget_min} onChange={(e) => setField('budget_min', e.target.value)} onWheel={(e) => e.target.blur()} placeholder="Min" />
                     <span className="text-slate-400 shrink-0">–</span>
-                    <TextField
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={createForm.salary_max}
-                      onChange={(e) => setField('salary_max', e.target.value)}
-                      placeholder="Max"
-                      error={formErrors.salary_max}
-                    />
+                    <TextField type="number" min="0" step="0.01" value={createForm.budget_max} onChange={(e) => setField('budget_max', e.target.value)} onWheel={(e) => e.target.blur()} placeholder="Max" />
                   </div>
-                  {(formErrors.salary_min || formErrors.salary_max) && (
-                    <FieldError msg={formErrors.salary_min || formErrors.salary_max} />
-                  )}
                 </div>
 
-                {/* Mandatory Skills */}
+                {/* Hiring Manager | Project Name */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Mandatory Skills:</FieldLabel>
-                  <TagInput
-                    value={createForm.skills_required}
-                    onChange={(val) => setField('skills_required', val)}
-                    placeholder="Please add at least 3 comma separated mandatory skills."
-                    error={formErrors.skills_required}
-                  />
-                  <FieldError msg={formErrors.skills_required} />
-                </div>
-
-                {/* Desirable Skills */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Desirable Skills:</FieldLabel>
-                  <TagInput
-                    value={createForm.skills_desirable}
-                    onChange={(val) => setField('skills_desirable', val)}
-                    placeholder="Comma separated nice-to-have skills."
-                  />
-                </div>
-
-                {/* Row 12: Hiring Manager | Project Name */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Hiring Manager:</FieldLabel>
+                  <FieldLabel required>Hiring Manager:</FieldLabel>
                   <SelectField value={createForm.hiring_manager} onChange={(e) => setField('hiring_manager', e.target.value)} error={formErrors.hiring_manager}>
-                    <option value="">Hiring Manager</option>
+                    <option value="">-- Select --</option>
                     {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                   </SelectField>
                   <FieldError msg={formErrors.hiring_manager} />
@@ -908,23 +890,16 @@ export default function Requisitions({ user }) {
 
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Project Name:</FieldLabel>
-                  <TextField
-                    value={createForm.project_name}
-                    onChange={(e) => setField('project_name', e.target.value)}
-                    placeholder=""
-                  />
+                  <TextField value={createForm.project_name} onChange={(e) => setField('project_name', e.target.value)} placeholder="" />
                 </div>
 
                 {/* Candidate Signals (full width) */}
                 <div className="col-span-2 flex flex-col gap-2">
                   <div className="flex items-center gap-1.5">
                     <FieldLabel>Candidate Signals</FieldLabel>
-                    <span className="text-gray-400 cursor-help text-sm" title="Select signals to prioritize candidates with specific backgrounds">ℹ</span>
+                    <span className="text-gray-400 cursor-help text-sm" title="Prioritise candidates with specific backgrounds">ℹ</span>
                   </div>
-                  <CandidateSignals
-                    values={createForm}
-                    onChange={(key, val) => setField(key, val)}
-                  />
+                  <CandidateSignals values={createForm} onChange={(key, val) => setField(key, val)} />
                 </div>
 
               </div>
@@ -946,8 +921,9 @@ export default function Requisitions({ user }) {
                   <button
                     onClick={handleCreate}
                     disabled={createLoading}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm"
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm"
                   >
+                    {createLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                     {createLoading ? 'Saving…' : 'Save'}
                   </button>
                 </div>
@@ -976,8 +952,15 @@ export default function Requisitions({ user }) {
             <div className="max-w-5xl mx-auto bg-white border border-gray-200 rounded-xl shadow-sm p-8">
               <div className="grid grid-cols-2 gap-x-8 gap-y-6">
 
+                {/* Row 1: Requisition Title | Department */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Dep:</FieldLabel>
+                  <FieldLabel required>Requisition Title:</FieldLabel>
+                  <TextField value={editForm.title} onChange={(e) => setEditField('title', e.target.value)} placeholder="The title of requisition will be used later as job title" error={editErrors.title} />
+                  <FieldError msg={editErrors.title} />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Department:</FieldLabel>
                   <SelectField value={editForm.department} onChange={(e) => { setEditField('department', e.target.value); deptApi.subVerticals(e.target.value, 'null').then((r) => setEditSubVerticals1(r.results || r)).catch(console.error); setEditSubVerticals2([]); setEditField('sub_vertical_1', ''); setEditField('sub_vertical_2', ''); }} error={editErrors.department}>
                     <option value="">Select an option</option>
                     {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -985,14 +968,7 @@ export default function Requisitions({ user }) {
                   <FieldError msg={editErrors.department} />
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Sub Vertical 2:</FieldLabel>
-                  <SelectField value={editForm.sub_vertical_2} onChange={(e) => setEditField('sub_vertical_2', e.target.value)} disabled={!editForm.sub_vertical_1}>
-                    <option value="">Select an option</option>
-                    {editSubVerticals2.map((sv) => <option key={sv.id} value={sv.id}>{sv.name}</option>)}
-                  </SelectField>
-                </div>
-
+                {/* Row 2: Sub Vertical | Qualifications */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel>Sub Vertical:</FieldLabel>
                   <SelectField value={editForm.sub_vertical_1} onChange={(e) => { setEditField('sub_vertical_1', e.target.value); deptApi.subVerticals(editForm.department, e.target.value).then((r) => setEditSubVerticals2(r.results || r)).catch(console.error); setEditField('sub_vertical_2', ''); }} disabled={!editForm.department}>
@@ -1002,15 +978,75 @@ export default function Requisitions({ user }) {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Requisition Title:</FieldLabel>
-                  <TextField value={editForm.title} onChange={(e) => setEditField('title', e.target.value)} placeholder="Requisition title" error={editErrors.title} />
-                  <FieldError msg={editErrors.title} />
+                  <FieldLabel>Qualifications:</FieldLabel>
+                  <TextField value={editForm.min_qualification} onChange={(e) => setEditField('min_qualification', e.target.value)} placeholder="e.g. B.Tech / MBA" />
+                </div>
+
+                {/* Row 3: Designation | Years of Experience */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Designation:</FieldLabel>
+                  <TextField value={editForm.designation} onChange={(e) => setEditField('designation', e.target.value)} placeholder="e.g. Senior Engineer" />
                 </div>
 
                 <div className="flex flex-col gap-1">
+                  <FieldLabel required>Years of Experience:</FieldLabel>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={editForm.experience_min}
+                      onChange={(e) => setEditField('experience_min', e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
+                    />
+                    <span className="text-gray-500 text-sm shrink-0">to</span>
+                    <input
+                      type="number" min="0" step="0.5"
+                      value={editForm.experience_max}
+                      onChange={(e) => setEditField('experience_max', e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
+                    />
+                    <span className="text-gray-500 text-sm shrink-0">Yrs</span>
+                  </div>
+                  <FieldError msg={editErrors.experience} />
+                </div>
+
+                {/* Mandatory Skills | Desirable Skills — above JD to serve as AI generation context */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Mandatory Skills:</FieldLabel>
+                  <TagInput value={editForm.skills_required} onChange={(val) => setEditField('skills_required', val)} placeholder="Add at least 3 comma-separated skills." error={editErrors.skills_required} />
+                  <FieldError msg={editErrors.skills_required} />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Desirable Skills:</FieldLabel>
+                  <TagInput value={editForm.skills_desirable} onChange={(val) => setEditField('skills_desirable', val)} placeholder="Nice-to-have skills." />
+                </div>
+
+                {/* Row 4: Requisition Description — AI uses skills above as context */}
+                <div className="col-span-2 flex flex-col gap-1">
+                  <RichTextEditor
+                    label="Requisition Description:"
+                    required
+                    value={editForm.job_description}
+                    onChange={(val) => setEditField('job_description', val)}
+                    onGenerate={_callEditAiGenerate}
+                    generating={editAiGenerating}
+                    aiGenerated={editAiGenerated}
+                  />
+                  {editAiError && (
+                    <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2 mt-1">
+                      {editAiError} Your existing content has been preserved.
+                    </p>
+                  )}
+                  <FieldError msg={editErrors.job_description} />
+                </div>
+
+                {/* Row 5: Priority | Employment Type */}
+                <div className="flex flex-col gap-1">
                   <FieldLabel>Priority:</FieldLabel>
                   <SelectField value={editForm.priority} onChange={(e) => setEditField('priority', e.target.value)}>
-                    {['low','medium','high','critical'].map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                    {['low', 'medium', 'high', 'critical'].map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
                   </SelectField>
                 </div>
 
@@ -1023,112 +1059,49 @@ export default function Requisitions({ user }) {
                   </SelectField>
                 </div>
 
+                {/* Row 6: Requisition Type | Purpose */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Requisition Type:</FieldLabel>
+                  <SelectField value={editForm.requisition_type} onChange={(e) => setEditField('requisition_type', e.target.value)}>
+                    <option value="new">New</option>
+                    <option value="backfill">Backfill</option>
+                  </SelectField>
+                </div>
+
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Purpose:</FieldLabel>
-                  <SelectField value={editForm.purpose} onChange={(e) => setEditField('purpose', e.target.value)}>
+                  <SelectField value={editForm.purpose} onChange={(e) => { setEditField('purpose', e.target.value); if (e.target.value !== 'client') setEditField('client_name', ''); }} error={editErrors.purpose}>
                     <option value="">--Select--</option>
                     <option value="internal">Internal</option>
                     <option value="client">Client</option>
                   </SelectField>
+                  <FieldError msg={editErrors.purpose} />
                 </div>
 
+                {/* Client name — only when purpose=client */}
+                {editForm.purpose === 'client' && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <FieldLabel required>Client's Name:</FieldLabel>
+                      <TextField value={editForm.client_name} onChange={(e) => setEditField('client_name', e.target.value)} placeholder="Enter client name" error={editErrors.client_name} />
+                      <FieldError msg={editErrors.client_name} />
+                    </div>
+                    <div />
+                  </>
+                )}
+
+                {/* Row 7: Location | Work Mode */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Location:</FieldLabel>
-                  <select
-                    value={editForm.location}
-                    onChange={(e) => setEditField('location', e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  >
-                    <option value="">Select location...</option>
+                  <SelectField value={editForm.location} onChange={(e) => setEditField('location', e.target.value)} error={editErrors.location}>
+                    <option value="">Select location…</option>
                     <option value="Gurgaon">Gurgaon</option>
                     <option value="Noida">Noida</option>
                     <option value="Remote">Remote</option>
-                  </select>
+                  </SelectField>
                   <FieldError msg={editErrors.location} />
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <FieldLabel required>Designation:</FieldLabel>
-                  <TextField value={editForm.designation} onChange={(e) => setEditField('designation', e.target.value)} placeholder="Designation" />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <FieldLabel required>Open Positions:</FieldLabel>
-                  <TextField type="number" min="1" value={editForm.positions_count} onChange={(e) => setEditField('positions_count', e.target.value)} />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <FieldLabel required>Years Of Experience:</FieldLabel>
-                  <div className="flex items-center gap-2">
-                    <input type="number" min="0" step="0.5" value={editForm.experience_min} onChange={(e) => setEditField('experience_min', e.target.value)} className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50" />
-                    <span className="text-gray-500 text-sm shrink-0">to</span>
-                    <input type="number" min="0" step="0.5" value={editForm.experience_max} onChange={(e) => setEditField('experience_max', e.target.value)} className="flex-1 border border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50" />
-                    <span className="text-gray-500 text-sm shrink-0">Years</span>
-                  </div>
-                  <FieldError msg={editErrors.experience} />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Hiring Manager:</FieldLabel>
-                  <SelectField value={editForm.hiring_manager} onChange={(e) => setEditField('hiring_manager', e.target.value)} error={editErrors.hiring_manager}>
-                    <option value="">Hiring Manager</option>
-                    {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                  </SelectField>
-                  <FieldError msg={editErrors.hiring_manager} />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Level 1 Approval:</FieldLabel>
-                  <SelectField value={editForm.l1_approver} onChange={(e) => setEditField('l1_approver', e.target.value)} error={editErrors.l1_approver}>
-                    <option value="">--Select--</option>
-                    {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                  </SelectField>
-                  <FieldError msg={editErrors.l1_approver} />
-                </div>
-
-                <div className="flex flex-col gap-1 col-span-2">
-                  <FieldLabel required>Mandatory Skills:</FieldLabel>
-                  <TagInput value={editForm.skills_required} onChange={(val) => setEditField('skills_required', val)} placeholder="Please add at least 3 comma separated mandatory skills." error={editErrors.skills_required} />
-                  <FieldError msg={editErrors.skills_required} />
-                </div>
-
-                {/* TAT (Turn Around Time) */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>TAT (Days):</FieldLabel>
-                  <TextField
-                    type="number"
-                    min="1"
-                    value={editForm.tat_days}
-                    onChange={(e) => setEditField('tat_days', e.target.value)}
-                    placeholder="e.g. 30"
-                  />
-                </div>
-
-                {/* Budget */}
-                <div className="flex flex-col gap-1">
-                  <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
-                  <div className="flex gap-2 items-center">
-                    <TextField
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={editForm.budget_min}
-                      onChange={(e) => setEditField('budget_min', e.target.value)}
-                      placeholder="Min"
-                    />
-                    <span className="text-slate-400 shrink-0">–</span>
-                    <TextField
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={editForm.budget_max}
-                      onChange={(e) => setEditField('budget_max', e.target.value)}
-                      placeholder="Max"
-                    />
-                  </div>
-                </div>
-
-                {/* Work Mode */}
                 <div className="flex flex-col gap-1">
                   <FieldLabel required>Work Mode:</FieldLabel>
                   <SelectField value={editForm.work_mode} onChange={(e) => setEditField('work_mode', e.target.value)} error={editErrors.work_mode}>
@@ -1140,43 +1113,70 @@ export default function Requisitions({ user }) {
                   <FieldError msg={editErrors.work_mode} />
                 </div>
 
-                {/* Salary Range */}
+                {/* Row 8: Open Positions | Expected Start Date */}
                 <div className="flex flex-col gap-1">
-                  <FieldLabel required>Salary Range (₹ LPA):</FieldLabel>
+                  <FieldLabel>Open Positions:</FieldLabel>
+                  <TextField type="number" min="1" value={editForm.positions_count} onChange={(e) => setEditField('positions_count', e.target.value)} placeholder="No. of positions" />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Expected Start Date:</FieldLabel>
+                  <TextField type="date" value={editForm.expected_start_date} onChange={(e) => setEditField('expected_start_date', e.target.value)} />
+                </div>
+
+                {/* Row 9: TAT | Budget */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>TAT (Days):</FieldLabel>
+                  <TextField type="number" min="1" value={editForm.tat_days} onChange={(e) => setEditField('tat_days', e.target.value)} placeholder="e.g. 30" />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Budget (₹ Lakhs):</FieldLabel>
                   <div className="flex gap-2 items-center">
-                    <TextField
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={editForm.salary_min}
-                      onChange={(e) => setEditField('salary_min', e.target.value)}
-                      placeholder="Min"
-                      error={editErrors.salary_min}
-                    />
+                    <TextField type="number" min="0" step="0.01" value={editForm.budget_min} onChange={(e) => setEditField('budget_min', e.target.value)} onWheel={(e) => e.target.blur()} placeholder="Min" />
                     <span className="text-slate-400 shrink-0">–</span>
-                    <TextField
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={editForm.salary_max}
-                      onChange={(e) => setEditField('salary_max', e.target.value)}
-                      placeholder="Max"
-                      error={editErrors.salary_max}
-                    />
+                    <TextField type="number" min="0" step="0.01" value={editForm.budget_max} onChange={(e) => setEditField('budget_max', e.target.value)} onWheel={(e) => e.target.blur()} placeholder="Max" />
                   </div>
-                  {(editErrors.salary_min || editErrors.salary_max) && (
-                    <FieldError msg={editErrors.salary_min || editErrors.salary_max} />
-                  )}
+                </div>
+
+                {/* Hiring Manager | Project Name */}
+                <div className="flex flex-col gap-1">
+                  <FieldLabel required>Hiring Manager:</FieldLabel>
+                  <SelectField value={editForm.hiring_manager} onChange={(e) => setEditField('hiring_manager', e.target.value)} error={editErrors.hiring_manager}>
+                    <option value="">-- Select --</option>
+                    {usersList.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </SelectField>
+                  <FieldError msg={editErrors.hiring_manager} />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <FieldLabel>Project Name:</FieldLabel>
+                  <TextField value={editForm.project_name} onChange={(e) => setEditField('project_name', e.target.value)} placeholder="" />
+                </div>
+
+                {/* Candidate Signals (full width) */}
+                <div className="col-span-2 flex flex-col gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <FieldLabel>Candidate Signals</FieldLabel>
+                    <span className="text-gray-400 cursor-help text-sm" title="Prioritise candidates with specific backgrounds">ℹ</span>
+                  </div>
+                  <CandidateSignals values={editForm} onChange={(key, val) => setEditField(key, val)} />
                 </div>
 
               </div>
 
               {/* Footer */}
-              <div className="flex items-center justify-end gap-4 mt-8 pt-6 border-t border-gray-100">
-                <button onClick={handleCloseEdit} className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-8 py-2.5 rounded-md text-sm font-medium transition-colors">Cancel</button>
-                <button onClick={handleEditSave} disabled={editLoading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm">
-                  {editLoading ? 'Saving…' : 'Save Changes'}
-                </button>
+              <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-100">
+                <div>
+                  {editAiError && <p className="text-xs text-red-500">{editAiError}</p>}
+                </div>
+                <div className="flex items-center gap-4">
+                  <button onClick={handleCloseEdit} className="border border-gray-300 hover:bg-gray-50 text-gray-700 px-8 py-2.5 rounded-md text-sm font-medium transition-colors">Cancel</button>
+                  <button onClick={handleEditSave} disabled={editLoading} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-8 py-2.5 rounded-md text-sm font-medium transition-colors shadow-sm">
+                    {editLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {editLoading ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1214,6 +1214,40 @@ export default function Requisitions({ user }) {
                 className="bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors"
               >
                 {deleteLoading ? 'Deleting…' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════ VALIDATION ERROR MODAL ══════════ */}
+      {validationModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[92vw] p-6 flex flex-col gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <XCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-base">Required Fields Missing</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Please fill in the following fields before saving.</p>
+              </div>
+            </div>
+            <ul className="flex flex-col gap-1.5 pl-1">
+              {Object.keys(validationModal.errors).map((key) => (
+                <li key={key} className="flex items-center gap-2 text-sm text-slate-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                  <span className="font-medium">{MANDATORY_FIELD_LABELS[key] || key}</span>
+                  <span className="text-slate-400 text-xs">— {validationModal.errors[key]}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={() => setValidationModal(null)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                Got it
               </button>
             </div>
           </div>

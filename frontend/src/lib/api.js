@@ -77,6 +77,11 @@ export const auth = {
       body: JSON.stringify({ refresh: getRefresh() }),
     }),
   me: () => request('/auth/me/'),
+  changePassword: (oldPassword, newPassword) =>
+    request('/auth/change-password/', {
+      method: 'POST',
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    }),
   saveSession: ({ access, refresh, user }) => {
     saveTokens({ access, refresh });
     if (user) localStorage.setItem('user', JSON.stringify(user));
@@ -92,15 +97,32 @@ export const dashboard = {
   funnel: (params = {}) => request('/dashboard/funnel/?' + new URLSearchParams(params)),
   pendingActions: () => request('/dashboard/pending-actions/'),
   filterOptions: () => request('/dashboard/filter-options/'),
+  reportExcelUrl: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return `${BASE}/dashboard/report/excel/${qs ? '?' + qs : ''}`;
+  },
 };
 
 // ---- Departments ---- //
 export const departments = {
   list: () => request('/departments/'),
+  create: (data) => request('/departments/', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => request(`/departments/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  remove: (id) => request(`/departments/${id}/`, { method: 'DELETE' }),
   subVerticals: (deptId, parentParam) => {
     const qs = parentParam !== undefined ? `?parent=${parentParam}` : '';
     return request(`/departments/${deptId}/sub-verticals/${qs}`);
   },
+};
+
+// ---- Roles ---- //
+export const roles = {
+  list: () => request('/roles/'),
+  updatePermissions: (id, permissionKeys) =>
+    request(`/roles/${id}/permissions/`, {
+      method: 'PATCH',
+      body: JSON.stringify({ permission_keys: permissionKeys }),
+    }),
 };
 
 // ---- Requisitions ---- //
@@ -169,7 +191,12 @@ export const candidates = {
     }),
   moveJob: (id, fromJobId, toJobId) =>
     request(`/candidates/${id}/move-job/`, {
-      method: 'POST', body: JSON.stringify({ from_job_id: fromJobId, to_job_id: toJobId }),
+      method: 'POST',
+      body: JSON.stringify(
+        fromJobId
+          ? { from_job_id: fromJobId, to_job_id: toJobId }
+          : { to_job_id: toJobId }
+      ),
     }),
   delete: (id) => request(`/candidates/${id}/delete/`, { method: 'DELETE' }),
   getComments: (candidateId, jobId) =>
@@ -186,6 +213,14 @@ export const candidates = {
     request(`/candidates/${id}/reminders/${reminderId}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteReminder: (id, reminderId) =>
     request(`/candidates/${id}/reminders/${reminderId}/`, { method: 'DELETE' }),
+  uploadResume: (id, file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return requestUpload(`/candidates/${id}/resume/`, fd);
+  },
+  getAIMatch: (id) => request(`/candidates/${id}/ai-match/`),
+  computeAIMatch: (id) =>
+    request(`/candidates/${id}/ai-match/`, { method: 'POST' }),
 };
 
 // ---- Interviews ---- //
@@ -199,6 +234,10 @@ export const interviews = {
   submitFeedback: (id, data) =>
     request(`/interviews/${id}/feedback/`, { method: 'POST', body: JSON.stringify(data) }),
   getFeedback: (id) => request(`/interviews/${id}/feedback/detail/`),
+  updateFeedback: (id, data) =>
+    request(`/interviews/${id}/feedback/detail/`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteFeedback: (id) =>
+    request(`/interviews/${id}/feedback/detail/`, { method: 'DELETE' }),
   setRoundResult: (id, roundResult) =>
     request(`/interviews/${id}/round-result/`, {
       method: 'PATCH', body: JSON.stringify({ round_result: roundResult }),
@@ -248,6 +287,7 @@ export const resumes = {
   list: () => request('/resume/'),
   review: (id, data) => request(`/resume/${id}/review/`, { method: 'PATCH', body: JSON.stringify(data) }),
   convert: (id) => request(`/resume/${id}/convert/`, { method: 'POST' }),
+  discard: (id) => request(`/resume/${id}/discard/`, { method: 'DELETE' }),
   resolveDuplicate: (id, decision) =>
     request(`/resume/${id}/resolve-duplicate/`, { method: 'POST', body: JSON.stringify({ decision }) }),
 };
@@ -256,6 +296,17 @@ export const resumes = {
 export const ai = {
   generateRequisitionContent: (data) =>
     request('/requisitions/ai/generate/', { method: 'POST', body: JSON.stringify(data) }),
+};
+
+// ---- Reminders ---- //
+export const remindersApi = {
+  create: (candidateId, data) =>
+    request(`/candidates/${candidateId}/reminders/`, { method: 'POST', body: JSON.stringify(data) }),
+  list: (candidateId) => request(`/candidates/${candidateId}/reminders/`),
+  delete: (candidateId, reminderId) =>
+    request(`/candidates/${candidateId}/reminders/${reminderId}/`, { method: 'DELETE' }),
+  markDone: (candidateId, reminderId) =>
+    request(`/candidates/${candidateId}/reminders/${reminderId}/`, { method: 'PATCH', body: JSON.stringify({ is_done: true }) }),
 };
 
 // ---- Notifications ---- //
@@ -300,6 +351,13 @@ export const candidateShare = {
     }),
 };
 
+// ---- Referrals (Admin) ---- //
+export const referrals = {
+  list: (status = 'pending') => request(`/candidates/referrals/?status=${status}`),
+  approve: (id) => request(`/candidates/referrals/${id}/approve/`, { method: 'POST' }),
+  decline: (id) => request(`/candidates/referrals/${id}/decline/`, { method: 'POST' }),
+};
+
 // ---- Users (Admin) ---- //
 export const users = {
   dropdown: () => request('/users/dropdown/'),
@@ -310,4 +368,16 @@ export const users = {
   update: (id, data) => request(`/users/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }),
   activate: (id) => request(`/users/${id}/activate/`, { method: 'POST' }),
   deactivate: (id) => request(`/users/${id}/deactivate/`, { method: 'POST' }),
+  changeRole: (id, role) =>
+    request(`/users/${id}/role/`, { method: 'PATCH', body: JSON.stringify({ role }) }),
+  changeStatus: (id, status) =>
+    request(`/users/${id}/status/`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  remove: (id) => request(`/users/${id}/remove/`, { method: 'DELETE' }),
+  adminChangePassword: (id, newPassword) =>
+    request(`/users/${id}/password/`, { method: 'PATCH', body: JSON.stringify({ new_password: newPassword }) }),
+};
+
+// ---- Activity Log (Admin only) ---- //
+export const activity = {
+  list: (params = {}) => request('/activity/?' + new URLSearchParams(params)),
 };

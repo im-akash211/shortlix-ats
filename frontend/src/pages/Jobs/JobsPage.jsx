@@ -1,32 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '../../lib/useDebounce';
 import { PageLoader } from '../../components/LoadingDots';
 import { ROUTES } from '../../routes/constants';
-import { Search, Briefcase, UserPlus, X } from 'lucide-react';
+import { Search, Briefcase, Users } from 'lucide-react';
+import { useAuth } from '../../lib/authContext';
 
 import { useJobs, useFilterOptions } from './hooks/useJobs';
 import { useJobDetail } from './hooks/useJobDetail';
 import { useCollaborators } from './hooks/useCollaborators';
 import { useJobPipeline } from './hooks/useJobPipeline';
-import { useShare } from './hooks/useShare';
+import { useResumeUpload } from '../Candidates/hooks/useResumeUpload';
 
-import { jobsApi, candidatesApi, interviewsApi } from './services/jobsApi';
+import { jobsApi } from './services/jobsApi';
+import { candidates as candidatesLibApi } from '../../lib/api';
 
 import JobCard from './components/JobCard';
 import JobFilters from './components/JobFilters';
 import JobDetailPanel from './components/JobDetailPanel';
-import PipelineView from './components/PipelineView';
 import JobEditModal from './components/JobEditModal';
 import CollaboratorsModal from './components/CollaboratorsModal';
-import AddCandidateModal from './components/AddCandidateModal';
-import ScheduleModal from './components/ScheduleModal';
-import NewScheduleModal from './components/NewScheduleModal';
-import DropModal from './components/DropModal';
-import ResumeModal from './components/ResumeModal';
+import ApplyCandidateModal from './components/ApplyCandidateModal';
+import UploadResumeModal from '../Candidates/components/UploadResumeModal';
+import ReviewResumeModal from '../Candidates/components/ReviewResumeModal';
 
 export default function JobsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const canUploadResume = user?.role === 'admin' || user?.role === 'recruiter';
+
   const [searchParams, setSearchParams] = useSearchParams();
 
   // ── URL-based List state ───────────────────────────────────────────────────
@@ -95,115 +99,70 @@ export default function JobsPage() {
 
   // ── Job detail route ─────────────────────────────────────────────────────────
   const detailMatch = useMatch(ROUTES.JOBS.DETAIL_PATTERN);
-  const candidatesMatch = useMatch(ROUTES.JOBS.CANDIDATES_PATTERN);
   const interviewsMatch = useMatch(ROUTES.JOBS.INTERVIEWS_PATTERN);
-  const matchJobId = detailMatch?.params?.jobId || candidatesMatch?.params?.jobId || interviewsMatch?.params?.jobId;
+  const matchJobId = detailMatch?.params?.jobId || interviewsMatch?.params?.jobId;
 
   const [viewingJob, setViewingJob] = useState(null);
-  const [isPipelinePanelOpen, setIsPipelinePanelOpen] = useState(false);
-
-  const isCandidatesRoute = Boolean(candidatesMatch);
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
   const jobDetail = useJobDetail({ setViewingJob });
 
   const collabs = useCollaborators({ viewingJob, setJobDetail: jobDetail.setJobDetail });
 
-  const pipeline = useJobPipeline({ viewingJob, isPipelinePanelOpen });
+  const pipeline = useJobPipeline({ viewingJob, isPipelinePanelOpen: false });
 
-  const share = useShare();
 
-  // ── Schedule modal extra state (ScheduleModal - old flow) ──────────────────
-  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
-  const [scheduleCandidate, setScheduleCandidate] = useState(null);
-  const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [scheduleToast, setScheduleToast] = useState(null);
+  // ── Upload resume (job context) ────────────────────────────────────────────
+  const [jobResumeActiveModal, setJobResumeActiveModal] = useState(null); // 'upload' | 'review' | null
+  const jobResume = useResumeUpload({ setActiveModal: setJobResumeActiveModal });
+  const [assignConflict, setAssignConflict] = useState(null); // { candidate, currentJob }
 
-  const closeScheduleModal = () => {
-    setIsScheduleOpen(false);
-    setScheduleCandidate(null);
-    pipeline.setScheduleForm({ round_number: 1, round_label: '', interviewer: '', scheduled_at: '', duration_minutes: 60, mode: 'virtual', meeting_link: '' });
-    setScheduleToast(null);
-  };
-
-  const handleScheduleSubmit = async () => {
-    const { scheduleForm } = pipeline;
-    if (!scheduleForm.interviewer || !scheduleForm.scheduled_at) return;
-    setScheduleLoading(true);
-    setScheduleToast(null);
-    try {
-      await interviewsApi.create({
-        mapping:          scheduleCandidate.id,
-        round_number:     Number(scheduleForm.round_number),
-        round_label:      scheduleForm.round_label,
-        interviewer:      scheduleForm.interviewer,
-        scheduled_at:     new Date(scheduleForm.scheduled_at).toISOString(),
-        duration_minutes: Number(scheduleForm.duration_minutes),
-        mode:             scheduleForm.mode,
-        meeting_link:     scheduleForm.meeting_link,
-      });
-      setScheduleToast({ type: 'success', message: 'Interview scheduled successfully.' });
-      setTimeout(() => closeScheduleModal(), 1200);
-    } catch (err) {
-      setScheduleToast({ type: 'error', message: err.data?.detail || JSON.stringify(err.data) || 'Failed to schedule.' });
-    } finally {
-      setScheduleLoading(false);
-    }
-  };
-
-  // ── Add Profile state ──────────────────────────────────────────────────────
-  const [isAddProfileOpen, setIsAddProfileOpen] = useState(false);
-  const [addProfileTargetJob, setAddProfileTargetJob] = useState(null);
-  const [addForm, setAddForm] = useState({ full_name: '', email: '', phone: '', location: '', total_experience_years: '' });
-  const [addLoading, setAddLoading] = useState(false);
-  const [addProfileSuccess, setAddProfileSuccess] = useState('');
-
-  const handleAddProfile = async () => {
-    if (!addForm.full_name || !addForm.email) return;
-    setAddLoading(true);
-    const targetJob = addProfileTargetJob || viewingJob;
-    try {
-      const candidate = await candidatesApi.create({
-        ...addForm,
-        total_experience_years: addForm.total_experience_years || null,
-        source: 'manual',
-      });
-      if (targetJob) await candidatesApi.assignJob(candidate.id, targetJob.id);
-      setIsAddProfileOpen(false);
-      setAddProfileTargetJob(null);
-      setAddForm({ full_name: '', email: '', phone: '', location: '', total_experience_years: '' });
-      if (viewingJob && targetJob?.id === viewingJob.id) {
+  // After a resume is converted, assign the candidate to the current job
+  useEffect(() => {
+    if (!jobResume.convertSuccess || !viewingJob) return;
+    candidatesLibApi.assignJob(jobResume.convertSuccess.id, viewingJob.id)
+      .then(() => {
         pipeline.setPipelineTab('Applied');
-        setIsPipelinePanelOpen(true);
         pipeline.refreshAllCandidates(viewingJob.id);
-      }
-      setAddProfileSuccess(`Profile added successfully${targetJob ? ` to ${targetJob.title}` : ''}.`);
-      setTimeout(() => setAddProfileSuccess(''), 4000);
-    } catch (err) {
-      alert(err.data?.email?.[0] || err.data?.detail || 'Failed to add profile');
-    } finally {
-      setAddLoading(false);
-    }
-  };
+      })
+      .catch((err) => {
+        if (err.status === 409 && err.data?.conflict) {
+          setAssignConflict({ candidate: jobResume.convertSuccess, currentJob: err.data.current_job });
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobResume.convertSuccess]);
 
-  // ── Candidate profile ──────────────────────────────────────────────────────
-  const openCandidateProfile = (c) => {
-    navigate(ROUTES.CANDIDATES.PROFILE_FROM_JOB(c.candidate, viewingJob.id));
-  };
-
-  // ── Resume viewer state ────────────────────────────────────────────────────
-  const [resumeModal, setResumeModal] = useState(null);
-  const openResume = async (candidate) => {
+  const handleAssignConflictMove = async () => {
+    if (!assignConflict || !viewingJob) return;
     try {
-      const files = candidate.resume_files || [];
-      const latest = files.find(f => f.is_latest) || files[0];
-      if (files.length === 0) { setResumeModal({ name: candidate.full_name, empty: true }); return; }
-      if (!latest?.file_url) { setResumeModal({ name: candidate.full_name, missing: true }); return; }
-      setResumeModal({ url: latest.file_url, filename: latest.original_filename, type: latest.file_type, name: candidate.full_name });
-    } catch (err) {
-      setResumeModal({ name: candidate.full_name, error: true });
+      await candidatesLibApi.moveJob(assignConflict.candidate.id, assignConflict.currentJob.id, viewingJob.id);
+      setAssignConflict(null);
+      pipeline.setPipelineTab('Applied');
+      pipeline.refreshAllCandidates(viewingJob.id);
+    } catch {
+      setAssignConflict(null);
     }
   };
+
+  const handleResumeApplyToJob = () => {
+    // Called when user clicks "View in Pipeline" on the success screen
+    pipeline.setPipelineTab('Applied');
+    pipeline.refreshAllCandidates(viewingJob.id);
+    navigate(ROUTES.JOBS.CANDIDATES(viewingJob.id));
+  };
+
+  // ── Apply existing candidate modal ────────────────────────────────────────
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
+  const [applyToast, setApplyToast] = useState('');
+
+  const handleApplyCandidateSuccess = (candidate) => {
+    pipeline.setPipelineTab('Applied');
+    pipeline.refreshAllCandidates(viewingJob.id);
+    setApplyToast(`${candidate.full_name} applied to ${viewingJob.title} successfully.`);
+    setTimeout(() => setApplyToast(''), 4000);
+  };
+
 
   // ── Sync route param with detail view ─────────────────────────────────────
   useEffect(() => {
@@ -218,81 +177,22 @@ export default function JobsPage() {
           .catch(console.error)
           .finally(() => jobDetail.setJobDetailLoading(false));
       }
-      setIsPipelinePanelOpen(isCandidatesRoute);
     } else {
       setViewingJob(null);
       jobDetail.setJobDetail(null);
-      setIsPipelinePanelOpen(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchJobId, isCandidatesRoute]);
+  }, [matchJobId]);
 
-  // ── Load users when schedule modal opens ──────────────────────────────────
-  useEffect(() => {
-    if (!pipeline.scheduleModalCandidate) return;
-    share.ensureUsersLoaded();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipeline.scheduleModalCandidate]);
 
   // ── Open job detail ────────────────────────────────────────────────────────
-  const openJobDetails = (job, tab = 'Applied', openPanel = false) => {
+  const openJobDetails = (job) => {
     setViewingJob(job);
-    pipeline.setPipelineTab(tab);
-    pipeline.setScreeningFilter('ALL');
-    pipeline.setInterviewFilter('ALL');
-    if (openPanel || tab !== 'Applied') {
-      navigate(ROUTES.JOBS.CANDIDATES(job.id));
-      pipeline.setDimmedLoading && pipeline.setDimmedLoading(true);
-      pipeline.refreshDimmed(job.id, tab).finally(() => pipeline.setDimmedLoading && pipeline.setDimmedLoading(false));
-    } else {
-      navigate(ROUTES.JOBS.DETAIL(job.id));
-    }
-  };
-
-  // Shared card props for CandidateCard/PipelineView
-  const pipelineCardProps = {
-    shareOpen: share.shareOpen, setShareOpen: share.setShareOpen,
-    shareSearch: share.shareSearch, setShareSearch: share.setShareSearch,
-    shareSelected: share.shareSelected, setShareSelected: share.setShareSelected,
-    shareRef: share.shareRef,
-    usersList: share.usersList, usersLoading: share.usersLoading,
-    handleShare: share.handleShare,
-    openCandidateProfile,
-    handleShortlist: pipeline.handleShortlist,
-    handleAppliedReject: pipeline.handleAppliedReject,
-    shortlistingId: pipeline.shortlistingId,
-    handleScreeningStatus: pipeline.handleScreeningStatus,
-    screeningStatusLoadingId: pipeline.screeningStatusLoadingId,
-    getMoveToOptions: pipeline.getMoveToOptions,
-    handleMoveToInterview: pipeline.handleMoveToInterview,
-    handleMakeOffer: pipeline.handleMakeOffer,
-    handleMarkJoined: pipeline.handleMarkJoined,
-    handleRestoreToShortlist: pipeline.handleRestoreToShortlist, restoringId: pipeline.restoringId,
-    handleInterviewReject: pipeline.handleInterviewReject,
-    handleClearInterviewReject: pipeline.handleClearInterviewReject,
-    setDropModalCandidate: pipeline.setDropModalCandidate,
-    setDropReason: pipeline.setDropReason,
-    handleNextRound: pipeline.handleNextRound, nextRoundLoading: pipeline.nextRoundLoading,
-    handleJumpRound: pipeline.handleJumpRound, jumpRoundLoading: pipeline.jumpRoundLoading,
-    handleRoundStatus: pipeline.handleRoundStatus, roundStatusLoadingId: pipeline.roundStatusLoadingId,
-    setScheduleModalCandidate: pipeline.setScheduleModalCandidate,
-    setScheduleModalRound: pipeline.setScheduleModalRound,
-    commentsByCard: pipeline.commentsByCard,
-    commentsOpenId: pipeline.commentsOpenId,
-    commentsLoadingId: pipeline.commentsLoadingId,
-    commentInput: pipeline.commentInput,
-    setCommentInput: pipeline.setCommentInput,
-    commentSubmittingId: pipeline.commentSubmittingId,
-    handleToggleComments: pipeline.handleToggleComments,
-    handleAddComment: pipeline.handleAddComment,
-    handlePriorityChange: pipeline.handlePriorityChange,
+    navigate(ROUTES.JOBS.DETAIL(job.id));
   };
 
   return (
     <>
-{/* Resume Viewer Modal */}
-      <ResumeModal resumeModal={resumeModal} setResumeModal={setResumeModal} />
-
       {/* ══════════════════ JOB DETAIL VIEW ══════════════════ */}
       {(viewingJob || matchJobId) ? (
         <JobDetailPanel
@@ -302,11 +202,12 @@ export default function JobsPage() {
           allCandidates={pipeline.allCandidates}
           allCandidatesLoading={pipeline.allCandidatesLoading}
           getStatCount={pipeline.getStatCount}
-          setPipelineTab={pipeline.setPipelineTab}
           openEdit={jobDetail.openEdit}
           setIsDeleteJobOpen={jobDetail.setIsDeleteJobOpen}
           openCollabModal={collabs.openCollabModal}
-          setIsAddProfileOpen={setIsAddProfileOpen}
+          onUploadResume={jobResume.openUploadModal}
+          onApplyFromPool={() => setApplyModalOpen(true)}
+          canUploadResume={canUploadResume}
         />
       ) : (
         /* ══════════════════ JOB LIST VIEW ══════════════════ */
@@ -375,8 +276,6 @@ export default function JobsPage() {
                     key={job.id}
                     job={job}
                     onView={(j) => openJobDetails(j)}
-                    onOpenPipeline={(j, tab) => openJobDetails(j, tab, true)}
-                    onAddProfile={(j) => { setAddProfileTargetJob(j); setIsAddProfileOpen(true); }}
                     onCollaborators={(j) => collabs.openCollabModal(j)}
                   />
                 ))
@@ -401,80 +300,99 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* ══════════════════ PIPELINE SLIDE-OVER PANEL ══════════════════ */}
-      {isPipelinePanelOpen && viewingJob && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/20 z-40"
-            onClick={() => { pipeline.setScreeningFilter('ALL'); pipeline.setInterviewFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
-          />
 
-          {/* Drawer */}
-          <div className="fixed right-0 top-0 h-full w-[50vw] min-w-[550px] max-w-[95vw] bg-white shadow-2xl z-50 flex flex-col">
-
-            {/* Drawer header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
-              <div className="min-w-0">
-                <p className="text-xs text-slate-500 truncate">{viewingJob.job_code} — {viewingJob.title}</p>
-                <h3 className="text-base font-bold text-slate-800 mt-0.5">{pipeline.pipelineTab}</h3>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 ml-4">
-                <button
-                  onClick={() => setIsAddProfileOpen(true)}
-                  className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-                >
-                  <UserPlus className="w-3.5 h-3.5" /> Add Profile
-                </button>
-                <button
-                  onClick={() => { pipeline.setScreeningFilter('ALL'); pipeline.setInterviewFilter('ALL'); navigate(ROUTES.JOBS.DETAIL(viewingJob.id)); }}
-                  className="text-slate-400 hover:text-slate-700 transition-colors p-1"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+      {/* Assign conflict dialog */}
+      {assignConflict && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[600] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <p className="text-sm font-semibold text-slate-800">Candidate Already Applied</p>
+            <p className="text-sm text-slate-600">
+              <span className="font-medium">{assignConflict.candidate.full_name}</span> is currently applied to{' '}
+              <span className="font-medium">{assignConflict.currentJob.job_code} — {assignConflict.currentJob.title}</span>.
+              Move them to <span className="font-medium">{viewingJob?.job_code} — {viewingJob?.title}</span>?
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setAssignConflict(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssignConflictMove}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+              >
+                Move Here
+              </button>
             </div>
-
-            <PipelineView
-              pipelineTab={pipeline.pipelineTab}
-              allCandidates={pipeline.allCandidates}
-              allCandidatesLoading={pipeline.allCandidatesLoading}
-              dimmedCandidates={pipeline.dimmedCandidates}
-              dimmedLoading={pipeline.dimmedLoading}
-              screeningFilter={pipeline.screeningFilter} setScreeningFilter={pipeline.setScreeningFilter}
-              interviewFilter={pipeline.interviewFilter} setInterviewFilter={pipeline.setInterviewFilter}
-              offeredFilter={pipeline.offeredFilter} setOfferedFilter={pipeline.setOfferedFilter}
-              onTabChange={(tab) => { pipeline.setPipelineTab(tab); pipeline.setScreeningFilter('ALL'); pipeline.setInterviewFilter('ALL'); }}
-              getStatCount={pipeline.getStatCount}
-              {...pipelineCardProps}
-            />
           </div>
-        </>
+        </div>
       )}
 
-      {/* Drop Candidate Modal */}
-      <DropModal
-        dropModalCandidate={pipeline.dropModalCandidate}
-        setDropModalCandidate={pipeline.setDropModalCandidate}
-        dropReason={pipeline.dropReason}
-        setDropReason={pipeline.setDropReason}
-        dropLoading={pipeline.dropLoading}
-        handleDropConfirm={pipeline.handleDropConfirm}
+      {/* Upload Resume (job context) */}
+      <UploadResumeModal
+        isOpen={jobResumeActiveModal === 'upload'}
+        onClose={jobResume.closeUploadModal}
+        uploadFile={jobResume.uploadFile}
+        uploadLoading={jobResume.uploadLoading}
+        uploadResult={jobResume.uploadResult}
+        uploadError={jobResume.uploadError}
+        uploadDuplicate={jobResume.uploadDuplicate}
+        existingCandidate={jobResume.existingCandidate}
+        fileInputRef={jobResume.fileInputRef}
+        handleFileSelect={jobResume.handleFileSelect}
+        handleUploadSubmit={jobResume.handleUploadSubmit}
+        openReviewModal={jobResume.openReviewModal}
+        setUploadResult={jobResume.setUploadResult}
+        setUploadFile={jobResume.setUploadFile}
+        setUploadError={jobResume.setUploadError}
+        targetJob={viewingJob}
+        onApplyExisting={(candidate) => {
+          jobResume.closeUploadModal();
+          candidatesLibApi.assignJob(candidate.id, viewingJob.id)
+            .then(() => {
+              pipeline.refreshAllCandidates(viewingJob.id);
+            })
+            .catch((err) => {
+              if (err.status === 409 && err.data?.conflict) {
+                setAssignConflict({ candidate, currentJob: err.data.current_job });
+              }
+            });
+        }}
+      />
+      <ReviewResumeModal
+        isOpen={jobResumeActiveModal === 'review'}
+        onClose={jobResume.closeReviewModal}
+        reviewIngestion={jobResume.reviewIngestion}
+        reviewForm={jobResume.reviewForm}
+        reviewLoading={jobResume.reviewLoading}
+        reviewSaved={jobResume.reviewSaved}
+        convertLoading={jobResume.convertLoading}
+        duplicateInfo={jobResume.duplicateInfo}
+        resolveLoading={jobResume.resolveLoading}
+        convertSuccess={jobResume.convertSuccess}
+        reviewError={jobResume.reviewError}
+        setReviewField={jobResume.setReviewField}
+        updateEducation={jobResume.updateEducation}
+        addEducation={jobResume.addEducation}
+        removeEducation={jobResume.removeEducation}
+        handleSaveReview={jobResume.handleSaveReview}
+        handleConvert={jobResume.handleConvert}
+        handleResolveDuplicate={jobResume.handleResolveDuplicate}
+        queryClient={queryClient}
+        targetJob={viewingJob}
+        onApplyToJob={handleResumeApplyToJob}
       />
 
-      {/* New Schedule Modal (from pipeline) */}
-      <NewScheduleModal
-        scheduleModalCandidate={pipeline.scheduleModalCandidate}
-        scheduleModalRound={pipeline.scheduleModalRound}
-        setScheduleModalCandidate={pipeline.setScheduleModalCandidate}
-        setScheduleModalRound={pipeline.setScheduleModalRound}
-        scheduleForm={pipeline.scheduleForm}
-        setScheduleForm={pipeline.setScheduleForm}
-        scheduleSubmitting={pipeline.scheduleSubmitting}
-        usersList={share.usersList}
-        usersLoading={share.usersLoading}
-        handleNewScheduleSubmit={pipeline.handleNewScheduleSubmit}
-      />
+      {/* Apply from Talent Pool */}
+      {applyModalOpen && viewingJob && (
+        <ApplyCandidateModal
+          job={viewingJob}
+          onClose={() => setApplyModalOpen(false)}
+          onSuccess={handleApplyCandidateSuccess}
+        />
+      )}
+
 
       {/* Close Job Confirmation */}
       {jobDetail.isCloseConfirmOpen && (
@@ -538,29 +456,6 @@ export default function JobsPage() {
         handleRemoveCollab={collabs.handleRemoveCollab}
       />
 
-      {/* Add Profile Modal */}
-      <AddCandidateModal
-        isAddProfileOpen={isAddProfileOpen}
-        setIsAddProfileOpen={setIsAddProfileOpen}
-        setAddProfileTargetJob={setAddProfileTargetJob}
-        addForm={addForm}
-        setAddForm={setAddForm}
-        addLoading={addLoading}
-        handleAddProfile={handleAddProfile}
-      />
-
-      {/* Schedule Interview Modal (old flow) */}
-      <ScheduleModal
-        isScheduleOpen={isScheduleOpen}
-        scheduleCandidate={scheduleCandidate}
-        scheduleForm={pipeline.scheduleForm}
-        setScheduleForm={pipeline.setScheduleForm}
-        scheduleLoading={scheduleLoading}
-        scheduleToast={scheduleToast}
-        usersList={share.usersList}
-        closeScheduleModal={closeScheduleModal}
-        handleScheduleSubmit={handleScheduleSubmit}
-      />
 
       {/* Delete Job Confirmation Modal */}
       {jobDetail.isDeleteJobOpen && (
@@ -598,19 +493,12 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Share success toast */}
-      {share.shareToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] bg-green-600 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
-          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
-          {share.shareToast}
-        </div>
-      )}
 
-      {/* Add Profile success toast */}
-      {addProfileSuccess && (
+      {/* Apply / upload success toast */}
+      {applyToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[600] bg-green-600 text-white text-sm px-5 py-3 rounded-xl shadow-lg flex items-center gap-2">
           <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
-          {addProfileSuccess}
+          {applyToast}
         </div>
       )}
     </>

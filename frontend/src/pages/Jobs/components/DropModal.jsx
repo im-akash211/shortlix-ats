@@ -9,6 +9,8 @@ export default function DropModal({
   dropLoading,
   handleDropConfirm,
 }) {
+  // When triggered from OFFERED stage, REJECTED is not a valid reason
+  const isPostOffer = dropModalCandidate?.macro_stage === 'OFFERED';
   if (!dropModalCandidate) return null;
 
   return (
@@ -30,7 +32,7 @@ export default function DropModal({
             onChange={(e) => setDropReason(e.target.value)}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
           >
-            <option value="REJECTED">Rejected</option>
+            {!isPostOffer && <option value="REJECTED">Rejected by Recruiter</option>}
             <option value="CANDIDATE_DROP">Candidate Drop</option>
             <option value="NO_SHOW">No Show</option>
           </select>

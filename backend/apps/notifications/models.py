@@ -77,6 +77,11 @@ class InAppNotification(models.Model):
         'candidates.Candidate', on_delete=models.CASCADE,
         null=True, blank=True, related_name='notifications'
     )
+    job = models.ForeignKey(
+        'jobs.Job', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='notifications'
+    )
+    macro_stage = models.CharField(max_length=15, blank=True)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import { auth } from '../lib/api';
 import { useAuth } from '../lib/authContext';
 import { ROUTES } from '../routes/constants';
@@ -7,6 +8,7 @@ import { ROUTES } from '../routes/constants';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   
@@ -21,7 +23,8 @@ export default function Login() {
       const data = await auth.login(email, password);
       auth.saveSession(data);
       handleLogin(data.user);
-      navigate(ROUTES.DASHBOARD, { replace: true });
+      const landing = data.user.role === 'interviewer' ? ROUTES.INTERVIEWS : ROUTES.DASHBOARD;
+      navigate(landing, { replace: true });
     } catch (err) {
       setError(err.data?.detail || 'Invalid credentials. Please try again.');
     } finally {
@@ -58,14 +61,23 @@ export default function Login() {
 
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-slate-700">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2.5 pr-10 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -82,8 +94,9 @@ export default function Login() {
           <div className="flex flex-col gap-1.5">
             {[
               { email: 'admin@ats.com',        password: 'Admin@123', role: 'Admin' },
-              { email: 'priya.sharma@ats.com', password: 'Pass@123',  role: 'Recruiter' },
-              { email: 'amit.verma@ats.com',   password: 'Pass@123',  role: 'Hiring Manager' },
+              { email: 'nikhil.bhatia@ats.com', password: 'Admin@123',  role: 'Recruiter' },
+              { email: 'vikash.sharma@ats.com',  password: 'Admin@123',  role: 'Hiring Manager' },
+              { email: 'rajat.mehra@ats.com',    password: 'Pass@123',   role: 'Interviewer' },
             ].map(acc => (
               <button
                 key={acc.email}

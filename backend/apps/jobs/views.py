@@ -1,5 +1,4 @@
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Count, Q
@@ -10,7 +9,7 @@ from .serializers import (
 )
 from apps.candidates.models import CandidateJobMapping
 from apps.candidates.serializers import CandidateJobMappingSerializer
-from apps.core.permissions import IsAdmin
+from apps.core.permissions import CanEditJob, rbac_perm
 
 
 def log_job_history(job, event_type, changed_by, description, previous_value=None, new_value=None):
@@ -26,6 +25,7 @@ def log_job_history(job, event_type, changed_by, description, previous_value=Non
 
 class JobListView(generics.ListAPIView):
     serializer_class = JobListSerializer
+    permission_classes = [rbac_perm('VIEW_JOBS')]
     search_fields = ['title', 'job_code', 'location']
     filterset_fields = ['status', 'department', 'hiring_manager', 'location']
     ordering_fields = ['created_at', 'title']
@@ -81,6 +81,7 @@ class JobDetailView(generics.RetrieveUpdateAPIView):
         'department', 'hiring_manager', 'created_by', 'requisition', 'requisition__created_by'
     ).prefetch_related('collaborators__user', 'history__changed_by')
     serializer_class = JobDetailSerializer
+    permission_classes = [rbac_perm('VIEW_JOBS'), CanEditJob]
 
     def perform_update(self, serializer):
         instance = serializer.instance
@@ -128,8 +129,43 @@ class JobDetailView(generics.RetrieveUpdateAPIView):
         if old_jd != updated.job_description:
             log_job_history(updated, 'jd_updated', user, 'Job description updated')
 
+        # Activity logging for important field changes (non-fatal, additive only)
+        _LOGGED_CHANGES = [
+            (old_status != updated.status, 'status_changed', 'Status',
+             old_status.capitalize(), updated.status.capitalize()),
+            (old_title != updated.title, 'title_updated', 'Title', old_title, updated.title),
+            (old_hm_id != str(updated.hiring_manager_id), 'hiring_manager_changed', 'Hiring Manager', '', ''),
+            (old_jd != updated.job_description, 'jd_updated', 'Job Description', '', ''),
+        ]
+        try:
+            from apps.activity.utils import log_activity
+            _actor_name = user.full_name or user.email
+            for changed, _action, _field_label, _prev, _new in _LOGGED_CHANGES:
+                if changed:
+                    _sentence = f'{_actor_name} updated {_field_label} for {updated.title}'
+                    log_activity(
+                        actor=user,
+                        action='job_updated',
+                        entity_type='job',
+                        entity_id=updated.id,
+                        sentence=_sentence,
+                        metadata={
+                            'job_id': str(updated.id),
+                            'job_title': updated.title,
+                            'job_code': updated.job_code or '',
+                            'field_name': _action,
+                            'field_label': _field_label,
+                            'previous_value': _prev,
+                            'new_value': _new,
+                        },
+                    )
+        except Exception:
+            pass
+
 
 class JobDeleteView(APIView):
+    permission_classes = [rbac_perm('EDIT_JOBS')]
+
     def delete(self, request, pk):
         job = generics.get_object_or_404(Job, pk=pk)
         job.delete()
@@ -150,6 +186,7 @@ class JobPipelineView(APIView):
       - can_move_next: bool
       - latest_round: {round_name, round_status, round_result} (if in INTERVIEW)
     """
+    permission_classes = [rbac_perm('VIEW_JOBS')]
 
     def get(self, request, pk):
         from apps.candidates.models import STAGE_ORDER, PipelineStageHistory
@@ -159,9 +196,14 @@ class JobPipelineView(APIView):
         stage_param = request.query_params.get('stage', '').strip()
         include_progressed = request.query_params.get('include_progressed', 'false').lower() == 'true'
 
-        base_qs = CandidateJobMapping.objects.filter(job=job).select_related(
-            'candidate', 'job'
-        ).prefetch_related('interviews')
+        base_qs = CandidateJobMapping.objects.filter(job=job, is_archived=False).select_related(
+            'candidate', 'job',
+            'previous_mapping__job__department', 'previous_mapping__job__hiring_manager',
+        ).prefetch_related(
+            'interviews',
+            'previous_mapping__interviews',
+            'previous_mapping__stage_logs__moved_by',
+        )
 
         # Priority sort order helper
         PRIORITY_ORDER = {'HIGH': 0, 'MEDIUM': 1, 'LOW': 2}
@@ -239,6 +281,8 @@ def _get_latest_round(mapping):
 
 
 class JobPipelineStatsView(APIView):
+    permission_classes = [rbac_perm('VIEW_JOBS')]
+
     def get(self, request, pk):
         from apps.candidates.models import MACRO_STAGE_CHOICES
         job = generics.get_object_or_404(Job, pk=pk)
@@ -254,8 +298,8 @@ class JobCollaboratorListCreateView(generics.ListCreateAPIView):
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return [IsAuthenticated(), IsAdmin()]
-        return [IsAuthenticated()]
+            return [rbac_perm('EDIT_JOBS')()]
+        return [rbac_perm('VIEW_JOBS')()]
 
     def get_queryset(self):
         return JobCollaborator.objects.filter(
@@ -272,10 +316,12 @@ class JobCollaboratorListCreateView(generics.ListCreateAPIView):
             f'Collaborator added: {collab.user.full_name}',
             new_value={'user_id': str(collab.user.id), 'name': collab.user.full_name},
         )
+        from apps.notifications.utils import notify_collaborator_added
+        notify_collaborator_added(collab.job, collab.user, self.request.user)
 
 
 class JobCollaboratorDeleteView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [rbac_perm('EDIT_JOBS')]
 
     def delete(self, request, pk, user_id):
         try:
@@ -297,7 +343,7 @@ class JobCollaboratorDeleteView(APIView):
 
 class JobHistoryListView(generics.ListAPIView):
     serializer_class = JobHistorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('VIEW_JOBS')]
 
     def get_queryset(self):
         return JobHistory.objects.filter(
@@ -306,7 +352,7 @@ class JobHistoryListView(generics.ListAPIView):
 
 
 class JobExcelReportView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [rbac_perm('VIEW_JOBS')]
 
     def get(self, request, pk):
         import openpyxl
@@ -434,11 +480,11 @@ class JobExcelReportView(APIView):
         CAND_HEADERS = [
             'S.No', 'Full Name', 'Email', 'Phone', 'Designation',
             'Current Employer', 'Location', 'Experience (yrs)',
-            'Current CTC (LPA)', 'Notice Period (days)', 'Source',
+            'Current CTC (LPA)', 'Notice Period (days)', 'Expected CTC (LPA)', 'Source',
             'Skills', 'Stage', 'Priority', 'Offer Status',
             'Drop Reason', 'Stage Last Updated',
         ]
-        col_widths = [6, 22, 28, 15, 20, 22, 15, 14, 14, 14, 16, 35, 14, 10, 14, 18, 20]
+        col_widths = [6, 22, 28, 15, 20, 22, 15, 14, 14, 16, 14, 16, 35, 14, 10, 14, 18, 20]
         for i, w in enumerate(col_widths, 1):
             ws2.column_dimensions[ws2.cell(1, i).column_letter].width = w
 
@@ -458,6 +504,7 @@ class JobExcelReportView(APIView):
                 float(c.total_experience_years) if c.total_experience_years else '—',
                 float(c.current_ctc_lakhs) if c.current_ctc_lakhs else '—',
                 c.notice_period_days if c.notice_period_days is not None else '—',
+                float(c.expected_ctc_lakhs) if c.expected_ctc_lakhs else '—',
                 c.get_source_display(),
                 ', '.join(c.skills) if c.skills else '—',
                 m.macro_stage,

@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Briefcase, Users, Calendar, CheckSquare, FileText, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Briefcase, Users, Calendar, CheckSquare, FileText, Settings, ChevronLeft, ChevronRight, GitMerge } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { ROUTES } from '../routes/constants';
+import { useAuth } from '../lib/authContext';
+import { hasPermission } from '../lib/permissions';
 
 export default function Sidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [width, setWidth] = useState(256);
+  const { user } = useAuth();
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [width, setWidth] = useState(80);
   const isResizing = useRef(false);
   const sidebarRef = useRef(null);
 
@@ -61,15 +64,17 @@ export default function Sidebar() {
     }
   };
 
-  const navItems = [
-    { name: 'Dashboard', icon: LayoutDashboard, path: ROUTES.DASHBOARD },
-    { name: 'Jobs', icon: Briefcase, path: ROUTES.JOBS.ROOT },
-    { name: 'Candidates', icon: Users, path: ROUTES.CANDIDATES.ROOT },
-    { name: 'Interviews', icon: Calendar, path: ROUTES.INTERVIEWS },
-    { name: 'Approvals', icon: CheckSquare, path: ROUTES.APPROVALS },
-    { name: 'Requisitions', icon: FileText, path: ROUTES.REQUISITIONS.ROOT },
-    { name: 'Settings', icon: Settings, path: ROUTES.SETTINGS },
+  const allNavItems = [
+    { name: 'Dashboard',    icon: LayoutDashboard, path: ROUTES.DASHBOARD,           perm: 'VIEW_REPORTS' },
+    { name: 'Jobs',         icon: Briefcase,        path: ROUTES.JOBS.ROOT,           perm: 'VIEW_JOBS' },
+    { name: 'Candidates',   icon: Users,            path: ROUTES.CANDIDATES.ROOT,     perm: 'VIEW_CANDIDATES' },
+    { name: 'Interviews',   icon: Calendar,         path: ROUTES.INTERVIEWS,          perm: 'GIVE_FEEDBACK' },
+    { name: 'Approvals',    icon: CheckSquare,      path: ROUTES.APPROVALS,           perm: 'APPROVE_REQUISITIONS' },
+    { name: 'Requisitions', icon: FileText,         path: ROUTES.REQUISITIONS.ROOT,   perm: 'MANAGE_REQUISITIONS' },
+    { name: 'Referrals',    icon: GitMerge,         path: ROUTES.REFERRALS,           perm: 'VIEW_REPORTS' },
+    { name: 'Settings',     icon: Settings,         path: ROUTES.SETTINGS,            perm: 'MANAGE_USERS' },
   ];
+  const navItems = allNavItems.filter(item => hasPermission(user, item.perm));
 
   return (
     <aside 

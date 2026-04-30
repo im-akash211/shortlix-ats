@@ -23,6 +23,7 @@ export default function PipelineView({
   handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,
   handleMoveToInterview,
   handleMakeOffer,
+  handleMarkOfferAccepted,
   handleMarkJoined,
   handleRestoreToShortlist, restoringId,
   handleInterviewReject,
@@ -34,15 +35,20 @@ export default function PipelineView({
   setScheduleModalCandidate, setScheduleModalRound,
   commentsByCard, commentsOpenId, commentsLoadingId, commentInput, setCommentInput,
   commentSubmittingId, handleToggleComments, handleAddComment, handlePriorityChange,
+  onSetReminder,
+  onViewDetails,
 }) {
   const cardProps = {
     shareOpen, setShareOpen, shareSearch, setShareSearch, shareSelected, setShareSelected, shareRef,
     usersList, usersLoading, handleShare,
+    onSetReminder,
+    onViewDetails,
     openCandidateProfile,
     handleShortlist, handleAppliedReject, shortlistingId,
     handleScreeningStatus, screeningStatusLoadingId, getMoveToOptions,
     handleMoveToInterview,
     handleMakeOffer,
+    handleMarkOfferAccepted,
     handleMarkJoined,
     handleRestoreToShortlist, restoringId,
     handleInterviewReject,
@@ -114,9 +120,10 @@ export default function PipelineView({
         </div>
       )}
       {pipelineTab === 'Offered' && (() => {
-        const pendingCount = allCandidates.filter(c => c.macro_stage === 'OFFERED').length;
-        const joinedCount  = allCandidates.filter(c => c.macro_stage === 'JOINED').length;
-        const droppedCount = allCandidates.filter(c => c.macro_stage === 'DROPPED').length;
+        const pendingCount  = allCandidates.filter(c => c.macro_stage === 'OFFERED' && c.offer_status !== 'OFFER_ACCEPTED').length;
+        const acceptedCount = allCandidates.filter(c => c.macro_stage === 'OFFERED' && c.offer_status === 'OFFER_ACCEPTED').length;
+        const joinedCount   = allCandidates.filter(c => c.macro_stage === 'JOINED').length;
+        const droppedCount  = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED').length;
         return (
           <div className="px-4 py-2.5 border-b border-slate-100 shrink-0 flex items-center gap-2 overflow-x-auto">
             <button
@@ -125,6 +132,13 @@ export default function PipelineView({
             >
               Acceptance Pending
               <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${offeredFilter === 'PENDING' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`}>{pendingCount}</span>
+            </button>
+            <button
+              onClick={() => setOfferedFilter('ACCEPTED')}
+              className={`text-[10px] font-bold px-3 py-1 rounded-full transition-colors whitespace-nowrap flex items-center gap-1.5 ${offeredFilter === 'ACCEPTED' ? 'bg-teal-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+            >
+              Offer Accepted
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${offeredFilter === 'ACCEPTED' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'}`}>{acceptedCount}</span>
             </button>
             <button
               onClick={() => setOfferedFilter('JOINED')}
@@ -151,30 +165,88 @@ export default function PipelineView({
         ) : pipelineTab === 'Offered' ? (
           /* Offered tab: Filtered by sub-tab */
           (() => {
-            let filtered = [];
-            if (offeredFilter === 'PENDING') filtered = allCandidates.filter(c => c.macro_stage === 'OFFERED');
-            else if (offeredFilter === 'JOINED') filtered = allCandidates.filter(c => c.macro_stage === 'JOINED');
-            else if (offeredFilter === 'DROPPED') filtered = allCandidates.filter(c => c.macro_stage === 'DROPPED');
+            if (offeredFilter === 'PENDING') {
+              const filtered = allCandidates.filter(c => c.macro_stage === 'OFFERED' && c.offer_status !== 'OFFER_ACCEPTED');
+              if (filtered.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-slate-400"><Users className="w-10 h-10 mb-2" /><p className="text-sm">No candidates pending acceptance</p></div>;
+              return <div className="flex flex-col gap-4 pb-4">{filtered.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}</div>;
+            }
 
-            if (filtered.length === 0) {
+            if (offeredFilter === 'ACCEPTED') {
+              const filtered = allCandidates.filter(c => c.macro_stage === 'OFFERED' && c.offer_status === 'OFFER_ACCEPTED');
+              if (filtered.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-slate-400"><Users className="w-10 h-10 mb-2" /><p className="text-sm">No candidates have accepted the offer yet</p></div>;
+              return <div className="flex flex-col gap-4 pb-4">{filtered.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}</div>;
+            }
+
+            if (offeredFilter === 'JOINED') {
+              const filtered = allCandidates.filter(c => c.macro_stage === 'JOINED');
+              if (filtered.length === 0) return <div className="flex flex-col items-center justify-center py-16 text-slate-400"><Users className="w-10 h-10 mb-2" /><p className="text-sm">No candidates have joined yet</p></div>;
+              return <div className="flex flex-col gap-4 pb-4">{filtered.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}</div>;
+            }
+
+            if (offeredFilter === 'DROPPED') {
+              // All post-offer drops — split into before accepting vs after accepting
+              const droppedBeforeAccept = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED' && c.offer_status !== 'OFFER_ACCEPTED');
+              const droppedAfterAccept  = allCandidates.filter(c => c.macro_stage === 'DROPPED' && c.drop_reason !== 'REJECTED' && c.offer_status === 'OFFER_ACCEPTED');
+              if (droppedBeforeAccept.length === 0 && droppedAfterAccept.length === 0) {
+                return <div className="flex flex-col items-center justify-center py-16 text-slate-400"><Users className="w-10 h-10 mb-2" /><p className="text-sm">No dropped candidates</p></div>;
+              }
               return (
-                <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                  <Users className="w-10 h-10 mb-2" />
-                  <p className="text-sm">No candidates found in this section</p>
+                <div className="flex flex-col gap-3 pb-4">
+                  {droppedBeforeAccept.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2 py-1">
+                        <div className="flex-1 border-t border-dashed border-rose-200" />
+                        <span className="text-[10px] font-semibold text-rose-400 shrink-0 px-2 bg-rose-50 rounded-full border border-rose-100">
+                          Dropped before accepting ({droppedBeforeAccept.length})
+                        </span>
+                        <div className="flex-1 border-t border-dashed border-rose-200" />
+                      </div>
+                      {droppedBeforeAccept.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+                    </>
+                  )}
+                  {droppedAfterAccept.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2 py-1 mt-1">
+                        <div className="flex-1 border-t border-dashed border-rose-300" />
+                        <span className="text-[10px] font-semibold text-rose-500 shrink-0 px-2 bg-rose-50 rounded-full border border-rose-200">
+                          Dropped after accepting ({droppedAfterAccept.length})
+                        </span>
+                        <div className="flex-1 border-t border-dashed border-rose-300" />
+                      </div>
+                      {droppedAfterAccept.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+                    </>
+                  )}
                 </div>
               );
             }
-            return (
-              <div className="flex flex-col gap-4 pb-4">
-                {filtered.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
-              </div>
-            );
+
+            return null;
           })()
         ) : (
           /* Applied / Shortlisted / Interview tabs */
           (() => {
             const currentStage = STAGE_TAB_MAP[pipelineTab];
             const stagePool = allCandidates.filter(c => c.macro_stage === currentStage);
+
+            // Recruiter-rejected candidates are shown only in the tab matching their
+            // rejected_from_stage so they don't bleed across all tabs.
+            const stageKey = STAGE_TAB_MAP[pipelineTab]; // e.g. 'APPLIED', 'SHORTLISTED'
+            const preOfferRejected = (pipelineTab === 'Applied' || pipelineTab === 'Shortlisted')
+              ? allCandidates.filter(c =>
+                  c.macro_stage === 'DROPPED' &&
+                  c.drop_reason === 'REJECTED' &&
+                  c.rejected_from_stage === stageKey
+                )
+              : [];
+
+            let localDimmed = [];
+            if (pipelineTab === 'Applied') {
+              localDimmed = allCandidates.filter(c => c.macro_stage !== 'APPLIED' && !(c.macro_stage === 'DROPPED' && c.drop_reason === 'REJECTED'));
+            } else if (pipelineTab === 'Shortlisted') {
+              localDimmed = allCandidates.filter(c => ['INTERVIEW', 'OFFERED', 'JOINED'].includes(c.macro_stage));
+            } else if (pipelineTab === 'Interview') {
+              localDimmed = allCandidates.filter(c => ['OFFERED', 'JOINED'].includes(c.macro_stage));
+            }
 
             // Interview tab: split active vs rejected into dedicated sections
             const isInterview = pipelineTab === 'Interview';
@@ -194,7 +266,7 @@ export default function PipelineView({
               });
 
             const isEmpty = activeCandidates.length === 0 && rejectedCandidates.length === 0
-              && dimmedCandidates.length === 0 && !dimmedLoading;
+              && preOfferRejected.length === 0 && localDimmed.length === 0;
 
             if (isEmpty) {
               return (
@@ -223,27 +295,36 @@ export default function PipelineView({
                   </>
                 )}
 
+                {/* ── Rejected section (Applied / Shortlisted / Interview tabs) ── */}
+                {preOfferRejected.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 py-2 mt-1">
+                      <div className="flex-1 border-t border-dashed border-rose-200" />
+                      <span className="text-xs font-semibold text-rose-400 shrink-0 flex items-center gap-1.5">
+                        <span className="inline-block w-2 h-2 rounded-full bg-rose-400" />
+                        Rejected ({preOfferRejected.length})
+                      </span>
+                      <div className="flex-1 border-t border-dashed border-rose-200" />
+                    </div>
+                    {preOfferRejected.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+                  </>
+                )}
+
                 {/* ── Progressed / dimmed section ───────────────────────────── */}
-                {dimmedLoading ? (
-                  <div className="flex items-center justify-center gap-2 py-4 text-slate-400 text-xs border-t border-dashed border-slate-200 mt-1">
-                    <svg className="animate-spin w-3.5 h-3.5 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
-                    </svg>
-                    Loading history…
-                  </div>
-                ) : dimmedCandidates.length > 0 ? (
+                {localDimmed.length > 0 && (
                   <>
                     <div className="flex items-center gap-2 py-2 my-1">
-                      <div className="flex-1 border-t border-dashed border-slate-200" />
-                      <span className="text-xs text-slate-400 shrink-0">
-                        {dimmedCandidates.length} candidate{dimmedCandidates.length !== 1 ? 's' : ''} progressed from this stage
+                      <div className="flex-1 border-t border-dashed border-slate-300" />
+                      <span className="text-xs font-medium text-slate-500 shrink-0 bg-slate-100 px-2 py-0.5 rounded-full">
+                        {localDimmed.length} candidate{localDimmed.length !== 1 ? 's' : ''} progressed from this stage
                       </span>
-                      <div className="flex-1 border-t border-dashed border-slate-200" />
+                      <div className="flex-1 border-t border-dashed border-slate-300" />
                     </div>
-                    {dimmedCandidates.map(c => <CandidateCard key={c.id} c={c} {...cardProps} />)}
+                    {localDimmed.map(c => (
+                      <CandidateCard key={c.id} c={{ ...c, is_current_stage: false }} {...cardProps} />
+                    ))}
                   </>
-                ) : null}
+                )}
               </div>
             );
           })()

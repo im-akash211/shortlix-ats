@@ -36,14 +36,54 @@ class PipelineStageHistorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PipelineStageHistory
+        fields = ['id', 'from_macro_stage', 'to_macro_stage', 'moved_by_name', 'remarks', 'created_at']
+
+
+class ArchivedMappingSerializer(serializers.ModelSerializer):
+    """Minimal serializer for a previous (archived) job mapping, used nested inside the active one."""
+    job_code             = serializers.CharField(source='job.job_code', read_only=True)
+    job_title            = serializers.CharField(source='job.title', read_only=True)
+    department_name      = serializers.CharField(source='job.department.name', read_only=True)
+    hiring_manager_name  = serializers.CharField(source='job.hiring_manager.full_name', read_only=True)
+    stage_logs           = serializers.SerializerMethodField()
+    latest_round         = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CandidateJobMapping
         fields = [
-            'id', 'from_macro_stage', 'to_macro_stage',
-            'moved_by', 'moved_by_name', 'remarks', 'created_at',
+            'id', 'job', 'job_code', 'job_title', 'department_name', 'hiring_manager_name',
+            'macro_stage', 'drop_reason', 'interview_status', 'action_reason',
+            'current_interview_round',
+            'created_at', 'archived_at',
+            'stage_logs', 'latest_round',
         ]
-        read_only_fields = ['id', 'created_at']
+
+    def get_stage_logs(self, obj):
+        logs = obj.stage_logs.select_related('moved_by').order_by('created_at')
+        return PipelineStageHistorySerializer(logs, many=True).data
+
+    def get_latest_round(self, obj):
+        interview = obj.interviews.order_by('-created_at').first()
+        if not interview:
+            return None
+        return {
+            'id': str(interview.id),
+            'round_name': interview.round_name,
+            'round_status': interview.round_status,
+            'round_result': interview.round_result,
+            'scheduled_at': interview.scheduled_at.isoformat() if interview.scheduled_at else None,
+        }
 
 
 class CandidateJobMappingSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        from apps.core.rbac import has_permission
+        if request and not has_permission(request.user, 'VIEW_COMPENSATION'):
+            data.pop('offer_status', None)
+        return data
+
     candidate_name = serializers.CharField(source='candidate.full_name', read_only=True)
     candidate_email = serializers.CharField(source='candidate.email', read_only=True)
     candidate_phone = serializers.CharField(source='candidate.phone', read_only=True)
@@ -57,17 +97,19 @@ class CandidateJobMappingSerializer(serializers.ModelSerializer):
     candidate_designation = serializers.CharField(source='candidate.designation', read_only=True)
     job_title = serializers.CharField(source='job.title', read_only=True)
     job_code = serializers.CharField(source='job.job_code', read_only=True)
+    previous_mapping = ArchivedMappingSerializer(read_only=True)
 
     class Meta:
         model = CandidateJobMapping
         fields = [
             'id', 'candidate', 'job',
-            # New macro stage fields
+            # Core pipeline stage
             'macro_stage', 'offer_status', 'drop_reason',
             'current_interview_round', 'next_interview_date', 'priority',
             'screening_status',
             'interview_status',
             'action_reason',
+            'rejected_from_stage',
             # Audit
             'moved_by', 'stage_updated_at', 'created_at',
             # Denormalised candidate fields
@@ -76,6 +118,10 @@ class CandidateJobMappingSerializer(serializers.ModelSerializer):
             'candidate_designation',
             # Denormalised job fields
             'job_title', 'job_code',
+            # AI match
+            'ai_match_score', 'ai_match_reason', 'ai_match_computed_at',
+            # Cross-job move history
+            'previous_mapping',
         ]
         read_only_fields = ['id', 'moved_by', 'stage_updated_at', 'created_at']
 
@@ -134,12 +180,10 @@ class CandidateDetailSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         request = self.context.get('request')
-        if not (
-            request
-            and hasattr(request.user, 'role')
-            and request.user.role in ('admin', 'recruiter')
-        ):
+        from apps.core.rbac import has_permission
+        if not (request and has_permission(request.user, 'VIEW_COMPENSATION')):
             data.pop('current_ctc_lakhs', None)
+            data.pop('expected_ctc_lakhs', None)
             data.pop('notice_period_days', None)
         return data
 
@@ -152,7 +196,15 @@ class CandidateCreateSerializer(serializers.ModelSerializer):
 
 
 class CandidateReminderSerializer(serializers.ModelSerializer):
+    job_id = serializers.UUIDField(source='mapping.job.id', read_only=True)
+    job_title = serializers.CharField(source='mapping.job.title', read_only=True)
+    macro_stage = serializers.CharField(source='mapping.macro_stage', read_only=True)
+
     class Meta:
         model = CandidateReminder
-        fields = ['id', 'candidate', 'remind_at', 'note', 'is_done', 'notified', 'created_at', 'updated_at']
+        fields = [
+            'id', 'candidate', 'mapping', 'remind_at', 'note',
+            'is_done', 'notified', 'created_at', 'updated_at',
+            'job_id', 'job_title', 'macro_stage',
+        ]
         read_only_fields = ['id', 'candidate', 'notified', 'created_at', 'updated_at']

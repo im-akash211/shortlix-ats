@@ -55,21 +55,15 @@ class Requisition(models.Model):
     experience_min = models.DecimalField(max_digits=4, decimal_places=1, default=0)
     experience_max = models.DecimalField(max_digits=4, decimal_places=1, default=0)
     job_description = models.TextField(blank=True)
-    roles_responsibilities = models.TextField(blank=True)
     skills_required = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     skills_desirable = ArrayField(models.CharField(max_length=100), default=list, blank=True)
-    skills_to_evaluate = ArrayField(models.CharField(max_length=100), default=list, blank=True)
-    tags = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     client_name = models.CharField(max_length=255, blank=True)
     project_name = models.CharField(max_length=255, blank=True)
     min_qualification = models.CharField(max_length=100, blank=True)
-    reference_number = models.CharField(max_length=100, blank=True)
     expected_start_date = models.DateField(null=True, blank=True)
     tat_days = models.PositiveIntegerField(null=True, blank=True, help_text='Target Turn Around Time in calendar days')
     budget_min = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text='Minimum budget in INR Lakhs')
     budget_max = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text='Maximum budget in INR Lakhs')
-    salary_min = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    salary_max = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     work_mode = models.CharField(max_length=10, choices=WORK_MODE_CHOICES, blank=True, default='')
     # Candidate signals — Educational
     iit_grad = models.BooleanField(default=False)
@@ -88,10 +82,7 @@ class Requisition(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_requisitions'
     )
     hiring_manager = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='hm_requisitions'
-    )
-    l1_approver = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='approval_requisitions'
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name='hm_requisitions'
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     created_at = models.DateTimeField(auto_now_add=True)

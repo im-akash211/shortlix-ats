@@ -104,15 +104,16 @@ class ResumeReviewSerializer(serializers.Serializer):
 
     first_name       = serializers.CharField(allow_blank=True, default="")
     last_name        = serializers.CharField(allow_blank=True, default="")
-    email            = serializers.EmailField(allow_blank=True, required=False, default="")
+    email            = serializers.CharField(allow_blank=True, required=False, default="")
     phone            = serializers.CharField(allow_blank=True, default="")
     designation      = serializers.CharField(allow_blank=True, default="")
     current_company  = serializers.CharField(allow_blank=True, default="")
-    experience_years = serializers.FloatField(allow_null=True, required=False, default=None)
-    skills           = serializers.ListField(
+    experience_years    = serializers.FloatField(allow_null=True, required=False, default=None)
+    expected_ctc_lakhs  = serializers.FloatField(allow_null=True, required=False, default=None)
+    skills              = serializers.ListField(
         child=serializers.CharField(), allow_empty=True, default=list
     )
-    education        = EducationEntrySerializer(many=True, required=False, default=list)
+    education           = EducationEntrySerializer(many=True, required=False, default=list)
 
     def save_review(self, ingestion: ResumeIngestion, reviewer) -> ResumeIngestion:
         reviewed_data = self.validated_data

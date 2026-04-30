@@ -3,7 +3,8 @@ import logging
 from typing import List, Optional, Union
 from decimal import Decimal
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types, errors as genai_errors
 from google.api_core import exceptions
 from django.conf import settings
 from pydantic import BaseModel, Field, ValidationError
@@ -15,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 class GeneratedRequisitionContent(BaseModel):
     job_description: str
-    required_skills: List[str] = Field(default_factory=list)
-    preferred_skills: List[str] = Field(default_factory=list)
+    skills_required: List[str] = Field(default_factory=list)
+    skills_desirable: List[str] = Field(default_factory=list)
 
 
 # ── Gemini-compatible response schema dict ─────────────────────────────────────
@@ -31,12 +32,12 @@ _GEMINI_SCHEMA = {
                 "Include: role summary, why join, and key qualifications / expectations."
             ),
         },
-        "required_skills": {
+        "skills_required": {
             "type": "array",
             "items": {"type": "string"},
             "description": "6-10 mandatory technical and soft skills (short phrases, no HTML).",
         },
-        "preferred_skills": {
+        "skills_desirable": {
             "type": "array",
             "items": {"type": "string"},
             "description": "4-6 nice-to-have or bonus skills (short phrases, no HTML).",
@@ -44,8 +45,8 @@ _GEMINI_SCHEMA = {
     },
     "required": [
         "job_description",
-        "required_skills",
-        "preferred_skills",
+        "skills_required",
+        "skills_desirable",
     ],
 }
 
@@ -63,9 +64,11 @@ def generate_requisition_content(
     department: str,
     requisition_title: str,
     sub_vertical_1: str = "",
-    sub_vertical_2: str = "",
+    designation: str = "",
     experience_min: Optional[Union[Decimal, float, int]] = 0,
     experience_max: Optional[Union[Decimal, float, int]] = 0,
+    skills_required: Optional[List[str]] = None,
+    skills_desirable: Optional[List[str]] = None,
 ) -> dict:
     """
     Generate job description, required skills, and preferred skills in a
@@ -97,70 +100,94 @@ def generate_requisition_content(
         f"Role Title: {requisition_title}",
         f"Target Experience Level: {exp_min} to {exp_max} years",
     ]
+    if designation:
+        context_lines.append(f"Designation: {designation}")
     if sub_vertical_1:
         context_lines.append(f"Sub-vertical / Practice Area 1: {sub_vertical_1}")
-    if sub_vertical_2:
-        context_lines.append(f"Sub-vertical / Practice Area 2: {sub_vertical_2}")
-    
+    if skills_required:
+        context_lines.append(f"USER-PROVIDED Mandatory Skills (MUST be returned verbatim in skills_required): {', '.join(skills_required)}")
+    if skills_desirable:
+        context_lines.append(f"USER-PROVIDED Desirable Skills (MUST be returned verbatim in skills_desirable): {', '.join(skills_desirable)}")
     context_str = "\n".join(context_lines)
 
     # Updated PROMPT with specific instructions for the experience range
-    PROMPT = f"""You are an expert HR and Talent Acquisition Lead at a premier Generative AI and Data Engineering firm. 
-        Your goal is to generate an enterprise-grade job requisition that attracts top-tier talent by balancing technical depth with high-impact narrative.
+    PROMPT = f"""You are an expert HR and Talent Acquisition Lead at a premier Generative AI and Data Engineering firm. Your goal is to generate an enterprise-grade job requisition that attracts top-tier talent by balancing technical depth with high-impact narrative.
 
-        ### COMPANY CONTEXT:
-        We are an end-to-end GenAI and Data Engineering solution provider. We build enterprise-grade tools ranging from Data Pre-processing and Data Lakes to production-ready Machine Learning and LLM pipelines.
+    ### COMPANY CONTEXT:
+    We are an end-to-end GenAI and Data Engineering solution provider building enterprise-grade systems including:
+    - Data pipelines & Data Lakes
+    - Machine Learning systems
+    - LLM-powered applications
+    Assume a high-growth, performance-driven environment.
 
-        ### INPUT DATA:
-        - Role Context: {context_str}
+    ### INPUT DATA:
+    - Role Context: {context_str}
+    - Experience Range: {exp_min}–{exp_max} years
+    - Sub-Vertical / Domain: {sub_vertical_1}
 
+    *If any input is missing: Make reasonable assumptions and clearly state them briefly before the JSON output.*
 
-        ### ROLE-SPECIFIC LOGIC ENGINE:
-        1. **Engineering (AI/Data/Software):** Focus on scalability, technical debt management, system architecture, and "production-grade" reliability.
-        2. **HR/People:** Focus on organizational design, culture-building in a high-growth tech environment, and talent strategy.
-        3. **Sales/Growth:** Focus on technical solution selling, pipeline velocity, and enterprise client partnerships.
-        4. **Seniority Calibration:** 
-        - **Junior (0-3 yrs):** Emphasize execution, "learning from senior mentors," and "contributing to" systems.
-        - **Mid-Senior (4-7 yrs):** Emphasize "ownership," "designing components," and "cross-functional collaboration."
-        - **Lead/Staff (8+ yrs):** Emphasize "driving vision," "architecting systems," "mentoring," and "organizational impact."
+    ### ROLE-SPECIFIC LOGIC ENGINE:
+    1. **Engineering (AI/Data/Software):** Emphasize scalability, system design, performance, and production reliability.
+    2. **HR/People Roles:** Focus on culture, org design, and hiring strategy.
+    3. **Sales/Growth Roles:** Focus on solution selling, pipeline, and enterprise clients.
+    4. **Seniority Calibration:**
+        - **Junior (0–3 yrs):** Execution, learning, and support.
+        - **Mid (4–7 yrs):** Ownership, design, and collaboration.
+        - **Senior/Lead (8+ yrs):** Vision, architecture, and mentoring.
 
-        ### WRITING STYLE GUIDELINES (Reverse-Engineered from Industry Leaders):
-        - **The Hook:** Start with an engaging mission statement. Mention the {exp_min}-{exp_max} years requirement naturally within the context of impact.
-        - **Responsibilities:** Use the "Action + Purpose" formula (e.g., "Drive technology innovations to remain ahead of the curve" vs "Write code"). Include 6-8 bullets covering design, execution, testing, and collaboration.
-        - **Tone:** Professional, ambitious, and intellectually curious.
+    ### WRITING STYLE GUIDELINES:
+    - **The Hook:** Start with a strong mission-driven hook. Naturally integrate the {exp_min}–{exp_max} years experience range within the context.
+    - **Responsibilities:** Use the "Action + Purpose" format (e.g., “Drive scalable ML systems to power enterprise use cases”).
+    - **Tone:** Professional, ambitious, and intellectually engaging. Avoid vague buzzwords or generic filler.
 
-        ### OUTPUT REQUIREMENTS:
-        Generate a valid JSON object with these keys:
-        1. `job_description`: (HTML string) A compelling 3-4 paragraph summary including role overview, key responsibilities (6-8 bullets using active verbs: Own, Drive, Build, Mentor), and qualifications.
-        2. `required_skills`: (List) 5-7 core technical/hard skills aligned with {sub_vertical_1}.
-        3. `preferred_skills`: (List) 3-5 "Nice to have" skills (e.g., Cloud Certifications, specific AI frameworks, or soft skills like "Product Thinking").
+    ### CONTENT SPECIFICATIONS:
+    - **job_description (HTML string):** 
+        - 180–250 words total.
+        - 3–4 paragraphs including: Role overview, Business impact, and Culture/value proposition.
+        - Include 6–8 bullet points for responsibilities using active verbs (Own, Drive, Build, Mentor).
+        - Include a clear, role-aligned qualifications section.
+    - **skills_required (List):** If "USER-PROVIDED Mandatory Skills" are present in the context, return them EXACTLY as-is (same wording, same order). Do NOT replace or rename any user-provided skill. Only append additional skills if fewer than 5 were provided. Otherwise generate 5–7 must-have skills aligned with {sub_vertical_1}.
+    - **skills_desirable (List):** If "USER-PROVIDED Desirable Skills" are present in the context, return them EXACTLY as-is. Only append additional skills if fewer than 3 were provided. Otherwise generate 3–5 good-to-have skills (certifications, tools, or soft skills like product thinking).
 
-        ### JSON STRUCTURE:
-        {{
-            "job_description": "string",
-            "required_skills": [],
-            "preferred_skills": []
-        }}
+    ### QUALITY & SAFETY GUIDELINES:
+    - Do NOT fabricate company claims or unrealistic benefits.
+    - Avoid biased or exclusionary language; ensure an inclusive and neutral hiring tone.
+    - Keep content grounded in provided inputs.
 
-        Return ONLY the JSON object.
+    ### OUTPUT REQUIREMENTS:
+    Return ONLY a valid JSON object with the following structure:
+
+    ```json
+    {{
+    "job_description": "HTML string",
+    "skills_required": [],
+    "skills_desirable": []
+    }}
+    ```
+
+    ### FINAL VALIDATION CHECK:
+    Before output, verify:
+    - JSON is valid and properly formatted.
+    - Word limits (180-250) are respected.
+    - Skills align perfectly with the role domain.
+    - Tone is professional and compelling.
+    - No placeholders remain in the final text.
     """
 
     last_exc: Exception | None = None
 
     for key in keys:
         try:
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                system_instruction=(
-                    "You are an expert technical recruiter and job description writer. "
-                    "Return structured, professional recruitment content as valid JSON."
-                ),
-            )
-            
-            response = model.generate_content(
-                PROMPT,
-                generation_config=genai.GenerationConfig(
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=PROMPT,
+                config=types.GenerateContentConfig(
+                    system_instruction=(
+                        "You are an expert technical recruiter and job description writer. "
+                        "Return structured, professional recruitment content as valid JSON."
+                    ),
                     temperature=0.35,
                     response_mime_type="application/json",
                     response_schema=_GEMINI_SCHEMA,
@@ -182,6 +209,10 @@ def generate_requisition_content(
 
         except exceptions.ResourceExhausted as exc:
             logger.warning("Gemini rate limit on key %s…", key[:8])
+            last_exc = exc
+            continue
+        except genai_errors.ServerError as exc:
+            logger.warning("Gemini service unavailable on key %s: %s", key[:8], exc)
             last_exc = exc
             continue
         except (json.JSONDecodeError, ValidationError) as exc:

@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     ResumeDuplicateResolveView,
     ResumeConvertView,
+    ResumeDiscardView,
     ResumeIngestionListView,
     ResumeIngestionStatusView,
     ResumeReviewView,
@@ -18,5 +19,6 @@ urlpatterns = [
     # Phase 2
     path("<uuid:pk>/review/",              ResumeReviewView.as_view(),            name="resume-review"),
     path("<uuid:pk>/convert/",             ResumeConvertView.as_view(),           name="resume-convert"),
+    path("<uuid:pk>/discard/",             ResumeDiscardView.as_view(),           name="resume-discard"),
     path("<uuid:pk>/resolve-duplicate/",   ResumeDuplicateResolveView.as_view(),  name="resume-resolve-duplicate"),
 ]

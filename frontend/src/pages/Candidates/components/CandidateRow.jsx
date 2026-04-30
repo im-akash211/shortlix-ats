@@ -1,11 +1,11 @@
 import React from 'react';
 import {
   Edit, MapPin, Phone, Mail, Briefcase,
-  MessageSquarePlus, Trash2, FileText, Share2,
+  MessageSquarePlus, Trash2, FileText, Share2, ShieldOff,
 } from 'lucide-react';
 import { SOURCE_LABELS, STAGE_LABELS, STAGE_COLORS } from '../constants';
 
-export default function CandidateRow({ candidate: c, openModal, openShare, openViewProfile, openDeleteConfirm, openResume, shareOpen }) {
+export default function CandidateRow({ candidate: c, openModal, openShare, openViewProfile, openDeleteConfirm, openResume, shareOpen, isAdmin }) {
   return (
     <tr className="hover:bg-blue-50/50 transition-colors">
 
@@ -81,12 +81,18 @@ export default function CandidateRow({ candidate: c, openModal, openShare, openV
 
       {/* Actions */}
       <td className="px-2 py-1.5 align-top text-center">
-        <button
-          onClick={() => openModal('move', c)}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1 rounded text-xs font-medium transition-colors shadow-sm"
-        >
-          Move
-        </button>
+        {isAdmin ? (
+          <button
+            onClick={() => openModal('move', c)}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1 rounded text-xs font-medium transition-colors shadow-sm"
+          >
+            Move
+          </button>
+        ) : (
+          <span className="flex items-center justify-center gap-1 text-xs text-slate-400" title="Only admins can move candidates">
+            <ShieldOff className="w-3 h-3" /> Admin only
+          </span>
+        )}
       </td>
     </tr>
   );

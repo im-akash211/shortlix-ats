@@ -1,10 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth, clearAuth } from './api';
+import { queryClient } from '../main';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => auth.getUser());
+  const [user, setUser] = useState(() => {
+    const stored = auth.getUser();
+    // Stale session saved before RBAC was added — no permissions array.
+    // Clear it so the user gets a fresh login with permissions included.
+    if (stored && !Array.isArray(stored.permissions)) {
+      clearAuth();
+      return null;
+    }
+    return stored;
+  });
 
   useEffect(() => {
     const handler = () => {
@@ -21,6 +31,7 @@ export function AuthProvider({ children }) {
   const handleLogout = () => {
     auth.logout().catch(() => {});
     clearAuth();
+    queryClient.clear();
     setUser(null);
   };
 
